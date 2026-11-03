@@ -1,0 +1,493 @@
+// The Stadium category: blocks that belong to no single surface. Penalty grass, expandable box gates, special gates,
+// track walls, structures, stages, screens, water and deco. Same rules as catalog.js: every shape is generated here.
+const G = require('./geom');
+const { Mesh, hPath, roadRings, sweep, patch, prism, add, mul, norm, TAU } = G;
+const C = require('./catalog');
+const { DECK, DEG, smooth, deckPoly, grassStrips, grassPatch, roadPart, cyl, arcStepFor, FX } = C;
+
+// Concrete stands in for the stock grey; penalty grass mows in 5-unit stripes.
+const ST = {
+  surface: 'Stadium',
+  plastic: true,
+  deck: () => 'Concrete',
+  line: () => 'ConcreteDark',
+  rail: () => 'ConcreteDark',
+  railTop: () => 'Metal',
+  under: 'ConcreteUnder',
+  solid: 'Concrete',
+  solidB: 'ConcreteDark',
+  trim: 'Metal',
+};
+const GRASS = {
+  ...ST,
+  pattern: process.env.BE_PLAIN ? null : C.PATTERNS.grass,
+  side: 'GrassUnder',
+  deck: (ring) => (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'GrassB' : 'Grass'),
+  line: (ring) => (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'GrassB' : 'Grass'),
+  under: 'GrassUnder',
+};
+
+function buildShared() {
+  const parts = [];
+  // u: the surface the physics uses for the whole part (2 = penalty grass), null keeps stock physics.
+  const put = (name, label, tab, sub, mesh, extra = {}) => {
+    // Rounded deco (beams, tubes) can poke a little below the floor: lift it so it rests on its layer.
+    const low = mesh.bounds().min[1];
+    if (low < 0) {
+      const lifted = new Mesh();
+      lifted.merge(mesh, [0, -low, 0]);
+      mesh = lifted;
+    }
+    parts.push({ name: 'Stadium' + name, label, tab, sub, surface: 'Stadium', mesh, u: null, ...extra });
+  };
+
+  // ---- penalty grass ----------------------------------------------------------------------------------------------
+  {
+    const T = 'Penalty grass',
+      g = { u: 2 };
+    const P = () => [deckPoly(GRASS, 10, DECK, 0.5)];
+    put('Grass', 'Penalty grass', T, 'Flat', roadPart(GRASS, P, [{ line: 20 }]), g);
+    put('GrassX2', 'Penalty grass, 2 long', T, 'Flat', roadPart(GRASS, P, [{ line: 40 }]), g);
+    put('GrassHalf', 'Penalty grass, half', T, 'Flat', roadPart(GRASS, P, [{ line: 10 }]), g);
+    [10, 30, 50].forEach((r, i) => put('GrassCurve' + (i + 1), 'Penalty grass curve ' + (i + 1), T, 'Flat', roadPart(GRASS, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) }), g));
+    for (const { gr, n, L } of [{ gr: 0.25, n: 'Gentle', L: 40 }, { gr: 0.5, n: 'Medium', L: 20 }, { gr: 1, n: 'Steep', L: 40 }]) {
+      const sub = 'Hills, ' + n.toLowerCase();
+      put('Grass' + n + 'Start', 'Grass hill, ' + n.toLowerCase() + ', start', T, sub, roadPart(GRASS, P, [{ line: L }], { step: 2.5, y: (s) => (gr * s * s) / (2 * L) }), g);
+      put('Grass' + n, 'Grass hill, ' + n.toLowerCase() + ' slope', T, sub, roadPart(GRASS, P, [{ line: 20 }], { y: (s) => gr * s }), g);
+      put('Grass' + n + 'End', 'Grass hill, ' + n.toLowerCase() + ', top', T, sub, roadPart(GRASS, P, [{ line: L }], { step: 2.5, y: (s) => gr * s - (gr * s * s) / (2 * L) }), g);
+      const rise = gr * 20,
+        grid = (fn, name, label) => {
+          const m = new Mesh();
+          patch(m, (u, v) => [-10 + 20 * u, DECK + fn(-10 + 20 * u, -10 + 20 * v), -10 + 20 * v], 10, 10, { mat: (i, j) => ((i + j) % 2 ? 'GrassB' : 'Grass'), under: 'GrassUnder', want: () => [0, 1, 0] });
+          put('Grass' + n + name, 'Grass hill, ' + n.toLowerCase() + ', ' + label, T, sub, m, g);
+        };
+      const a = (x) => ((x + 10) / 20) * rise,
+        b = (z) => ((z + 10) / 20) * rise;
+      grid((x, z) => Math.min(a(x), b(z)), 'Outer', 'outer corner');
+      grid((x, z) => Math.max(a(x), b(z)), 'Inner', 'inner corner');
+      grid((x, z) => Math.max(0, 1 - Math.hypot(10 - x, 10 - z) / 20) * rise, 'CurveOut', 'round outer corner');
+      grid((x, z) => Math.min(1, Math.hypot(x + 10, z + 10) / 20) * rise, 'CurveIn', 'round inner corner');
+    }
+    {
+      // A whole mound: 2 x 2 blocks, 2 layers tall.
+      const m = new Mesh();
+      patch(m, (u, v) => {
+        const x = -10 + 40 * u,
+          z = -30 + 40 * v,
+          d = Math.min(1, Math.hypot(x - 10, z + 10) / 20);
+        return [x, DECK + 10 * (0.5 + 0.5 * Math.cos(d * Math.PI)), z];
+      }, 16, 16, { mat: (i, j) => ((i + j) % 2 ? 'GrassB' : 'Grass'), under: 'GrassUnder', want: () => [0, 1, 0] });
+      put('GrassMound', 'Grass mound', T, 'Hills, mounds', m, g);
+      const r = new Mesh();
+      patch(r, (u, v) => {
+        const x = -10 + 20 * u,
+          z = -10 + 20 * v;
+        return [x, DECK + 2.5 * (0.5 + 0.5 * Math.cos(Math.min(1, Math.abs(x) / 10) * Math.PI)), z];
+      }, 12, 4, { mat: (i, j) => ((i + j) % 2 ? 'GrassB' : 'Grass'), under: 'GrassUnder', want: () => [0, 1, 0] });
+      put('GrassRidge', 'Grass ridge', T, 'Hills, mounds', r, g);
+    }
+    // Concrete with a grass verge: the verge is penalty grass, the concrete drives like stock road.
+    put('ConcreteGrassVerge', 'Concrete with a grass verge', T, 'Flat', roadPart(ST, () => [{ pts: [[-10, 0], [3, 0], [3, DECK], [-10, DECK]], cap: 'ConcreteUnder', mats: (e) => (e == 2 ? 'Concrete' : 'ConcreteUnder') }, ...grassStrips(null, null, 3, 10)], [{ line: 20 }]));
+  }
+
+  // ---- expandable box gates ------------------------------------------------------------------------------------------
+  // One piece per block. Each piece draws only the frame edges it is told to, so a 3 x 2 box is six pieces placed together.
+  {
+    const T = 'Box gates';
+    const kinds = [
+      { kind: 'Start', label: 'Start', bar: 'StartLine', det: null },
+      { kind: 'Checkpoint', label: 'Checkpoint', bar: 'Checkpoint', det: 0 },
+      { kind: 'Finish', label: 'Finish', bar: 'Finish', det: 1 },
+    ];
+    const edgeNames = { L: 'left', R: 'right', T: 'top', B: 'bottom' };
+    const shapes = [];
+    for (let mask = 0; mask < 16; mask++) shapes.push(['L', 'R', 'T', 'B'].filter((_, i) => mask & (1 << i)));
+    for (const K of kinds)
+      for (const edges of shapes) {
+        const m = new Mesh(),
+          h = 5,
+          t = 0.5,
+          d = 0.45;
+        const bar = (x0, y0, x1, y1) => {
+          if (K.kind == 'Finish') {
+            // Chequered bars, alternating squares along the bar.
+            const along = x1 - x0 > y1 - y0,
+              n = Math.max(1, Math.round((along ? x1 - x0 : y1 - y0) / t));
+            for (let i = 0; i < n; i++) {
+              const a0 = i / n,
+                a1 = (i + 1) / n;
+              const mat = i % 2 ? 'FinishWhite' : 'FinishBlack';
+              if (along) m.box(mat, [x0 + (x1 - x0) * a0, y0, -d], [x0 + (x1 - x0) * a1, y1, d]);
+              else m.box(mat, [x0, y0 + (y1 - y0) * a0, -d], [x1, y0 + (y1 - y0) * a1, d]);
+            }
+          } else m.box(K.bar, [x0, y0, -d], [x1, y1, d], 'ConcreteDark');
+        };
+        if (edges.includes('L')) bar(-10, 0.21, -10 + t, h);
+        if (edges.includes('R')) bar(10 - t, 0.21, 10, h);
+        if (edges.includes('T')) bar(-10, h - t, 10, h);
+        if (edges.includes('B')) m.box(K.bar == 'Finish' ? 'FinishWhite' : K.bar, [-10, 0.21, -d], [10, 0.26, d], K.bar == 'Finish' ? 'FinishBlack' : 'ConcreteDark');
+        // A piece with no edges is the open middle of a big box. It still needs a mesh, so it gets one hidden sliver.
+        if (!edges.length) m.tri('ConcreteDark', [-0.01, 0.001, 0], [0.01, 0.001, 0], [0, 0.001, 0.01]);
+        const key = edges.length ? edges.join('') : 'Middle';
+        const label = K.label + ' box, ' + (edges.length ? edges.map((e) => edgeNames[e]).join(' + ') + ' edge' + (edges.length > 1 ? 's' : '') : 'open middle');
+        const sub = edges.length == 4 ? 'Single piece' : edges.length == 0 ? 'Middle' : edges.includes('B') ? 'Bottom row' : edges.includes('T') ? 'Top row' : 'Middle row';
+        const extra = K.det == null ? { startOffset: [0, 0.35, 1.35] } : { detector: { type: K.det, center: [0, 2.5, 0], size: [20, 5, K.det == 1 ? 2 : 1] } };
+        put('Box' + K.kind + key, label, T, K.label + ': ' + sub, m, extra);
+      }
+  }
+
+  // ---- special gates: an arch that applies an effect, on any surface ------------------------------------------------------
+  {
+    const T = 'Special gates';
+    for (const fx of FX) {
+      const m = new Mesh();
+      m.box('ConcreteDark', [-10, 0.21, -0.6], [-9.2, 5.2, 0.6], 'Metal');
+      m.box('ConcreteDark', [9.2, 0.21, -0.6], [10, 5.2, 0.6], 'Metal');
+      m.box(fx.mat, [-10, 4.4, -0.7], [10, 5.4, 0.7], 'ConcreteDark');
+      for (let i = 0; i < 4; i++) m.box(fx.mat, [-9.2, 0.21 + i * 1.05, -0.3], [-8.9, 0.81 + i * 1.05, 0.3]), m.box(fx.mat, [8.9, 0.21 + i * 1.05, -0.3], [9.2, 0.81 + i * 1.05, 0.3]);
+      put('Gate' + fx.key, fx.label + ' gate', T, 'Special gates', m, { fx: { type: fx.key, center: [0, 2.6, 0], size: [18.4, 5, 3] } });
+    }
+  }
+
+  // ---- track walls --------------------------------------------------------------------------------------------------------
+  {
+    const T = 'Track walls';
+    const wallPoly = () => [{
+      pts: [[-2.5, 0], [2.5, 0], [2.5, 3.6], [1.6, 4.6], [-1.6, 4.6], [-2.5, 3.6]],
+      cap: 'ConcreteDark',
+      mats: (e, ring) => (e == 3 ? 'WallTop' : e == 0 ? 'ConcreteUnder' : Math.floor(ring.s / 5) % 2 ? 'Concrete' : 'ConcreteB'),
+    }];
+    const wall = (segs, start) => roadPart(ST, wallPoly, segs, { start, step: 5, arcStep: 2.5 });
+    const make = (name, label, mk, sub) => {
+      put('TrackWall' + name, label, T, sub, mk());
+      // The same wall three layers up on a square pillar.
+      const tall = new Mesh();
+      tall.merge(mk(), [0, 15, 0]);
+      tall.box('ConcreteDark', [-2, 0, -2], [2, 15, 2], 'ConcreteDark');
+      put('TrackWall' + name + 'Pillar', label + ', on a pillar', T, sub + ' on pillars', tall);
+    };
+    make('Straight', 'Track wall', () => wall([{ line: 20 }]), 'Track walls');
+    [10, 30, 50].forEach((r, i) => make('Curve' + (i + 1), 'Track wall curve ' + (i + 1), () => wall([{ r, ang: 90 * DEG, dir: 1 }]), 'Track walls'));
+    make('Cross', 'Track wall crossing', () => {
+      const m = wall([{ line: 20 }]);
+      m.merge(wall([{ line: 20 }], [-10, 0, Math.PI / 2]));
+      return m;
+    }, 'Track walls');
+    make('End', 'Track wall, rounded end', () => {
+      const m = wall([{ line: 10 }]);
+      const N = 10;
+      for (let i = 0; i < N; i++) {
+        const a0 = Math.PI + (i / N) * Math.PI,
+          a1 = Math.PI + ((i + 1) / N) * Math.PI,
+          p = (a, y) => [Math.cos(a) * 2.5, y, -Math.sin(a) * 2.5 + 0];
+        m.quadFacing('Concrete', p(a0, 0), p(a1, 0), p(a1, 4.6), p(a0, 4.6), [Math.cos((a0 + a1) / 2), 0, -Math.sin((a0 + a1) / 2)]);
+        m.triFacing('WallTop', [0, 4.6, 0], p(a0, 4.6), p(a1, 4.6), [0, 1, 0]);
+      }
+      return m;
+    }, 'Track walls');
+    make('ToRoad', 'Track wall ramping down to the road', () => roadPart(ST, (ring) => {
+      const k = 1 - smooth(ring.u),
+        h = 0.3 + 4.3 * k;
+      return [{ pts: [[-2.5, 0], [2.5, 0], [2.5, Math.max(0.25, h - 1)], [1.6, h], [-1.6, h], [-2.5, Math.max(0.25, h - 1)]], cap: 'ConcreteDark', mats: (e) => (e == 3 ? 'WallTop' : e == 0 ? 'ConcreteUnder' : 'Concrete') }];
+    }, [{ line: 20 }], { step: 2.5 }), 'Track walls');
+  }
+
+  // ---- structures: steel trusses and supports -----------------------------------------------------------------------------
+  {
+    const T = 'Structures';
+    const truss = (m, a, b, w = 0.9) => {
+      // Four chords and zig-zag bracing between two points.
+      const t = norm(G.sub(b, a));
+      // Pull the ends in a little so beam thickness never pokes through the part's floor.
+      a = add(a, mul(t, 0.15));
+      b = add(b, mul(t, -0.15));
+      const r = norm(Math.abs(t[1]) > 0.9 ? G.cross(t, [1, 0, 0]) : G.cross(t, [0, 1, 0])),
+        u = G.cross(r, t),
+        L = G.len(G.sub(b, a)),
+        n = Math.max(1, Math.round(L / 2.5)),
+        corner = (p, sr, su) => add(add(p, mul(r, sr * w)), mul(u, su * w));
+      for (const [sr, su] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) m.beam('Truss', corner(a, sr, su), corner(b, sr, su), 0.12);
+      for (let i = 0; i < n; i++) {
+        const p0 = add(a, mul(t, (L * i) / n)),
+          p1 = add(a, mul(t, (L * (i + 1)) / n));
+        m.beam('TrussB', corner(p0, -1, -1), corner(p1, 1, -1), 0.07);
+        m.beam('TrussB', corner(p0, 1, 1), corner(p1, -1, 1), 0.07);
+        m.beam('TrussB', corner(p0, -1, 1), corner(p1, -1, -1), 0.07);
+        m.beam('TrussB', corner(p0, 1, -1), corner(p1, 1, 1), 0.07);
+      }
+    };
+    const one = (name, label, f, sub = 'Structures') => {
+      const m = new Mesh();
+      f(m);
+      put('Structure' + name, label, T, sub, m);
+    };
+    one('Base', 'Structure base', (m) => {
+      m.box('ConcreteDark', [-2.4, 0, -2.4], [2.4, 0.6, 2.4], 'Concrete');
+      truss(m, [0, 0.6, 0], [0, 5, 0], 1.1);
+    });
+    one('Pillar', 'Structure pillar, 1 layer', (m) => truss(m, [0, 0, 0], [0, 5, 0], 1.1));
+    one('PillarTall', 'Structure pillar, 4 layers', (m) => truss(m, [0, 0, 0], [0, 20, 0], 1.1));
+    one('Straight', 'Structure beam', (m) => truss(m, [0, 3.9, 10], [0, 3.9, -10]));
+    one('Cross', 'Structure crossing', (m) => {
+      truss(m, [0, 3.9, 10], [0, 3.9, -10]);
+      truss(m, [-10, 3.9, 0], [10, 3.9, 0]);
+    });
+    one('Corner', 'Structure corner', (m) => {
+      truss(m, [0, 3.9, 10], [0, 3.9, 0]);
+      truss(m, [0, 3.9, 0], [10, 3.9, 0]);
+    });
+    one('End', 'Structure dead end', (m) => {
+      truss(m, [0, 3.9, 10], [0, 3.9, -1]);
+      m.box('Metal', [-1.2, 2.7, -1.6], [1.2, 5.1, -0.6], 'ConcreteDark');
+    });
+    one('SupportStraight', 'Support under a road', (m) => {
+      truss(m, [-7, 0, 0], [-7, 4.6, 0], 0.5);
+      truss(m, [7, 0, 0], [7, 4.6, 0], 0.5);
+      truss(m, [-7.6, 4.4, 0], [7.6, 4.4, 0], 0.4);
+    }, 'Supports');
+    one('SupportCorner', 'Support, corner', (m) => {
+      truss(m, [-7, 0, -7], [-7, 4.6, -7], 0.5);
+      truss(m, [-7.6, 4.4, -7], [7.6, 4.4, -7], 0.4);
+      truss(m, [-7, 4.4, -7.6], [-7, 4.4, 7.6], 0.4);
+    }, 'Supports');
+    one('SupportCross', 'Support, crossing', (m) => {
+      truss(m, [0, 0, 0], [0, 4.6, 0], 0.6);
+      truss(m, [-9.6, 4.4, 0], [9.6, 4.4, 0], 0.4);
+      truss(m, [0, 4.4, -9.6], [0, 4.4, 9.6], 0.4);
+    }, 'Supports');
+    one('SupportCurve', 'Support, curve', (m) => {
+      const path = hPath([{ r: 30, ang: 90 * DEG, dir: 1 }], [0, 10, 0]),
+        rs = roadRings(path, { arcStep: 6 });
+      for (let i = 0; i + 1 < rs.length; i++) truss(m, add(rs[i].p, [0, 4.4, 0]), add(rs[i + 1].p, [0, 4.4, 0]), 0.4);
+      truss(m, [0, 0, 10], [0, 4.6, 10], 0.5);
+    }, 'Supports');
+  }
+
+  // ---- stage, stands, canopies, screens, lights -----------------------------------------------------------------------------
+  {
+    const T = 'Stage and screens';
+    const one = (name, label, f, sub) => {
+      const m = new Mesh();
+      f(m);
+      put(name, label, T, sub, m);
+    };
+    one('StageStraight', 'Stage', (m) => {
+      m.box('Stage', [-10, 0, -10], [10, 2.4, 10], 'ConcreteDark');
+      for (let i = 0; i < 8; i++) m.box('Light', [-9.6 + i * 2.5, 2.4, 9.3], [-8.6 + i * 2.5, 2.6, 9.8], 'Metal');
+    }, 'Stage');
+    one('StageCorner', 'Stage, curved edge', (m) => {
+      const pts = [[-10, -10], [10, -10]];
+      for (let i = 0; i <= 10; i++) {
+        const a = (i / 10) * 90 * DEG;
+        pts.push([10 - 20 * (1 - Math.cos(a)), -10 + 20 * Math.sin(a)]);
+      }
+      prism(m, pts.map(([x, z]) => [x, z]).filter((p, i, A) => i == 0 || Math.hypot(p[0] - A[i - 1][0], p[1] - A[i - 1][1]) > 1e-6), 0, 2.4, { top: 'Stage', side: 'ConcreteDark', under: 'ConcreteUnder', center: [-4, -4] });
+    }, 'Stage');
+    one('StageLights', 'Light rig', (m) => {
+      m.beam('Truss', [-9, 0, 0], [-9, 9, 0], 0.35);
+      m.beam('Truss', [9, 0, 0], [9, 9, 0], 0.35);
+      m.beam('Truss', [-9.4, 9, 0], [9.4, 9, 0], 0.35);
+      for (let i = 0; i < 6; i++) {
+        const x = -7.5 + i * 3;
+        m.box('Metal', [x - 0.5, 7.6, -0.5], [x + 0.5, 8.6, 0.5], 'ConcreteDark');
+        m.box('Light', [x - 0.4, 7.55, 0.5], [x + 0.4, 8.45, 0.62], 'Light');
+      }
+    }, 'Stage');
+    one('Stand', 'Grandstand', (m) => {
+      for (let i = 0; i < 6; i++) {
+        m.box('ConcreteDark', [-10, 0, -10 + i * 2.6], [10, 1 + i * 1.6, -7.4 + i * 2.6], 'Concrete');
+        for (let k = 0; k < 10; k++) m.box(k % 2 ? 'Seat' : 'SeatB', [-9.6 + k * 1.95, 1 + i * 1.6, -9.6 + i * 2.6], [-8.0 + k * 1.95, 1.5 + i * 1.6, -8.6 + i * 2.6], 'Seat');
+      }
+      m.box('Concrete', [-10, 0, 5.6], [10, 12, 6.4], 'ConcreteDark');
+    }, 'Stands');
+    one('StandCanopy', 'Grandstand with roof', (m) => {
+      for (let i = 0; i < 6; i++) m.box('ConcreteDark', [-10, 0, -10 + i * 2.6], [10, 1 + i * 1.6, -7.4 + i * 2.6], 'Concrete');
+      m.box('Concrete', [-10, 0, 5.6], [10, 14, 6.4], 'ConcreteDark');
+      m.box('Canopy', [-10, 14, -10], [10, 14.5, 6.4], 'Metal');
+      m.beam('Metal', [-9.5, 0, -9.5], [-9.5, 14, -9.5], 0.25);
+      m.beam('Metal', [9.5, 0, -9.5], [9.5, 14, -9.5], 0.25);
+    }, 'Stands');
+    one('Canopy', 'Canopy over the road', (m) => {
+      for (const x of [-9.4, 9.4]) for (const z of [-9.4, 9.4]) m.beam('Metal', [x, 0, z], [x, 9, z], 0.25);
+      m.box('Canopy', [-10, 9, -10], [10, 9.6, 10], 'Metal');
+    }, 'Stands');
+    for (const [w, n] of [[5, '1x1'], [10, '2x1'], [20, '4x1']])
+      one('Screen' + n, 'Screen, ' + n, (m) => {
+        const hw = w / 2 - 0.1;
+        m.box('ScreenFrame', [-hw - 0.2, 4, -0.4], [hw + 0.2, 4 + w * 0.56 + 0.4, 0.4], 'ScreenFrame');
+        m.box('Screen', [-hw, 4.2, 0.4], [hw, 4.2 + w * 0.56, 0.45], 'Screen');
+        m.beam('Metal', [-hw * 0.6, 0, 0], [-hw * 0.6, 4, 0], 0.2);
+        m.beam('Metal', [hw * 0.6, 0, 0], [hw * 0.6, 4, 0], 0.2);
+      }, 'Screens');
+    one('LightPole', 'Floodlight pole', (m) => {
+      m.beam('Metal', [0, 0, 0], [0, 24, 0], 0.35);
+      m.box('ScreenFrame', [-3, 24, -0.6], [3, 27, 0.6], 'Metal');
+      for (let i = 0; i < 4; i++) for (let k = 0; k < 2; k++) m.box('Light', [-2.7 + i * 1.4, 24.3 + k * 1.4, 0.6], [-1.6 + i * 1.4, 25.4 + k * 1.4, 0.7], 'Light');
+    }, 'Lights');
+  }
+
+  // ---- water: the surface does not hold the car up, it sinks and slows down -------------------------------------------------
+  {
+    const T = 'Water';
+    const pool = (walls, ramp) => {
+      const m = new Mesh();
+      m.box('WaterFloor', [-10, 0, -10], [10, 0.21, 10], 'ConcreteUnder');
+      // The water plane: drawn, never collided with (see SKIP_PHYSICS in build.js).
+      m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, 1, 0]);
+      m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, -1, 0]);
+      for (const w of walls) {
+        if (w == 'N') m.box('Concrete', [-10, 0, -10], [10, 4, -9], 'ConcreteDark');
+        if (w == 'S') m.box('Concrete', [-10, 0, 9], [10, 4, 10], 'ConcreteDark');
+        if (w == 'W') m.box('Concrete', [-10, 0, -10], [-9, 4, 10], 'ConcreteDark');
+        if (w == 'E') m.box('Concrete', [9, 0, -10], [10, 4, 10], 'ConcreteDark');
+      }
+      if (ramp) {
+        m.quadFacing('WaterFloor', [-10, 0.21, 10], [10, 0.21, 10], [10, 5.21, -10], [-10, 5.21, -10], [0, 1, 0.25]);
+        m.triFacing('ConcreteDark', [-10, 0.21, 10], [-10, 5.21, -10], [-10, 0.21, -10], [-1, 0, 0]);
+        m.triFacing('ConcreteDark', [10, 0.21, 10], [10, 5.21, -10], [10, 0.21, -10], [1, 0, 0]);
+      }
+      return m;
+    };
+    const fx = { fx: { type: 'Water', center: [0, 1.5, 0], size: [20, 3, 20] } };
+    put('Water', 'Water', T, 'Pools', pool([]), fx);
+    put('WaterWall', 'Water, wall on one side', T, 'Pools', pool(['N']), fx);
+    put('WaterCorner', 'Water, corner walls', T, 'Pools', pool(['N', 'W']), fx);
+    put('WaterChannel', 'Water channel', T, 'Pools', pool(['W', 'E']), fx);
+    put('WaterRamp', 'Ramp out of the water', T, 'Pools', pool([], true), fx);
+  }
+
+  // ---- deco walls and deco platforms -------------------------------------------------------------------------------------
+  {
+    const T = 'Deco';
+    const one = (name, label, sub, f) => {
+      const m = new Mesh();
+      f(m);
+      put(name, label, T, sub, m);
+    };
+    one('DecoWall', 'Deco wall', 'Deco walls', (m) => m.box('DecoWall', [-10, 0, -10], [10, 5, -6], 'DecoWallB'));
+    one('DecoWallTall', 'Deco wall, 4 layers', 'Deco walls', (m) => m.box('DecoWall', [-10, 0, -10], [10, 20, -6], 'DecoWallB'));
+    one('DecoWallPillar', 'Deco wall on a pillar', 'Deco walls', (m) => {
+      m.box('DecoWall', [-10, 15, -10], [10, 20, -6], 'DecoWallB');
+      m.box('ConcreteDark', [-2, 0, -10], [2, 15, -6], 'ConcreteDark');
+    });
+    one('DecoWallDiag', 'Deco wall, diagonal', 'Deco walls', (m) => prism(m, [[-10, -10], [-6, -10], [10, 6], [10, 10]], 0, 5, { top: 'DecoWall', side: 'DecoWallB', under: 'ConcreteUnder', center: [0, 0] }));
+    one('DecoWallCurve', 'Deco wall, curve', 'Deco walls', (m) => {
+      const pts = [];
+      for (let i = 0; i <= 10; i++) {
+        const a = (i / 10) * 90 * DEG;
+        pts.push([-10 + 20 * Math.sin(a), -10 + 20 * (1 - Math.cos(a))].map((v) => v));
+      }
+      const inner = [];
+      for (let i = 10; i >= 0; i--) {
+        const a = (i / 10) * 90 * DEG;
+        inner.push([-10 + 16 * Math.sin(a), -10 + 4 + 16 * (1 - Math.cos(a)) - 0]);
+      }
+      // Thick curved wall, built as quads so the concave shape stays correct.
+      for (let i = 0; i < 10; i++) {
+        const a = pts[i],
+          b = pts[i + 1],
+          c = inner[10 - i - 1],
+          d = inner[10 - i];
+        m.quadFacing('DecoWall', [a[0], 5, a[1]], [b[0], 5, b[1]], [c[0], 5, c[1]], [d[0], 5, d[1]], [0, 1, 0]);
+        m.quadFacing('DecoWallB', [a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], 5, b[1]], [a[0], 5, a[1]], [a[0] + 10, 0, a[1] - 10].map((v) => -v));
+        m.quadFacing('DecoWallB', [d[0], 0, d[1]], [c[0], 0, c[1]], [c[0], 5, c[1]], [d[0], 5, d[1]], [d[0] + 10, 0, d[1] - 10]);
+      }
+    });
+    one('DecoWallSlope', 'Deco wall, sloped top', 'Deco walls', (m) => {
+      m.quadFacing('DecoWall', [-10, 0, -6], [10, 0, -6], [10, 5, -10], [-10, 5, -10], [0, 1, 1]);
+      m.quadFacing('DecoWallB', [-10, 0, -10], [10, 0, -10], [10, 5, -10], [-10, 5, -10], [0, 0, -1]);
+      m.triFacing('DecoWallB', [-10, 0, -10], [-10, 5, -10], [-10, 0, -6], [-1, 0, 0]);
+      m.triFacing('DecoWallB', [10, 0, -10], [10, 5, -10], [10, 0, -6], [1, 0, 0]);
+    });
+    for (const r of [20, 40, 60]) {
+      // The side panel of a loop: fills the corner between the loop and the ground, like a wall beside a loop.
+      const m = new Mesh(),
+        N = 12;
+      for (let i = 0; i < N; i++) {
+        const a0 = (i / N) * 90 * DEG,
+          a1 = ((i + 1) / N) * 90 * DEG,
+          p = (a) => [10 - r * Math.sin(a), r - r * Math.cos(a)];
+        const A = p(a0),
+          B = p(a1);
+        for (const [x, s] of [[-10.6, -1], [-10, 1]]) {
+          void s;
+          m.quadFacing('DecoWall', [x, A[1], A[0]], [x, B[1], B[0]], [x, 0, B[0]], [x, 0, A[0]], [x < -10.3 ? -1 : 1, 0, 0]);
+        }
+        m.quadFacing('DecoWallB', [-10.6, A[1], A[0]], [-10, A[1], A[0]], [-10, B[1], B[0]], [-10.6, B[1], B[0]], [0, Math.cos((a0 + a1) / 2), Math.sin((a0 + a1) / 2)]);
+      }
+      put('DecoWallLoop' + r, 'Loop side panel, radius ' + r, T, 'Deco walls', m);
+    }
+    one('DecoPlatform', 'Deco platform', 'Deco platforms', (m) => m.box('DecoPlatform', [-10, 0, -10], [10, 2.5, 10], 'DecoWallB'));
+    one('DecoPlatformSlope', 'Deco platform, slope', 'Deco platforms', (m) => {
+      m.quadFacing('DecoPlatform', [-10, 0, 10], [10, 0, 10], [10, 5, -10], [-10, 5, -10], [0, 1, 0.25]);
+      m.quadFacing('DecoWallB', [-10, 0, -10], [10, 0, -10], [10, 5, -10], [-10, 5, -10], [0, 0, -1]);
+      m.triFacing('DecoWallB', [-10, 0, 10], [-10, 5, -10], [-10, 0, -10], [-1, 0, 0]);
+      m.triFacing('DecoWallB', [10, 0, 10], [10, 5, -10], [10, 0, -10], [1, 0, 0]);
+    });
+    one('DecoPlatformDiag', 'Deco platform, diagonal', 'Deco platforms', (m) => prism(m, [[-10, 10], [10, 10], [10, -10]], 0, 2.5, { top: 'DecoPlatform', side: 'DecoWallB', under: 'ConcreteUnder', center: [4, 4] }));
+    // signs and items
+    for (const [n, l, dir] of [['SignLeft', 'Arrow sign, left', 1], ['SignRight', 'Arrow sign, right', -1]]) {
+      const m = new Mesh();
+      m.box('Metal', [-0.25, 0, -0.25], [0.25, 3, 0.25]);
+      m.box('SignBoard', [-4, 3, -0.3], [4, 6, 0.3], 'ScreenFrame');
+      for (let i = 0; i < 3; i++) {
+        const x = dir * (-2.4 + i * 2);
+        m.triFacing('SignArrow', [x - dir * 0.6, 4.5, 0.32], [x + dir * 0.8, 5.6, 0.32], [x + dir * 0.8, 3.4, 0.32], [0, 0, 1]);
+      }
+      put(n, l, T, 'Signs', m);
+    }
+    for (const [n, l, mat] of [['SignCheckpoint', 'Checkpoint sign', 'Checkpoint'], ['SignFinish', 'Finish sign', 'Finish'], ['SignWarning', 'Warning sign', 'SignArrow']]) {
+      const m = new Mesh();
+      m.box('Metal', [-0.25, 0, -0.25], [0.25, 3, 0.25]);
+      m.box(mat, [-3, 3, -0.3], [3, 5.5, 0.3], 'ScreenFrame');
+      put(n, l, T, 'Signs', m);
+    }
+    {
+      const m = new Mesh();
+      cyl(m, 'Metal', 'ConcreteDark', 0.6, 0, 2, 10);
+      put('ObstaclePillar', 'Obstacle pillar', T, 'Obstacles', m);
+      const t = new Mesh();
+      cyl(t, 'Metal', 'ConcreteDark', 0.4, 0, 2.2, 8);
+      t.box('Checkpoint', [-4, 1.4, -0.2], [4, 1.9, 0.2], 'ConcreteDark');
+      t.box('Checkpoint', [-0.2, 1.4, -4], [0.2, 1.9, 4], 'ConcreteDark');
+      put('ObstacleTurnstile', 'Turnstile', T, 'Obstacles', t);
+      const f = new Mesh();
+      cyl(f, 'Metal', 'Metal', 0.15, 0, 9, 6);
+      f.quadFacing('Flag', [0, 8.6, 0], [3.6, 8.3, 0], [3.6, 6.4, 0], [0, 6.7, 0], [0, 0, 1]);
+      f.quadFacing('Flag', [0, 8.6, 0], [3.6, 8.3, 0], [3.6, 6.4, 0], [0, 6.7, 0], [0, 0, -1]);
+      put('Flag', 'Flag', T, 'Obstacles', f);
+      const h = new Mesh();
+      h.box('Checkpoint', [-6, 0.6, -0.15], [6, 1.1, 0.15], 'ConcreteDark');
+      h.box('ConcreteDark', [-6, 0, -0.15], [-5.6, 1.1, 0.15]);
+      h.box('ConcreteDark', [5.6, 0, -0.15], [6, 1.1, 0.15]);
+      put('Hurdle', 'Hurdle', T, 'Obstacles', h);
+      const tube = new Mesh();
+      cyl(tube, 'Inflatable', 'InflatableB', 1.4, 0, 5, 14);
+      put('InflatableTube', 'Inflatable tube', T, 'Inflatables', tube);
+      const arch = new Mesh();
+      const N = 14;
+      for (let i = 0; i < N; i++) {
+        const a0 = (i / N) * Math.PI,
+          a1 = ((i + 1) / N) * Math.PI;
+        arch.beam(i % 2 ? 'Inflatable' : 'InflatableB', [-Math.cos(a0) * 9, Math.sin(a0) * 7, 0], [-Math.cos(a1) * 9, Math.sin(a1) * 7, 0], 0.9);
+      }
+      put('InflatableArch', 'Inflatable arch', T, 'Inflatables', arch);
+      const bump = new Mesh();
+      cyl(bump, 'Inflatable', 'InflatableB', 2.2, 0, 1.6, 14);
+      put('InflatableCushion', 'Inflatable cushion', T, 'Inflatables', bump);
+    }
+    // pillars to hold anything up, stock style square columns
+    for (const [n, h] of [['Pillar', 5], ['PillarTall', 20]]) {
+      const m = new Mesh();
+      m.box('Pillar', [-1.6, 0, -1.6], [1.6, h, 1.6], 'PillarEdge');
+      put(n, n == 'Pillar' ? 'Pillar, 1 layer' : 'Pillar, 4 layers', T, 'Pillars', m);
+    }
+  }
+  return parts;
+}
+
+module.exports = { buildShared };
+void sweep;
+void TAU;
+void grassStrips;
+void grassPatch;
