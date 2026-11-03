@@ -125,7 +125,7 @@ function railPoly(st, side, top) {
   return {
     pts: P,
     cap: 'tmp',
-    mats: (e, ring) => (st.plastic && (e == 1 || e == 2) ? st.railTop(ring) : st.rail(ring)),
+    mats: (e, ring) => (e == 4 ? null : st.plastic && (e == 1 || e == 2) ? st.railTop(ring) : st.rail(ring)), // edge 4 is the hidden underside
   };
 }
 
@@ -148,11 +148,13 @@ function morphProfile(st, fromW, toW, fromRail, toRail) {
       w = fromW + (toW - fromW) * t,
       rail = fromRail + (toRail - fromRail) * t,
       top = DECK + Math.max(0, rail - DECK),
-      out = w - HALF_ROAD;
+      out = w - HALF_ROAD,
+      // A fading rail sinks into the slab: a rail lying flat on the deck would flicker against it.
+      sink = 0.2 * (1 - Math.min(1, Math.max(0, (rail - DECK) / (RAIL_TOP - DECK))));
     const R = (side) => {
       const p = railPoly(st, side, top);
-      p.pts = p.pts.map(([x, y]) => [x + side * out, y]);
-      p.cap = st.solidB;
+      p.pts = p.pts.map(([x, y]) => [x + side * out, Math.max(0.005, y - sink)]);
+      p.cap = sink > 0 ? null : st.solidB;
       return p;
     };
     // The width changes along the part, so the lateral pattern cuts would too: keep only the along-the-road tones.
@@ -216,8 +218,14 @@ function roadPart(st, profile, segs, opt = {}) {
     for (const r of rings) {
       if (Math.abs(((r.s + 2.5 + 1e-6) % 5) - 1e-6) > 1e-3) continue;
       for (const side of [-1, 1]) {
-        const base = add(add(r.p, mul(r.R, side * 6.07)), mul(r.U, DECK + 0.05));
-        m.beam('WoodPost', base, add(base, mul(r.U, 1.3)), 0.2);
+        const c = add(r.p, mul(r.R, side * 6.07)),
+          k = 0.17,
+          at = (sr, st2, h) => add(add(add(c, mul(r.R, sr * k)), mul(r.T, st2 * k)), mul(r.U, h));
+        const lo = 0.7,
+          hi = 1.45;
+        for (const [a, b2, n] of [[[-1, -1], [1, -1], mul(r.T, -1)], [[1, -1], [1, 1], r.R], [[1, 1], [-1, 1], r.T], [[-1, 1], [-1, -1], mul(r.R, -1)]])
+          m.quadFacing('WoodPost', at(a[0], a[1], lo), at(b2[0], b2[1], lo), at(b2[0], b2[1], hi), at(a[0], a[1], hi), n);
+        m.quadFacing('WoodBeamB', at(-1, -1, hi), at(1, -1, hi), at(1, 1, hi), at(-1, 1, hi), r.U);
       }
     }
   return m;
@@ -266,7 +274,9 @@ function paintBand(st, a, b, mat) {
 }
 
 // Flat raised glyph used on effect plates, drawn just above the deck.
-function chevrons(m, mat, n = 3, y = DECK + 0.015, w = 3.6) {
+// Decals sit 0.04 above the deck: closer than that they flicker from editor distances. They never collide.
+const DECAL = DECK + 0.04;
+function chevrons(m, mat, n = 3, y = DECAL, w = 3.6) {
   for (let i = 0; i < n; i++) {
     const z0 = 6 - i * 5.2,
       t = 1.3,
@@ -275,16 +285,16 @@ function chevrons(m, mat, n = 3, y = DECK + 0.015, w = 3.6) {
     m.quadFacing(mat, [w, y, z0], [0, y, z0 - l], [0, y, z0 - l - t], [w, y, z0 - t], [0, 1, 0]);
   }
 }
-function crossGlyph(m, mat, y = DECK + 0.015) {
+function crossGlyph(m, mat, y = DECAL) {
   const a = 3.6,
     t = 0.9;
   m.quadFacing(mat, [-a, y, -a + t], [-a + t, y, -a], [a, y, a - t], [a - t, y, a], [0, 1, 0]);
   m.quadFacing(mat, [a - t, y, -a], [a, y, -a + t], [-a + t, y, a], [-a, y, a - t], [0, 1, 0]);
 }
-function barGlyph(m, mat, y = DECK + 0.015) {
+function barGlyph(m, mat, y = DECAL) {
   m.quadFacing(mat, [-4, y, -1.1], [4, y, -1.1], [4, y, 1.1], [-4, y, 1.1], [0, 1, 0]);
 }
-function ringGlyph(m, mat, y = DECK + 0.015) {
+function ringGlyph(m, mat, y = DECAL) {
   const N = 16,
     r0 = 2.6,
     r1 = 3.8;
@@ -462,7 +472,7 @@ function buildSurface(surface) {
         const a = (i / N) * 90 * DEG;
         pts.push([-10 + 20 * Math.sin(a), -10 + 20 * Math.cos(a)].map((v, k) => (k == 0 ? v : v)));
       }
-      prism(c, pts.map(([x, z]) => [x, z]), 0, DECK, { top: st.solid, side: st.under, under: st.under, center: [6, 6] });
+      prism(c, pts.map(([x, z]) => [x, z]), 0, DECK, { top: st.solid, side: st.under, under: st.under, center: [9.9, 9.9] });
       put(K + 'CurveIn', 'Platform, inside of a curve', T, 'Curves', c);
     }
     {
@@ -589,12 +599,14 @@ function buildSurface(surface) {
         const t = smooth(ring.u),
           src = hp.map((q) => q);
         return src.map((poly, pi) => {
-          void pi;
-          const pts = poly.pts.map(([x, y]) => {
-            const fx = Math.sign(x) * Math.min(10, Math.abs(x) <= 5 ? Math.abs(x) : 5 + (Math.abs(x) - 5) * 1);
-            const fy = y > DECK + 1e-6 ? DECK : y;
-            return [x * t + fx * (1 - t), y * t + fy * (1 - t)];
-          });
+          if (pi == 0) return poly;
+          // Wall pieces flatten into side-by-side strips that use the inner (driving) edge's x, so none overlap.
+          const P = poly.pts,
+            right = P[0][0] > 0,
+            flat = right
+              ? [[P[3][0], 0], [P[2][0], 0], [P[2][0], DECK], [P[3][0], DECK]]
+              : [[P[0][0], DECK], [P[1][0], DECK], [P[1][0], 0], [P[0][0], 0]];
+          const pts = P.map(([x, y], k) => [x * t + flat[k][0] * (1 - t), y * t + flat[k][1] * (1 - t)]);
           return { ...poly, pts };
         });
       };
@@ -642,7 +654,7 @@ function buildSurface(surface) {
     const widths = [
       { key: 'Road', fam: 'road', make: (paint) => roadProfile(st, paint), w: 6.07, det: 10.5 },
       { key: 'Open', fam: 'open road', make: (paint) => openProfile(st, paint), w: 6.2, det: 12.5 },
-      { key: 'Plat', fam: 'platform', make: (paint) => platProfile(st, paint), w: 9.7, det: 18.25 },
+      { key: 'Plat', fam: 'platform', make: (paint) => platProfile(st, paint), w: 9.6, det: 18.25 },
     ];
     const detector = (kind, size, cy = 2.2, cz = 0, cx = 0, h = 3.8) =>
       kind == 'Start' ? {} : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [cx, cy, cz], size: [size, h, kind == 'Finish' ? 2 : 1] } };
@@ -673,7 +685,8 @@ function buildSurface(surface) {
       m.beam(st.solidB, [-w * c, 0.1, -w * c], [-w * c, 4.6, -w * c], 0.3);
       m.beam(st.solidB, [w * c, 0.1, w * c], [w * c, 4.6, w * c], 0.3);
       m.beam('Checkpoint', [-w * c, 4.4, -w * c], [w * c, 4.4, w * c], 0.36);
-      put('Checkpoint' + W.key + 'Diag', 'Checkpoint, diagonal, ' + W.fam, T, 'Checkpoint on diagonal', m, { detector: { type: 0, center: [0, 2.2, 0], size: [7.5, 3.8, 7.5] } });
+      // spawnDir: the road's direction through the gate, so respawning there faces along the diagonal.
+      put('Checkpoint' + W.key + 'Diag', 'Checkpoint, diagonal, ' + W.fam, T, 'Checkpoint on diagonal', m, { detector: { type: 0, center: [0, 2.2, 0], size: [7.5, 3.8, 7.5] }, spawnDir: [Math.SQRT1_2, 0, -Math.SQRT1_2] });
     }
     // Wide gates span two blocks of platform.
     for (const { kind, label, band } of kinds) {
@@ -682,7 +695,7 @@ function buildSurface(surface) {
         const p = deckPoly(st, 20, DECK, 0.5, paintBand(st, 9, 11, band));
         return [p];
       });
-      gateArch(m, 19.7, st, kind);
+      gateArch(m, 19.6, st, kind);
       m.byMat = shiftMesh(m, 10).byMat;
       put(kind + 'PlatWide', label + ', wide platform', T, label, m, { ...(kind == 'Start' ? { startOffset: [-10, 0.35, 1.35] } : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [10, 2.2, 0], size: [38.25, 3.8, kind == 'Finish' ? 2 : 1] } }) });
     }
@@ -707,7 +720,7 @@ function buildSurface(surface) {
       ]) {
         const paint = (ring, isLine) => (isLine ? st.line(ring) : fx.mat);
         const m = roadPart(st, W.make(paint), [{ line: 20 }], { step: 5 });
-        fx.glyph(m, DECK + 0.015);
+        fx.glyph(m, DECAL);
         put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 12] } });
       }
   }
@@ -751,7 +764,7 @@ function buildSurface(surface) {
         const x = -6 + 12 * u,
           z = -6 + 12 * v,
           d = Math.max(Math.abs(x), Math.abs(z)) / 6;
-        return [x, DECK + 0.4 * (1 - d * d), z];
+        return [x, DECK + 0.06 + 0.4 * (1 - d * d), z];
       });
       put('GrassPlatIsland', 'Platform with a grass island', T, 'Platform with grass', m);
     }
@@ -921,13 +934,13 @@ function decoSet(put, st) {
   put('PostThin', 'Thin post, 4 layers', T, 'Supports', post(20, 0.5));
   {
     const m = new Mesh();
-    m.box(b, [-7, 0, -0.5], [-6, 5, 0.5], c);
-    m.box(b, [6, 0, -0.5], [7, 5, 0.5], c);
+    m.box(b, [-7, 0, -0.5], [-6, 4.6, 0.5], c);
+    m.box(b, [6, 0, -0.5], [7, 4.6, 0.5], c);
     m.box(c, [-7.5, 4.6, -0.7], [7.5, 5, 0.7], b);
     put('SupportFrame', 'Road support frame', T, 'Supports', m);
     const t = new Mesh();
-    t.box(b, [-7, 0, -0.5], [-6, 20, 0.5], c);
-    t.box(b, [6, 0, -0.5], [7, 20, 0.5], c);
+    t.box(b, [-7, 0, -0.5], [-6, 19.6, 0.5], c);
+    t.box(b, [6, 0, -0.5], [7, 19.6, 0.5], c);
     for (const y of [5, 10, 15, 19.6]) t.box(c, [-7.5, y, -0.7], [7.5, y + 0.4, 0.7], b);
     t.beam(c, [-6.5, 0.5, 0], [6.5, 9.5, 0], 0.25);
     t.beam(c, [6.5, 0.5, 0], [-6.5, 9.5, 0], 0.25);
@@ -935,7 +948,7 @@ function decoSet(put, st) {
     t.beam(c, [6.5, 10.5, 0], [-6.5, 19.5, 0], 0.25);
     put('SupportTrestle', st.plastic ? 'Truss tower, 4 layers' : 'Trestle tower, 4 layers', T, 'Supports', t);
     const l = new Mesh();
-    for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) l.box(b, [x - 0.6, 0, z - 0.6], [x + 0.6, 5, z + 0.6], c);
+    for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) l.box(b, [x - 0.6, 0, z - 0.6], [x + 0.6, 4.6, z + 0.6], c);
     l.box(c, [-10, 4.6, -10], [10, 5, 10], b);
     put('SupportTable', 'Platform table', T, 'Supports', l);
   }
@@ -991,10 +1004,9 @@ function decoSet(put, st) {
       s.box(b, [-0.3, 0, -9.8], [0.3, 3, -9.2], c);
       s.box(c, [-5, 3, -9.8], [5, 7, -9.5], b);
       const y = 5,
-        z = -9.48,
+        z = -9.44,
         w = (d) => [d, y, z];
       s.triFacing('FxReset', [dir * -3, y, z], [dir * 0, y + 1.6, z], [dir * 0, y - 1.6, z], [0, 0, 1]);
-      s.quadFacing('FxReset', w(dir * 0), [dir * 3.2, y + 0.6, z], [dir * 3.2, y - 0.6, z], w(dir * 0), [0, 0, 1]);
       s.quadFacing('FxReset', [0, y + 0.6, z], [dir * 3.2, y + 0.6, z], [dir * 3.2, y - 0.6, z], [0, y - 0.6, z], [0, 0, 1]);
       put(n, l, T, 'Barriers and signs', s);
     }

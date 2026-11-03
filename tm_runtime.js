@@ -86,7 +86,8 @@ self.TM = (() => {
     let extra = 0,
       records = 0;
     const zones = [],
-      cells = new Map();
+      cells = new Map(),
+      spawns = [];
     track.forEachPart((x, y, z, id) => {
       if (!isTM(id)) {
         records++;
@@ -96,7 +97,7 @@ self.TM = (() => {
       if (p.p != null) records++;
       for (const m of physicsMeshes(p)) extra += m[4] * 3;
     });
-    fxBegin(carId, zones, cells, extra > 0);
+    fxBegin(carId, zones, cells, extra > 0, spawns);
     if (extra == 0) return { vertices: mountain, records };
 
     loadSync();
@@ -130,6 +131,11 @@ self.TM = (() => {
             l = cells.get(k);
           l ? l.push(entry) : cells.set(k, [entry]);
         });
+      }
+      if (p.sd && p.d) {
+        // A gate whose road is not square to the grid: remember where it is and which way its road runs.
+        const c = rotate(M, p.d.center[0], p.d.center[1], p.d.center[2]);
+        spawns.push({ x: wx + c[0], y: wy + c[1], z: wz + c[2], dir: rotate(M, p.sd[0], p.sd[1], p.sd[2]) });
       }
       if (p.x) {
         const c = rotate(M, p.x.center[0], p.x.center[1], p.x.center[2]),
@@ -170,11 +176,15 @@ self.TM = (() => {
     // Plastic: almost no grip, very strong acceleration at low speed, and it throws the car back when hit side-on or roof-first.
     { gripFront: 0.45, gripRear: 0.36, launch: 34, launchUntil: 45, bounce: true },
     // Wood: so much grip that the tyres never let go, which makes drifting impossible.
-    { gripFront: 3, gripRear: 3, launch: 0, launchUntil: 0, bounce: false },
+    // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
+    // so it pulls harder the faster you go without running away.
+    { gripFront: 6, gripRear: 6, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
   ];
-  const BOUNCE = { hit: 2, minInto: 8, restitution: 0.9, cooldown: 150 };
+  // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
+  // window: longest collision in frames), then judged as a whole. pop is always added on top of the rebound.
+  const BOUNCE = { hit: 0.5, window: 30, minInto: 6, share: 0.45, restitution: 0.95, pop: 3, cooldown: 150 };
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -199,8 +209,8 @@ self.TM = (() => {
   };
 
   const cars = new Map();
-  function fxBegin(carId, zones, cells, active) {
-    cars.set(carId, { zones, cells, active, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0 });
+  function fxBegin(carId, zones, cells, active, spawns = []) {
+    cars.set(carId, { zones, cells, active, spawns, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -281,6 +291,42 @@ self.TM = (() => {
     if (flags & 2) return; // finished
     c.lastState = c.slow ? stateBuffer.slice(0) : null;
     let inWater = false;
+
+    // Passing a diagonal checkpoint: the physics just saved a respawn point facing along the grid. Turn it to face
+    // along the diagonal road, the way the car was going, and move it to just behind the gate on that line.
+    const cp = s.getUint16(pos - 2, true);
+    if (cp > c.lastCp && c.spawns.length) {
+      let best = null,
+        bestD = 625;
+      for (const g of c.spawns) {
+        const d = (g.x - x) ** 2 + (g.z - z) ** 2;
+        if (d < bestD && Math.abs(g.y - y) < 8) {
+          best = g;
+          bestD = d;
+        }
+      }
+      const U = new Uint32Array(heap.buffer),
+        car = best ? carPointer(U, carId) : 0,
+        rec = car ? U[(car + 180) >> 2] : 0;
+      if (rec) {
+        const F = new Float32Array(heap.buffer),
+          body = U[(car + 36) >> 2],
+          v = (body + 312) >> 2,
+          ahead = F[v] * best.dir[0] + F[v + 2] * best.dir[2] >= 0 ? 1 : -1,
+          dx = best.dir[0] * ahead,
+          dz = best.dir[2] * ahead,
+          yaw = Math.atan2(dx, dz),
+          r = rec >> 2;
+        // Record layout: position xyz, padding, quaternion xyzw, checkpoint count.
+        F[r] = best.x - dx * 1.35;
+        F[r + 2] = best.z - dz * 1.35;
+        F[r + 4] = 0;
+        F[r + 5] = Math.sin(yaw / 2);
+        F[r + 6] = 0;
+        F[r + 7] = Math.cos(yaw / 2);
+      }
+    }
+    c.lastCp = cp;
 
     const inside = c.inside;
     for (let i = 0; i < c.zones.length; i++) {
@@ -363,6 +409,8 @@ self.TM = (() => {
       launchUntil = 0,
       dragWheels = 0,
       drag = 0,
+      expoWheels = 0,
+      expo = null,
       contacts = 0;
     for (let w = 0; w < 4; w++) {
       const a = wheels + w * 284,
@@ -386,6 +434,10 @@ self.TM = (() => {
         dragWheels++;
         drag = surface.drag;
       }
+      if (surface && surface.expo) {
+        expoWheels++;
+        expo = surface.expo;
+      }
       if (surface && surface.launch > 0) {
         launchWheels++;
         launch = surface.launch;
@@ -403,6 +455,16 @@ self.TM = (() => {
         F[v + 1] += fy * dv;
         F[v + 2] += fz * dv;
       }
+    }
+
+    // Wood: extra push that grows exponentially with speed while the gas is down.
+    if (c.gas && expoWheels > 0) {
+      const now = Math.abs(speed) / 3.6,
+        fade = Math.min(1, Math.max(0, (expo.end - now) / (expo.end - expo.peak))),
+        a = Math.min(expo.max, expo.push * (Math.exp(now / expo.scale) - 1)) * fade * (expoWheels / 4) * 0.001;
+      F[v] += fx * a;
+      F[v + 1] += fy * a;
+      F[v + 2] += fz * a;
     }
 
     // Penalty grass: every wheel on it bleeds off a share of the speed.
@@ -450,37 +512,51 @@ self.TM = (() => {
       }
     }
 
-    // Plastic bounce: a hard hit on the side or roof of the car throws it back the way it came.
+    // Plastic bounce: a hit on the side or roof of the car throws it back off the plastic, the way it came.
+    // A real collision takes several frames, so the velocity change is added up over the whole hit and judged at its end.
+    // It counts when it removed a good share of the speed the car hit with, which leaves out brushing a rail at speed.
     const vx = F[v],
       vy = F[v + 1],
       vz = F[v + 2],
       last = c.last;
     if (c.bounceWait > 0) c.bounceWait--;
-    if (last && !c.justReset && Math.abs(x - last.x) + Math.abs(y - last.y) + Math.abs(z - last.z) < 5 && c.bounceWait == 0) {
+    if (last && !c.justReset && Math.abs(x - last.x) + Math.abs(y - last.y) + Math.abs(z - last.z) < 5) {
       const dx = vx - last.vx,
         dy = vy - last.vy,
         dz = vz - last.vz,
-        d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d > BOUNCE.hit) {
-        const nx = dx / d,
-          ny = dy / d,
-          nz = dz / d,
-          // No stronger than the collision itself, or brushing a rail edge at speed would count as a huge hit.
-          into = Math.min(d, -(last.vx * nx + last.vy * ny + last.vz * nz)),
-          up = (1 - 2 * (qx * qx + qz * qz)) * ny + 2 * (qx * qy - qw * qz) * nx + 2 * (qy * qz + qw * qx) * nz,
-          side = (1 - 2 * (qy * qy + qz * qz)) * nx + 2 * (qx * qy + qw * qz) * ny + 2 * (qx * qz - qw * qy) * nz;
-        if (into > BOUNCE.minInto && (Math.abs(side) > 0.55 || up < -0.55)) {
-          let plastic = false;
-          for (const r of [0.3, 0.8, 1.3, 1.8]) {
-            const f = cellAt(c.cells, x - nx * r, y - ny * r, z - nz * r);
-            if (f != null && SURFACES[f].bounce) plastic = true;
-          }
-          if (plastic) {
-            const out = into * BOUNCE.restitution - (vx * nx + vy * ny + vz * nz);
-            F[v] += nx * out;
-            F[v + 1] += ny * out;
-            F[v + 2] += nz * out;
-            c.bounceWait = BOUNCE.cooldown;
+        d = Math.sqrt(dx * dx + dy * dy + dz * dz),
+        H = c.hit;
+      if (d > BOUNCE.hit && (!H || H.frames < BOUNCE.window)) {
+        if (!H) c.hit = { sx: dx, sy: dy, sz: dz, vx: last.vx, vy: last.vy, vz: last.vz, frames: 1 };
+        else {
+          H.sx += dx;
+          H.sy += dy;
+          H.sz += dz;
+          H.frames++;
+        }
+      } else if (H) {
+        c.hit = null;
+        const sum = Math.sqrt(H.sx * H.sx + H.sy * H.sy + H.sz * H.sz);
+        if (sum > 1e-6 && c.bounceWait == 0) {
+          const nx = H.sx / sum,
+            ny = H.sy / sum,
+            nz = H.sz / sum,
+            into = -(H.vx * nx + H.vy * ny + H.vz * nz),
+            up = (1 - 2 * (qx * qx + qz * qz)) * ny + 2 * (qx * qy - qw * qz) * nx + 2 * (qy * qz + qw * qx) * nz,
+            side = (1 - 2 * (qy * qy + qz * qz)) * nx + 2 * (qx * qy + qw * qz) * ny + 2 * (qx * qz - qw * qy) * nz;
+          if (into > BOUNCE.minInto && sum > BOUNCE.share * into && (Math.abs(side) > 0.55 || up < -0.55)) {
+            let plastic = false;
+            for (const r of [0.3, 0.8, 1.3, 1.8]) {
+              const f = cellAt(c.cells, x - nx * r, y - ny * r, z - nz * r);
+              if (f != null && SURFACES[f].bounce) plastic = true;
+            }
+            if (plastic) {
+              const out = into * BOUNCE.restitution + BOUNCE.pop - (vx * nx + vy * ny + vz * nz);
+              F[v] += nx * out;
+              F[v + 1] += ny * out;
+              F[v + 2] += nz * out;
+              c.bounceWait = BOUNCE.cooldown;
+            }
           }
         }
       }

@@ -38,8 +38,8 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 
 | | Behaviour |
 |---|---|
-| Plastic | Very low grip, rear lower than front, so the tail slides. Strong extra push from a standstill that fades out by about 160 km/h. A hard hit on the car's side or roof throws it back off the plastic. |
-| Wood | High grip: the tyres don't let go, so you can't drift. Brakes a little shorter than stock road. The extra grip is a fixed amount, so in loops it stays close to stock. |
+| Plastic | Very low grip, rear lower than front, so the tail slides. Strong extra push from a standstill that fades out by about 160 km/h. Plastic bounce: a hit on the car's side or roof throws it back off the plastic. The whole collision is measured, so a roof landing from 25 units up bounces back to about 17. |
+| Wood | Very high grip: the tyres don't let go, so you can't drift. Brakes shorter than stock road. Extra push that grows exponentially with speed up to about 300 km/h and fades out by 500 km/h, so wood pulls harder the faster you go (0 to 200 km/h in 2.7 s, stock 3.3 s). The extra grip is a fixed amount, so in loops it stays close to stock. |
 | Penalty grass | Soft grip and heavy drag; the car crawls at about 60 km/h. Comes as whole blocks, and as grass strips inside plastic and wood blocks, where only the grass slows you. |
 | Water | Not solid. The car sinks slowly, loses speed hard and can drive out. |
 | Stock blocks, ground | Unchanged. Tracks with no new blocks use stock physics exactly. |

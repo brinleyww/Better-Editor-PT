@@ -23,7 +23,7 @@ await c.evaluate(`(()=>{
       for(const b of m.carStateBuffers){const s=VO(new Uint8Array(b).subarray(4)).carState;
         log.push({f:s.frames,v:s.speedKmh,x:s.position.x,y:s.position.y,z:s.position.z,n:s.nextCheckpointIndex,fin:s.finishFrames,q:[s.quaternion.x,s.quaternion.y,s.quaternion.z,s.quaternion.w],sk:Math.min(...s.wheelSkidInfo)});
         if(window.__ctrl){const k=window.__ctrl(s),key=JSON.stringify(k);if(key!=lastKey){lastKey=key;send(k);}}
-        while(todo.length){const q=todo[0];if(q.kmh!=null){if(s.speedKmh<q.kmh)break;trigger=s.frames;window.__trigger=trigger;}else if(trigger==null||s.frames<trigger+q.after)break;send(q.ctl);todo.shift();}
+        while(todo.length){const q=todo[0];if(q.kmh!=null){if(s.speedKmh<q.kmh)break;trigger=s.frames;window.__trigger=trigger;}else if(q.cp!=null){if(s.nextCheckpointIndex<q.cp)break;trigger=s.frames;window.__trigger=trigger;}else if(trigger==null||s.frames<trigger+q.after)break;send(q.ctl);todo.shift();}
         if(s.frames>=frames){done=true;w.terminate();res(log);return;}
       }});
     setTimeout(()=>w.postMessage({...window.__init,isRealtime:true}),1500);
@@ -170,6 +170,27 @@ if (section == 'loops') {
       }
       report(surface + ' offset loop radius ' + r, out);
     }
+}
+
+// Respawn heading after a checkpoint: drive through one, press respawn, read which way the car faces.
+if (section == 'respawn') {
+  const heading = (q) => +((Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1])) * 180) / Math.PI).toFixed(1);
+  const cases = [
+    ['straight checkpoint', 'PlasticCheckpointPlat', 0],
+    // Open-road diagonals: a diagonal road's rails cross a straight test lane and would stop the car first.
+    ['diagonal checkpoint', 'PlasticCheckpointOpenDiag', 0],
+    ['diagonal checkpoint, rotated 90', 'WoodCheckpointOpenDiag', 1],
+    ['diagonal checkpoint, rotated 180', 'WoodCheckpointOpenDiag', 2],
+    ['diagonal checkpoint, rotated 270', 'PlasticCheckpointOpenDiag', 3],
+  ];
+  for (const [label, gate, r] of cases) {
+    const parts = [...lane(['PlasticStartPlat', ...Array(40).fill('PlasticPlatBase')]), { n: gate, x: 0, y: 0, z: -20, r }];
+    const l = await drive(parts, 7000, { up: true }, [{ cp: 1, ctl: { up: true } }, { after: 400, ctl: { reset: true } }, { after: 440, ctl: {} }]);
+    const t = await c.evaluate('window.__trigger');
+    const crossed = Math.max(...l.map((s) => s.n));
+    const after = at(l, t + 900);
+    report(label, { checkpointsPassed: crossed, respawnHeadingDeg: heading(after.q), at: [+after.x.toFixed(1), +after.y.toFixed(2), +after.z.toFixed(1)], kmh: +after.v.toFixed(0) });
+  }
 }
 
 if (section == 'gameplay') {

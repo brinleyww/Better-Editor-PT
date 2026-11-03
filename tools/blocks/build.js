@@ -107,7 +107,7 @@ const MATERIALS = litAll({
 }, ['FinishWhite', 'FinishBlack']);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
-const NO_PHYSICS = ['Water'];
+const NO_PHYSICS = ['Water', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
 const GRASS_MATS = ['Grass', 'GrassB'];
 
 // Stock colour slots: env variants plus Custom0-8. Same slots as stock Block parts.
@@ -261,6 +261,7 @@ function main() {
     if (p.detector) e.d = p.detector;
     if (p.startOffset) e.o = p.startOffset;
     if (p.fx) e.x = p.fx;
+    if (p.spawnDir) e.sd = p.spawnDir;
     if (p.ph[4]) e.ph = p.ph;
     // Physics surface for the whole part: 0 plastic, 1 wood, 2 penalty grass; absent = stock physics.
     const u = p.u !== undefined ? p.u : f < 2 ? f : null;

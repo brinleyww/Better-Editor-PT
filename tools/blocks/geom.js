@@ -218,15 +218,15 @@ function sweep(mesh, rings, polys) {
       }
     }
     // End caps, so a piece with nothing joined to it does not look hollow.
-    const capMat = first[pi].cap;
-    if (capMat) {
-      const fan = (r, flip) => {
-        const P = polys(r)[pi].pts.map((q) => place(r, q));
-        for (let i = 1; i + 1 < P.length; i++) flip ? mesh.tri(capMat, P[0], P[i + 1], P[i]) : mesh.tri(capMat, P[0], P[i], P[i + 1]);
-      };
-      fan(rings[0], false);
-      fan(rings[rings.length - 1], true);
-    }
+    // Each end decides its own cap, so a polygon that has sunk out of sight at one end leaves no face there.
+    const fan = (r, flip) => {
+      const poly = polys(r)[pi];
+      if (!poly.cap) return;
+      const P = poly.pts.map((q) => place(r, q));
+      for (let i = 1; i + 1 < P.length; i++) flip ? mesh.tri(poly.cap, P[0], P[i + 1], P[i]) : mesh.tri(poly.cap, P[0], P[i], P[i + 1]);
+    };
+    fan(rings[0], false);
+    fan(rings[rings.length - 1], true);
   }
 }
 

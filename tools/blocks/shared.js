@@ -122,8 +122,10 @@ function buildShared() {
             }
           } else m.box(K.bar, [x0, y0, -d], [x1, y1, d], 'ConcreteDark');
         };
-        if (edges.includes('L')) bar(-10, 0.21, -10 + t, h);
-        if (edges.includes('R')) bar(10 - t, 0.21, 10, h);
+        const y0 = edges.includes('B') ? 0.26 : 0.21,
+          y1 = edges.includes('T') ? h - t : h;
+        if (edges.includes('L')) bar(-10, y0, -10 + t, y1);
+        if (edges.includes('R')) bar(10 - t, y0, 10, y1);
         if (edges.includes('T')) bar(-10, h - t, 10, h);
         if (edges.includes('B')) m.box(K.bar == 'Finish' ? 'FinishWhite' : K.bar, [-10, 0.21, -d], [10, 0.26, d], K.bar == 'Finish' ? 'FinishBlack' : 'ConcreteDark');
         // A piece with no edges is the open middle of a big box. It still needs a mesh, so it gets one hidden sliver.
@@ -141,8 +143,8 @@ function buildShared() {
     const T = 'Special gates';
     for (const fx of FX) {
       const m = new Mesh();
-      m.box('ConcreteDark', [-10, 0.21, -0.6], [-9.2, 5.2, 0.6], 'Metal');
-      m.box('ConcreteDark', [9.2, 0.21, -0.6], [10, 5.2, 0.6], 'Metal');
+      m.box('ConcreteDark', [-10, 0.21, -0.6], [-9.2, 4.4, 0.6], 'Metal');
+      m.box('ConcreteDark', [9.2, 0.21, -0.6], [10, 4.4, 0.6], 'Metal');
       m.box(fx.mat, [-10, 4.4, -0.7], [10, 5.4, 0.7], 'ConcreteDark');
       for (let i = 0; i < 4; i++) m.box(fx.mat, [-9.2, 0.21 + i * 1.05, -0.3], [-8.9, 0.81 + i * 1.05, 0.3]), m.box(fx.mat, [8.9, 0.21 + i * 1.05, -0.3], [9.2, 0.81 + i * 1.05, 0.3]);
       put('Gate' + fx.key, fx.label + ' gate', T, 'Special gates', m, { fx: { type: fx.key, center: [0, 2.6, 0], size: [18.4, 5, 3] } });
@@ -170,7 +172,9 @@ function buildShared() {
     [10, 30, 50].forEach((r, i) => make('Curve' + (i + 1), 'Track wall curve ' + (i + 1), () => wall([{ r, ang: 90 * DEG, dir: 1 }]), 'Track walls'));
     make('Cross', 'Track wall crossing', () => {
       const m = wall([{ line: 20 }]);
-      m.merge(wall([{ line: 20 }], [-10, 0, Math.PI / 2]));
+      // The crossing wall comes in from both sides and stops at the first wall's faces.
+      m.merge(wall([{ line: 7.5 }], [-10, 0, Math.PI / 2]));
+      m.merge(wall([{ line: 7.5 }], [2.5, 0, Math.PI / 2]));
       return m;
     }, 'Track walls');
     make('End', 'Track wall, rounded end', () => {
@@ -179,8 +183,9 @@ function buildShared() {
       for (let i = 0; i < N; i++) {
         const a0 = Math.PI + (i / N) * Math.PI,
           a1 = Math.PI + ((i + 1) / N) * Math.PI,
-          p = (a, y) => [Math.cos(a) * 2.5, y, -Math.sin(a) * 2.5 + 0];
-        m.quadFacing('Concrete', p(a0, 0), p(a1, 0), p(a1, 4.6), p(a0, 4.6), [Math.cos((a0 + a1) / 2), 0, -Math.sin((a0 + a1) / 2)]);
+          // the half disc caps the open end beyond z = 0, on the far side from the wall
+          p = (a, y) => [Math.cos(a) * 2.5, y, Math.sin(a) * 2.5];
+        m.quadFacing('Concrete', p(a0, 0), p(a1, 0), p(a1, 4.6), p(a0, 4.6), [Math.cos((a0 + a1) / 2), 0, Math.sin((a0 + a1) / 2)]);
         m.triFacing('WallTop', [0, 4.6, 0], p(a0, 4.6), p(a1, 4.6), [0, 1, 0]);
       }
       return m;
@@ -284,8 +289,8 @@ function buildShared() {
       prism(m, pts.map(([x, z]) => [x, z]).filter((p, i, A) => i == 0 || Math.hypot(p[0] - A[i - 1][0], p[1] - A[i - 1][1]) > 1e-6), 0, 2.4, { top: 'Stage', side: 'ConcreteDark', under: 'ConcreteUnder', center: [-4, -4] });
     }, 'Stage');
     one('StageLights', 'Light rig', (m) => {
-      m.beam('Truss', [-9, 0, 0], [-9, 9, 0], 0.35);
-      m.beam('Truss', [9, 0, 0], [9, 9, 0], 0.35);
+      m.beam('Truss', [-9, 0, 0], [-9, 8.65, 0], 0.35);
+      m.beam('Truss', [9, 0, 0], [9, 8.65, 0], 0.35);
       m.beam('Truss', [-9.4, 9, 0], [9.4, 9, 0], 0.35);
       for (let i = 0; i < 6; i++) {
         const x = -7.5 + i * 3;
@@ -302,10 +307,11 @@ function buildShared() {
     }, 'Stands');
     one('StandCanopy', 'Grandstand with roof', (m) => {
       for (let i = 0; i < 6; i++) m.box('ConcreteDark', [-10, 0, -10 + i * 2.6], [10, 1 + i * 1.6, -7.4 + i * 2.6], 'Concrete');
-      m.box('Concrete', [-10, 0, 5.6], [10, 14, 6.4], 'ConcreteDark');
+      // The back wall runs up into the roof slab, so no wall face lies on a roof face.
+      m.box('Concrete', [-9.9, 0, 5.6], [9.9, 14.25, 6.3], 'ConcreteDark');
       m.box('Canopy', [-10, 14, -10], [10, 14.5, 6.4], 'Metal');
-      m.beam('Metal', [-9.5, 0, -9.5], [-9.5, 14, -9.5], 0.25);
-      m.beam('Metal', [9.5, 0, -9.5], [9.5, 14, -9.5], 0.25);
+      m.beam('Metal', [-9.5, 0.5, -9.5], [-9.5, 14, -9.5], 0.25);
+      m.beam('Metal', [9.5, 0.5, -9.5], [9.5, 14, -9.5], 0.25);
     }, 'Stands');
     one('Canopy', 'Canopy over the road', (m) => {
       for (const x of [-9.4, 9.4]) for (const z of [-9.4, 9.4]) m.beam('Metal', [x, 0, z], [x, 9, z], 0.25);
@@ -336,10 +342,13 @@ function buildShared() {
       m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, 1, 0]);
       m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, -1, 0]);
       for (const w of walls) {
-        if (w == 'N') m.box('Concrete', [-10, 0, -10], [10, 4, -9], 'ConcreteDark');
-        if (w == 'S') m.box('Concrete', [-10, 0, 9], [10, 4, 10], 'ConcreteDark');
-        if (w == 'W') m.box('Concrete', [-10, 0, -10], [-9, 4, 10], 'ConcreteDark');
-        if (w == 'E') m.box('Concrete', [9, 0, -10], [10, 4, 10], 'ConcreteDark');
+        // Walls stand on the pool floor rather than sharing its edge faces.
+        if (w == 'N') m.box('Concrete', [-10, 0.21, -10], [10, 4, -9], 'ConcreteDark');
+        if (w == 'S') m.box('Concrete', [-10, 0.21, 9], [10, 4, 10], 'ConcreteDark');
+        // Side walls start after a north wall, so the corner is not built twice.
+        const z0 = walls.includes('N') ? -9 : -10;
+        if (w == 'W') m.box('Concrete', [-10, 0.21, z0], [-9, 4, 10], 'ConcreteDark');
+        if (w == 'E') m.box('Concrete', [9, 0.21, z0], [10, 4, 10], 'ConcreteDark');
       }
       if (ramp) {
         m.quadFacing('WaterFloor', [-10, 0.21, 10], [10, 0.21, 10], [10, 5.21, -10], [-10, 5.21, -10], [0, 1, 0.25]);
@@ -432,7 +441,7 @@ function buildShared() {
       m.box('SignBoard', [-4, 3, -0.3], [4, 6, 0.3], 'ScreenFrame');
       for (let i = 0; i < 3; i++) {
         const x = dir * (-2.4 + i * 2);
-        m.triFacing('SignArrow', [x - dir * 0.6, 4.5, 0.32], [x + dir * 0.8, 5.6, 0.32], [x + dir * 0.8, 3.4, 0.32], [0, 0, 1]);
+        m.triFacing('SignArrow', [x - dir * 0.6, 4.5, 0.36], [x + dir * 0.8, 5.6, 0.36], [x + dir * 0.8, 3.4, 0.36], [0, 0, 1]);
       }
       put(n, l, T, 'Signs', m);
     }
@@ -457,20 +466,28 @@ function buildShared() {
       f.quadFacing('Flag', [0, 8.6, 0], [3.6, 8.3, 0], [3.6, 6.4, 0], [0, 6.7, 0], [0, 0, -1]);
       put('Flag', 'Flag', T, 'Obstacles', f);
       const h = new Mesh();
-      h.box('Checkpoint', [-6, 0.6, -0.15], [6, 1.1, 0.15], 'ConcreteDark');
+      h.box('Checkpoint', [-5.6, 0.6, -0.15], [5.6, 1.1, 0.15], 'ConcreteDark');
       h.box('ConcreteDark', [-6, 0, -0.15], [-5.6, 1.1, 0.15]);
       h.box('ConcreteDark', [5.6, 0, -0.15], [6, 1.1, 0.15]);
       put('Hurdle', 'Hurdle', T, 'Obstacles', h);
       const tube = new Mesh();
       cyl(tube, 'Inflatable', 'InflatableB', 1.4, 0, 5, 14);
       put('InflatableTube', 'Inflatable tube', T, 'Inflatables', tube);
-      const arch = new Mesh();
-      const N = 14;
-      for (let i = 0; i < N; i++) {
-        const a0 = (i / N) * Math.PI,
-          a1 = ((i + 1) / N) * Math.PI;
-        arch.beam(i % 2 ? 'Inflatable' : 'InflatableB', [-Math.cos(a0) * 9, Math.sin(a0) * 7, 0], [-Math.cos(a1) * 9, Math.sin(a1) * 7, 0], 0.9);
+      const arch = new Mesh(),
+        N = 24,
+        rings = [];
+      for (let k = 0; k <= N; k++) {
+        const a = (k / N) * Math.PI,
+          p = [-Math.cos(a) * 9, Math.sin(a) * 7 + 0.9, 0],
+          T = norm([Math.sin(a) * 9, Math.cos(a) * 7, 0]);
+        rings.push({ p, T, R: [0, 0, 1], U: norm(G.cross([0, 0, 1], T)), s: k, u: k / N, i: k });
       }
+      // An octagonal tube, striped every other segment.
+      sweep(arch, rings, () => [{
+        pts: [0, 1, 2, 3, 4, 5, 6, 7].map((q) => [Math.cos((q / 8) * TAU) * 0.9, Math.sin((q / 8) * TAU) * 0.9]),
+        cap: 'InflatableB',
+        mats: (e, ring) => (ring.i % 2 ? 'Inflatable' : 'InflatableB'),
+      }]);
       put('InflatableArch', 'Inflatable arch', T, 'Inflatables', arch);
       const bump = new Mesh();
       cyl(bump, 'Inflatable', 'InflatableB', 2.2, 0, 1.6, 14);
