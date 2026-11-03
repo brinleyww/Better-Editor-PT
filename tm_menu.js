@@ -17,6 +17,10 @@
   background-color: var(--button-color); border: 2px solid rgb(38, 31, 88); outline: none; pointer-events: auto; }
 .part-panel.tm .tm-search:focus { border-color: #fff; }
 .part-panel.tm .tm-search::placeholder { color: var(--text-color); opacity: 0.55; }
+.part-panel.tm .tm-title { font-size: 20px; line-height: 24px; margin: 0 2px 5px 2px; color: var(--text-color); }
+.editor-ui > .side > .side-panel > .category-panel > button { position: relative; }
+.editor-ui > .side > .side-panel > .category-panel > button > .tm-cat-label { position: absolute; left: 0; right: 0; bottom: 3px; font-size: 14px; line-height: 15px;
+  text-align: center; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; white-space: nowrap; overflow: hidden; }
 .part-panel.tm .tm-name { height: 22px; margin-top: 4px; font-size: 16px; line-height: 22px; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .part-panel.tm .tm-body { flex: 1; display: flex; min-height: 0; }
 .part-panel.tm .tm-tabs { flex: none; width: 98px; padding: 2px; box-sizing: border-box; overflow-y: auto; scrollbar-width: thin; background-color: var(--surface-color); }
@@ -59,6 +63,9 @@
     panel.classList.add('tm');
     const head = document.createElement('div');
     head.className = 'tm-head';
+    const title = document.createElement('div');
+    title.className = 'tm-title';
+    head.appendChild(title);
     const search = document.createElement('input');
     search.className = 'tm-search';
     search.type = 'text';
@@ -80,7 +87,7 @@
     body.append(tabs, list);
     panel.append(head, body);
 
-    const state = { panel, search, name, tabs, list, none, tab: TABS[0], groups: new Map(), tabButtons: new Map(), entries: [], selected: null, recentGroup: null };
+    const state = { panel, title, search, name, tabs, list, none, tab: TABS[0], groups: new Map(), tabButtons: new Map(), entries: [], selected: null, recentGroup: null };
 
     const tabButton = (t) => {
       const b = document.createElement('button');
@@ -211,9 +218,12 @@
     g.appendChild(grid);
   }
 
+  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium'];
+  // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser.
+  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium' };
   const describe = (p) => {
     const size = (a) => Math.round((p.b[1][a] - p.b[0][a]) / 5) || 1;
-    return p.l + ' (' + Math.max(1, Math.round(size(0) / 4)) + 'x' + Math.max(1, Math.round(size(2) / 4)) + ', ' + size(1) + ' high)';
+    return SURFACE_NAMES[p.f] + ': ' + p.l + ' (' + Math.max(1, Math.round(size(0) / 4)) + 'x' + Math.max(1, Math.round(size(2) / 4)) + ', ' + size(1) + ' high)';
   };
 
   self.TM.ui = {
@@ -222,6 +232,7 @@
     },
     add(panel, button, image, part) {
       const state = panels.get(panel) ?? build(panel);
+      if (!state.title.textContent) state.title.textContent = SURFACE_NAMES[part.f] + ' blocks';
       const s = group(state, part.t, part.s);
       state.tabButtons.get(part.t)?.classList.remove('empty');
       const label = describe(part);
@@ -272,6 +283,23 @@
           seen.unobserve(e.button);
           seen.observe(e.button);
         }
+    },
+    labelCategory(button, category) {
+      const name = CATEGORY_NAMES[category];
+      if (!name || button.querySelector('.tm-cat-label')) return;
+      const l = document.createElement('span');
+      l.className = 'tm-cat-label';
+      l.textContent = name;
+      button.appendChild(l);
+      button.title = name;
+    },
+    // The placement ghost for a new block: its own colours, slightly see-through, with the editor's
+    // valid / blocked colour mixed in as a glow (it shares that colour object, so it follows it live).
+    ghostMaterial(three, stockGhost) {
+      const m = new three.G_z({ vertexColors: true, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -0.3, depthWrite: false });
+      m.emissive = stockGhost.color;
+      m.emissiveIntensity = 0.15;
+      return m;
     },
     skipEager(entry) {
       if (!entry.trackPartData?.configuration.tm) return false;

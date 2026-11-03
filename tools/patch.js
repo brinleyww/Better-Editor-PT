@@ -295,8 +295,43 @@ apply('112.bundle.js', [
     `}),
                 n.configuration.tm
                   ? (0, i.gn)(this, ue, "f").insertBefore(e, (0, i.gn)(this, ue, "f").children[n.configuration.tm.f + 1])
-                  : (0, i.gn)(this, ue, "f").appendChild(e));
+                  : (0, i.gn)(this, ue, "f").appendChild(e),
+                self.TM.ui.labelCategory(e, n.configuration.category));
               const o = document.createElement("img");`,
+  ],
+  [
+    'label on the erase button',
+    `((O.src = "images/erase.svg"),
+            D.appendChild(O),`,
+    `((O.src = "images/erase.svg"),
+            D.appendChild(O),
+            self.TM.ui.labelCategory(D, -1),`,
+  ],
+  [
+    'the ghost of a new block shows its real colours, tinted by the valid / blocked colour',
+    `} else if (((e = t.trackPartData.colors.get(at.A.Summer)?.clone()), null == e))
+              throw new Error("Track part mesh has not loaded yet");
+            ((e.material = (0, i.gn)(this, je, "f")),`,
+    `} else if (((e = t.trackPartData.colors.get(at.A.Summer)?.clone()), null == e))
+              throw new Error("Track part mesh has not loaded yet");
+            if (t.trackPartData.configuration.tm) {
+              // Show the colour that will actually be placed: the picked colour, or this environment's default.
+              let n = (0, i.gn)(this, Kt, "m", Zn).call(this);
+              if (n == at.A.Default)
+                switch ((0, i.gn)(this, jt, "f").environment) {
+                  case Dt.A.Summer:
+                    n = at.A.Summer;
+                    break;
+                  case Dt.A.Winter:
+                    n = at.A.Winter;
+                    break;
+                  case Dt.A.Desert:
+                    n = at.A.Desert;
+                }
+              const s = t.trackPartData.colors.get(n);
+              null != s && (e = s.clone());
+            }
+            ((e.material = t.trackPartData?.configuration.tm ? self.TM.ui.ghostMaterial(w, (0, i.gn)(this, je, "f")) : (0, i.gn)(this, je, "f")),`,
   ],
   ['no eager thumbnails', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src")) {', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src") && !n.trackPartData.configuration.tm) {'],
   [
