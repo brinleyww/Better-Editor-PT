@@ -1,4 +1,4 @@
-// Generates the new blocks: site/models/tm_blocks.bin (geometry) and site/tm_parts.js (the part table).
+// Generates the new blocks: models/tm_blocks.bin (geometry) and tm_parts.js (the part table), at the repo root.
 // Part ids live in ids.json and are append-only: an id that has shipped must never change, or old track codes break.
 // Run: node tools/blocks/build.js
 const fs = require('fs');
@@ -8,7 +8,7 @@ const { buildSurface } = require('./catalog');
 const { buildShared } = require('./shared');
 const { rasterTiles } = require('./geom');
 
-const site = path.join(__dirname, '..', '..', 'site');
+const site = path.join(__dirname, '..', '..');
 const idsFile = path.join(__dirname, 'ids.json');
 const FIRST_ID = 1000;
 const FIRST_PROXY = 190; // stock ids stop at 189; the physics wasm reads part ids as one byte

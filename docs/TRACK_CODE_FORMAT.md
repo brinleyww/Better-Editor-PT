@@ -47,7 +47,7 @@ Part ids 0-189 are stock. New blocks start at 1000. Part ids are permanent: `too
 
 ## Supporting these codes on another site
 
-A site needs these files from `site/`, plus the same patches to its own bundles (`tools/patch.js` lists each one):
+A site needs these files from the repository root, plus the same patches to its own bundles (`tools/patch.js` lists each one):
 
 - `tm_parts.js`: the part table (ids, tiles, trigger boxes, colours)
 - `tm_runtime.js`: reads BE1 codes, loads geometry, handles physics and effects

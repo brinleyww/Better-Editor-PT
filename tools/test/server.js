@@ -1,7 +1,7 @@
-// Static server for site/, mounted under a sub-path the way GitHub Pages does.
+// Static server for the game at the repo root, mounted under a sub-path the way GitHub Pages does.
 // node tools/test/server.js [port]  ->  http://localhost:<port>/Better-Editor-PT/
 const http = require('http'), fs = require('fs'), path = require('path');
-const root = path.join(__dirname, '..', '..', 'site');
+const root = path.join(__dirname, '..', '..');
 const prefix = '/Better-Editor-PT/';
 const types = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json', '.wasm':'application/wasm', '.svg':'image/svg+xml', '.glb':'model/gltf-binary', '.jpg':'image/jpeg', '.png':'image/png', '.woff2':'font/woff2', '.woff':'font/woff', '.ttf':'font/ttf', '.bin':'application/octet-stream', '.mp3':'audio/mpeg', '.ogg':'audio/ogg' };
 http.createServer((req, res) => {

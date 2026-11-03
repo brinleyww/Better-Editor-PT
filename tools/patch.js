@@ -1,11 +1,11 @@
-// Applies every Better Editor change to the formatted bundles and writes the result to site/.
+// Applies every Better Editor change to the formatted bundles and writes the result to the repo root.
 // Input: _original/formatted (from tools/deobfuscate.js). Each edit must match exactly once, or the build stops.
 // Run: node tools/patch.js
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
 const from = path.join(root, '_original', 'formatted');
-const to = path.join(root, 'site');
+const to = root;
 
 function apply(file, edits) {
   let s = fs.readFileSync(path.join(from, file), 'utf8');

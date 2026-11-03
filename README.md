@@ -1,62 +1,216 @@
 # Better Editor PT
 
-PolyTrack 0.6.2 as a static web site, with 1,142 extra editor blocks (492 plastic, 492 wood, 158 Stadium) and a new export code format for them.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 1,142 editor blocks inspired by Trackmania's plastic and wood kits, plus a Stadium category. Plastic, wood and penalty grass each drive differently. Turbos, reactor boosts and other effect plates work, and tracks share as normal track codes.
 
-## Publish on GitHub Pages
+All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
-Everything the site needs is in `site/`. Publish that folder as the Pages root, either by pushing its contents to a repository or with a GitHub Actions Pages deploy of `site/`. It uses relative paths, so a sub-path such as `username.github.io/repo/` works. `site/.nojekyll` is already there.
+## Play it
 
-To try it locally, run this and open http://127.0.0.1:8123/Better-Editor-PT/ :
+The game runs from the repository root, so GitHub Pages can serve it directly:
+
+1. In the repository's **Settings > Pages**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`.
+2. Open `https://<user>.github.io/<repository>/`. Every path is relative, so any sub-path works.
+
+To run it locally:
 
 ```bash
 node tools/test/server.js 8123
 ```
 
-## Folders
+Then open http://127.0.0.1:8123/Better-Editor-PT/ .
 
-| Folder | Contents |
+Online features (leaderboards, multiplayer, profile sync) talk to Kodub's servers, which only accept the official game, so expect "Failed to connect" for those. Tracks that use new blocks are never sent to Kodub's leaderboards.
+
+## What is in the editor
+
+Three new categories sit at the top of the editor's block column, right under the eraser. Each opens a browser with tabs, a search box, a Recent tab and colour options.
+
+| Category | Tabs |
 |---|---|
-| `site/` | The finished game |
-| `_original/` | Untouched 0.6.2 files, and the formatted bundles the patches apply to |
-| `tools/blocks/` | Block generator. Add blocks in `catalog.js` |
-| `tools/patch.js` | Every change to the original bundles. Each edit stops the build if it no longer matches |
-| `tools/test/` | Automated tests that drive the game in headless Chrome |
-| `docs/` | `BLOCKS.md`, `TRACK_CODE_FORMAT.md`, `MODULE_MAP.md` |
+| Plastic, Wood (492 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Connectors, Deco |
+| Stadium (158) | Penalty grass, Box gates, Special gates, Track walls, Structures, Stage and screens, Water, Deco |
 
-## Rebuilding
+The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates.
 
-`tools/` needs `npm install` once. Then:
+Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and banks), so they join stock blocks seamlessly.
 
-```bash
-node tools/build-all.js
+### How things drive
+
+| | Behaviour |
+|---|---|
+| Plastic | Very low grip, rear lower than front, so the tail slides. Strong extra push from a standstill that fades out by about 160 km/h. A hard hit on the car's side or roof throws it back off the plastic. |
+| Wood | High grip: the tyres don't let go, so you can't drift. Brakes a little shorter than stock road. The extra grip is a fixed amount, so in loops it stays close to stock. |
+| Penalty grass | Soft grip and heavy drag; the car crawls at about 60 km/h. Comes as whole blocks, and as grass strips inside plastic and wood blocks, where only the grass slows you. |
+| Water | Not solid. The car sinks slowly, loses speed hard and can drive out. |
+| Stock blocks, ground | Unchanged. Tracks with no new blocks use stock physics exactly. |
+
+| Effect | Behaviour |
+|---|---|
+| Turbo, super turbo | A push that is strongest as you cross and fades over 1.0 s or 1.4 s. |
+| Turbo roulette | Turbo, super or a stronger third level, picked by the exact frame you cross it. |
+| Reactor boost, super reactor boost (up or down) | 6 s of thrust along the car's own up axis. Up stretches jumps; down presses the car onto any surface. In the air, the gas pushes along the nose and steering turns the car. |
+| Slow motion | The car runs at half speed while the race clock keeps counting, until reset or respawn. |
+| No engine, no brakes, no steering, cruise control | Lock out that input until reset. |
+| Fragile | A hard hit sends you back to the last checkpoint. |
+| Reset | Clears every effect. |
+
+The durations, strengths and drag values are this project's own choices. Trackmania doesn't publish its numbers, so the behaviour follows its descriptions, not measurements.
+
+**Box gates** (Stadium, Box gates) come one per block, with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
+
+## Track codes
+
+A track with only stock blocks still exports as a normal `PolyTrack2…` code with the same track id as before. A track with new blocks exports as `PolyTrackBE1…`: the same layering as PolyTrack2, but with two-byte part ids and a catalogue version. The byte layout is in [docs/TRACK_CODE_FORMAT.md](docs/TRACK_CODE_FORMAT.md).
+
+New block ids start at 1000 and never change: [tools/blocks/ids.json](tools/blocks/ids.json) only ever gets new entries. Stock PolyTrack rejects BE1 codes as invalid.
+
+## Adding these blocks to your own PolyTrack build
+
+This section is for anyone running a modified PolyTrack (a fork, a site or a private build) who wants these blocks, codes and physics. It assumes 0.6.2 bundles. Other versions have the same structure but different minified names.
+
+### 1. Copy four files
+
+| File | Purpose |
+|---|---|
+| `tm_parts.js` | The part table: ids, names, editor tabs, tiles, trigger boxes, colours, surfaces. Generated. |
+| `models/tm_blocks.bin` | All block geometry. Generated; must match `tm_parts.js` (its size is checked). |
+| `tm_runtime.js` | Loads geometry, reads and writes BE1 codes, feeds physics, runs surfaces and effects. Defines `self.TM`. |
+| `tm_menu.js` | The block browser in the editor. Optional if you build your own menu. |
+
+The page loads them before the game bundles:
+
+```html
+<script defer src="tm_parts.js"></script>
+<script defer src="tm_runtime.js"></script>
+<script defer src="tm_menu.js"></script>
 ```
 
-After changing only blocks, run `node tools/blocks/build.js`. After changing only patches, run `node tools/patch.js`. `site/tm_runtime.js` and `site/tm_menu.js` are edited directly.
+The physics worker needs the first two as its very first line, because the part enum is built when the bundle starts:
 
-Never renumber `tools/blocks/ids.json`, or existing track codes will break.
+```js
+importScripts("tm_parts.js", "tm_runtime.js");
+```
 
-## How the new blocks work
+### 2. Apply the bundle changes
 
-- **Models:** every block is generated from the measured stock road, plane and slope dimensions, so new blocks line up with stock ones. Geometry is in `models/tm_blocks.bin`.
-- **Loading:** a block's mesh is built the first time it is needed, and thumbnails are drawn only when on screen.
-- **Physics:** the physics wasm reads part ids as one byte, so new blocks are added to the terrain collision mesh instead. Gates use 23 spare one-byte ids for their trigger boxes.
-- **Effects:** turbo, no engine and the other plates run in the physics worker every frame, so replays and verification match.
-- **Surfaces:** each wheel checks which block it is touching every physics frame and gets that surface's grip (the wheel's friction slip in the physics engine). The values are in `SURFACES` in `site/tm_runtime.js`.
-  - **Wood:** very high grip, so the tyres never let go and the car cannot drift. Braking is a little shorter than on stock road.
-  - **Plastic:** very low grip, rear lower than front, so the car slides and the tail steps out. Extra push off the line that fades out by about 160 km/h. A hard hit on the car's side or roof throws it back off the plastic.
-  - **Penalty grass:** soft grip and heavy drag, so the car crawls at about 60 km/h. It comes as whole blocks (Stadium, Penalty grass) and as grass strips inside plastic and wood blocks (each surface's Penalty grass tab), where only the grass part slows you.
-  - Stock blocks, the ground and tracks without new blocks keep stock physics exactly.
-  - Wood's extra grip is a fixed amount sized at the tyre's resting load, so under the heavy load in a loop it is close to stock grip and steering does not spin the car.
-  - Offset loops ease the sideways shift in and out, and both surfaces use the stock rail outline, whose sloped face guides the car across the offset.
-- **Looks:** wood is planks in four tones with dark seams, staggered joints and posts along the rails. Plastic is 5 x 5 moulded panels in two shades with light seams and blue and white kerbs. Penalty grass is a mowed checker. These patterns are flat strips of colour on the deck.
-- **Collision meshes:** each block also stores a plain version of itself without the pattern strips, and that is what the physics uses. The detail costs drawing time only: 833k drawn triangles, 303k collision triangles. Rail posts are drawn but never collide.
-- **Boosters and effects** (plates on road, open road and platform, plus Stadium special gates):
-  - Turbo, super turbo: a push that is strongest as you cross and fades out (1.0 s and 1.4 s).
-  - Turbo roulette: lands on turbo, super or an even stronger turbo, depending on the exact frame you cross it.
-  - Reactor boost (up/down) and super reactor boost (up/down): 6 s of thrust along the car's own up axis. Up stretches jumps, down presses the car onto any surface. In the air the gas pushes along the nose and steering turns the car.
-  - Slow motion: the car runs at half speed while the race clock keeps counting, until a reset or respawn.
-  - No engine, no brakes, no steering, cruise control, fragile, reset: as before.
-- **Box gates** (Stadium, Box gates): one piece per block with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
-- **Water** (Stadium, Water): drawn but not solid. The car sinks slowly, loses speed hard, and can drive out.
-- Effect durations and strengths, grass drag and water drag are my own values: no source gives Trackmania's numbers.
-- **Online:** tracks with new blocks are never submitted to Kodub's leaderboards.
+[tools/patch.js](tools/patch.js) holds every change as a find-and-replace on the formatted 0.6.2 bundles in `_original/formatted/`. Each one has a short name, and the build stops if any of them no longer matches exactly once. On another version, find the same spot by what it does. In order:
+
+**Main bundle (`main.bundle.js`)**
+
+| Change | Why |
+|---|---|
+| Part id enum calls `TM.addEnum(e)`; categories get `Plastic`, `Wood`, `Stadium` | The game validates ids and names categories from these enums. |
+| Part definitions array concatenates `TM.parts` as definition objects | New blocks become real parts: tiles, triggers, start offsets, colours. The constructor's duplicate-tile check uses a Set, because big blocks have many tiles. |
+| Part loader: new parts get a lazy colour map and skip the GLB lookup | A block's mesh is built only when a colour is first asked for, from `TM.renderArrays`. |
+| `getPhysicsParts` skips new parts and appends `TM.proxyConfigs()` | See section 4. |
+| Checksum check skips ids from 1000 | New parts have no stock checksum. |
+| `getCategoryMesh` gets cases for the new categories | Category thumbnails. |
+| TrackData writer: two-byte ids and the catalogue version when a track has an id above 255; `~BE1` save-string prefix; `PolyTrackBE1` export prefix | The format. Tracks with only stock parts still write the stock format byte for byte. |
+| `fromSaveString` and `fromExportString` try `TM.fromSave` / `TM.fromExport` first | Reading the format. See the `tmCtx` block in `patch.js` for the context object. |
+| Track ids of tracks with new blocks go into `TM.extTrackIds`; the leaderboard upload returns early for them | Never send unverifiable runs to Kodub. |
+| Full scene rebuild only visits parts that are placed | 1,142 more parts would make every rebuild slow. |
+
+**Editor bundle (`112.bundle.js`)**
+
+| Change | Why |
+|---|---|
+| Thumbnail renderer handed to `TM.ui.setThumbnailRenderer` | Thumbnails draw only when on screen. |
+| New parts go into `TM.ui.add(panel, button, image, part)` instead of the stock column | The tabbed browser. New categories are inserted under the eraser. |
+| Category and environment changes skip eager thumbnails for new parts (`TM.ui.skipEager`, `TM.ui.refresh`) | Rendering hundreds at once stalls the editor. |
+| Part selection calls `TM.ui.onSelect`; placing calls `TM.ui.onPlaced` | The browser follows the pipette, and the Recent tab fills up. |
+
+**Physics worker (`simulation_worker.bundle.js`)**
+
+| Change | Why |
+|---|---|
+| The same enum, category and part definition changes as the main bundle | The worker has its own copy of the part table. |
+| `fromSaveString` tries `TM.fromSave` first | The worker reads tracks as save strings. |
+| The car setup calls `TM.prepareCar(...)`, uses its vertices and record count, and maps ids through `TM.physicsId` | See section 4. |
+| The per-frame wrapper around `updateCarModel` calls `TM.fxControls` before, `TM.fxSkip` to hold frames, and `TM.fxStep` after | Surfaces and effects. |
+
+### 3. Runtime API (`self.TM`)
+
+| Member | Use |
+|---|---|
+| `parts`, `byId`, `data`, `version` | The part table, parts by id, the raw table, catalogue version. |
+| `isTM(id)`, `addEnum(enum)` | New-part test (`id >= 1000`); adds names and ids to an enum object. |
+| `palette(part)`, `ranges(part)` | Colour slots and tile ranges for a part definition. |
+| `load()` | Page side: fetches `models/tm_blocks.bin` once, returns a promise. |
+| `renderArrays(id, slotColors, toRgb)` | Non-indexed positions and colours for one colour slot. `toRgb(hex)` returns linear `[r,g,b]`. Pass THREE.Color values so they match stock vertex colours. |
+| `prepareCar(carId, mountainVertices, mountainOffset, track, rotatedTiles)` | Worker side. Returns `{ vertices, records }`: the mountain mesh with new-block collision appended, and how many part records the physics will get. |
+| `physicsId(id)` | The one-byte id to write into the physics record, or `null` to leave the part out. |
+| `proxyConfigs()` | Extra part configurations for the physics Init message. |
+| `fxControls(carId, controls)`, `fxSkip(carId, heap)`, `fxStep(carId, heap, stateBuffer)` | The per-frame hooks. |
+| `fromSave(str, ctx)`, `fromExport(str, ctx)` | Read BE1 codes. Return `null` for anything else, so the stock readers can run next. |
+| `SAVE_PREFIX`, `EXPORT_PREFIX`, `extTrackIds` | Format prefixes; ids of tracks that must not be uploaded. |
+| `surfaces` | Grip, launch, bounce and drag per surface. Tune here. |
+| `ui` | The block browser hooks (`tm_menu.js`). |
+
+### 4. How the physics fits in
+
+The physics engine (`polytrack_physics.wasm`) is stripped and reads part ids as one byte, so new blocks can't be registered with it by id. Instead:
+
+- **Collision:** every new block's collision triangles are transformed into world space and appended to the mountain (terrain) mesh the engine already takes for each car. Rotations are exact integer matrices (`rotations` in `tm_parts.js`, derived from the game's own quaternions), so every machine gets the same floats.
+- **Gates:** checkpoints, finishes and starts need the engine's trigger boxes. Each distinct trigger box is a proxy part with a spare one-byte id (190 and up), registered through `proxyConfigs()` with a tiny triangle far below the world. A gate block writes its proxy id in the part records.
+- **Surfaces:** each physics frame, `fxStep` looks up the block under each wheel's contact point and writes that wheel's friction slip. These are Bullet `btWheelInfo` structs: 284 bytes each, contact normal at +0, contact point at +16, in-contact flag at +84, friction slip at +228, suspension force at +276. The wheel array pointer is at `car + 32` then `+144`; the rigid body is at `car + 36` (linear velocity at +312, angular at +328, inverse mass at +344). The car object comes from the engine's `unordered_map<int, Car*>`, with its bucket array pointer at address 18848 and bucket count at 18852 (`carPointer` in `tm_runtime.js`).
+- **Effects** add velocity or mask inputs in the same frame hooks, so ghosts, replays and the game's own run verifier all see identical runs. Slow motion holds every other frame and advances the engine's frame counter at `car + 172`.
+- **Grass inside a block:** a part can list boxes in its own frame (`r`) where the surface is penalty grass. Everything else on the part uses its own surface (`u`).
+
+These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A different engine build needs them checked again.
+
+### 5. Data formats
+
+`tm_parts.js` sets `self.TM_DATA`:
+
+| Field | Meaning |
+|---|---|
+| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (0 plastic, 1 wood, 2 stadium), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone, `p` proxy id, `u` physics surface (0 plastic, 1 wood, 2 grass, absent = stock), `r` grass boxes |
+| `materials`, `materialNames` | Default colour per material index |
+| `palettes[f]` | Colour slots per category: environments 1-3 and custom 32-40, as `{ id, colors: { material: hex } }` |
+| `noPhysics` | Material indices that are drawn but never collide (water) |
+| `rotations[axis][rotation]` | 3x3 integer matrices, row-major |
+| `proxies` | Proxy ids with their trigger box and start offset |
+| `binBytes`, `hash`, `version`, `tabs` | Integrity, catalogue version, menu tab order |
+
+Each mesh entry is `[material, positionsOffset, floatCount, indicesOffset, indexCount]` into `models/tm_blocks.bin`: Float32 positions and Uint16 indices, every chunk 4-byte aligned. Positions are in the part's frame: the origin at the block centre, y up, travel at rotation 0 along -z, one block 20 units wide and 5 units per layer.
+
+## Making your own blocks
+
+Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic and wood) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
+
+```bash
+cd tools && npm install
+node blocks/build.js
+```
+
+This writes `tm_parts.js`, `models/tm_blocks.bin` and `docs/BLOCKS.md`. New names get the next free id. Never renumber or remove entries in `ids.json`, or existing codes will point at the wrong blocks.
+
+Rules the build enforces: no geometry below the part's own layer, known materials only, and no more than 66 distinct trigger boxes (the spare one-byte ids).
+
+## Rebuilding everything
+
+```bash
+cd tools && npm install
+node build-all.js
+```
+
+This formats `_original/app` into `_original/formatted`, copies the assets to the root, generates the blocks, then applies `tools/patch.js`. `tm_runtime.js` and `tm_menu.js` are edited by hand and are not regenerated.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| repository root | The playable game |
+| `_original/app` | Untouched PolyTrack 0.6.2 files |
+| `_original/formatted` | The same bundles, formatted; the input to `patch.js` |
+| `tools/blocks` | Block generator |
+| `tools/patch.js`, `tools/deobfuscate.js`, `tools/build-all.js` | Build steps |
+| `tools/test` | Headless Chrome tests that drive real cars (they expect Chrome at the standard Windows install path) |
+| `docs` | Block list, track code format, a map of the formatted code |
+
+## Known limits
+
+- The catalogue follows Trackmania's block families for plastic and wood, plus stadium scenery. It is not a complete copy of every Trackmania block, and dirt, ice and bump surfaces are not included.
+- On the tightest plastic loop (radius 20), a car can lose the loop if it steers at the wrong moment.
+- `models/tm_blocks.bin` is about 17 MB (about 5 MB compressed), so the first load takes longer than the stock game.
+- The code under `_original/` and the formatted bundles keep PolyTrack's minified names. [docs/MODULE_MAP.md](docs/MODULE_MAP.md) says where things are.

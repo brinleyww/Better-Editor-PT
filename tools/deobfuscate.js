@@ -1,4 +1,4 @@
-// Formats every minified bundle from _original/app into _original/formatted and copies the assets to site/.
+// Formats every minified bundle from _original/app into _original/formatted and copies the assets to the repo root.
 // tools/patch.js then applies the Better Editor changes on top. Run: node tools/deobfuscate.js
 const fs = require('fs');
 const path = require('path');
@@ -6,7 +6,7 @@ const prettier = require('prettier');
 
 const root = path.join(__dirname, '..');
 const from = path.join(root, '_original', 'app');
-const to = path.join(root, 'site');
+const to = root;
 const formatted = path.join(root, '_original', 'formatted');
 const skip = new Set(['electron', 'package.json']);
 

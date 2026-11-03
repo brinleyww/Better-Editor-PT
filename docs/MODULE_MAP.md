@@ -1,6 +1,6 @@
 # Where things are in the deobfuscated code
 
-The bundles in `site/` are formatted, not rewritten. The original local variable names did not survive minification, so names like `Vn` and `e` remain. Numbers below are webpack module ids in `main.bundle.js`. Search for `<id>: (e, t, n) =>` to jump to one.
+The bundles at the repository root are formatted, not rewritten. The original local variable names did not survive minification, so names like `Vn` and `e` remain. Numbers below are webpack module ids in `main.bundle.js`. Search for `<id>: (e, t, n) =>` to jump to one.
 
 | Module | Contents |
 |---|---|
@@ -34,7 +34,7 @@ Better Editor's own code, written for readability:
 
 | File | Contents |
 |---|---|
-| `site/tm_runtime.js` | Geometry, physics hookup, effects, BE1 codes |
-| `site/tm_menu.js` | The Plastic and Wood block browser |
+| `tm_runtime.js` | Geometry, physics hookup, effects, BE1 codes |
+| `tm_menu.js` | The block browser for the Plastic, Wood and Stadium categories |
 | `tools/blocks/` | Block generator |
 | `tools/patch.js` | Every change made to the original bundles |

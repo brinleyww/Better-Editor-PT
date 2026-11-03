@@ -21,7 +21,7 @@ const r = await c.evaluate(`(async()=>{
   }
   // Tiles must match each part's real size, so neighbours placed edge to edge never replace each other.
   const span=(n)=>{let a=[1e9,1e9,1e9],b=[-1e9,-1e9,-1e9];H(P[n]).tiles.forEach((x,y,z)=>{[x,y,z].forEach((v,i)=>{a[i]=Math.min(a[i],v);b[i]=Math.max(b[i],v);});});return [a,b];};
-  const expect={PlasticRoadStraight:[[-2,0,-2],[1,0,1]],WoodPlatBase:[[-2,0,-2],[1,0,1]],WoodRoadStraightX2:[[-2,0,-6],[1,0,1]],PlasticRoadMediumStraight:[[-2,0,-2],[1,2,1]],PlasticRoadLoop20Q1:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q2:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q3:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q4:[[-2,0,-2],[1,3,1]],WoodPlatWallStraight:[[-2,0,-2],[1,3,-2]]};
+  const expect={PlasticRoadStraight:[[-2,0,-2],[1,0,1]],WoodPlatBase:[[-2,0,-2],[1,0,1]],WoodRoadStraightX2:[[-2,0,-6],[1,0,1]],PlasticRoadMediumStraight:[[-2,0,-2],[1,2,1]],PlasticRoadLoop20Q1:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q2:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q3:[[-2,0,-2],[1,3,1]],PlasticRoadLoop20Q4:[[-2,0,-2],[1,3,1]],WoodPlatWallStraight:[[-2,0,-2],[1,3,-2]],WoodRoadStraight:[[-2,0,-2],[1,0,1]]};
   const spans={};for(const n in expect){const g=span(n);spans[n]=JSON.stringify(g);if(JSON.stringify(g)!=JSON.stringify(expect[n]))fail.push('span '+n+' '+JSON.stringify(g));}
   const t=new TD(0,new Sun(0));let k=0;
   for(const q of TM.parts){const d=H(q.i);t.addPart((k%30)*32,0,Math.floor(k/30)*32,q.i,k%4,0,0,d.detector&&d.detector.type==0?0:null,d.startOffset?k:null);k++;}

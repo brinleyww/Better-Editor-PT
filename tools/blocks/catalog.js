@@ -207,13 +207,14 @@ function roadPart(st, profile, segs, opt = {}) {
     P = st.pattern,
     marks = [];
   if (P) for (let s = 0; s <= path.length; s += P.period) marks.push(s, s + P.band);
+  if (st.posts && profile.rails) for (let s = 2.5; s < path.length; s += 5) marks.push(s);
   const rings = roadRings(path, { step: opt.step ?? ringStep(st), arcStep: opt.arcStep ?? (st.plastic ? 5 : 3.75), y: opt.y, roll: opt.roll, marks: P ? marks : [] });
   const m = swept(rings, profile);
-  // Wooden rails get a post every 5 units, standing on the deck through the rail. Drawn only: the plain
-  // collision build has no pattern, so the posts never catch the car.
+  // Wooden rails get a post every 5 units, halfway between joints so no post sits on a block edge (it would
+  // claim the next tile). Drawn only: the plain collision build has no pattern, so posts never catch the car.
   if (st.posts && profile.rails && P)
     for (const r of rings) {
-      if (r.s < 1e-3 || Math.abs(((r.s + 1e-6) % 5) - 1e-6) > 1e-3) continue;
+      if (Math.abs(((r.s + 2.5 + 1e-6) % 5) - 1e-6) > 1e-3) continue;
       for (const side of [-1, 1]) {
         const base = add(add(r.p, mul(r.R, side * 6.07)), mul(r.U, DECK + 0.05));
         m.beam('WoodPost', base, add(base, mul(r.U, 1.3)), 0.2);
@@ -695,7 +696,7 @@ function buildSurface(surface) {
     }
   }
 
-  // ---- gameplay plates: effects run in the physics worker (see site/tm_runtime.js) -------------------------------------
+  // ---- gameplay plates: effects run in the physics worker (see tm_runtime.js) -------------------------------------
   {
     const T = 'Effects';
     for (const fx of FX)
@@ -762,7 +763,7 @@ function buildSurface(surface) {
   return parts;
 }
 
-// Gameplay plates. Effects run in the physics worker, see site/tm_runtime.js.
+// Gameplay plates. Effects run in the physics worker, see tm_runtime.js.
 const FX = [
   { key: 'Turbo', label: 'Turbo', mat: 'FxTurbo', glyph: (m, y) => chevrons(m, 'FxTurboB', 3, y) },
   { key: 'Super', label: 'Super turbo', mat: 'FxSuper', glyph: (m, y) => chevrons(m, 'FxSuperB', 3, y) },
