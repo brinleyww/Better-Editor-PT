@@ -467,9 +467,10 @@ self.TM = (() => {
       F[v + 2] += fz * a;
     }
 
-    // Penalty grass: every wheel on it bleeds off a share of the speed.
+    // Penalty grass: the share of wheels on it, squared, so one or two wheels only drag a little and all four drag fully
+    // (per second: 1 wheel about 7%, 2 about 24%, 3 about 46%, 4 about 67% of the speed).
     if (dragWheels > 0) {
-      const k = 1 - drag * 0.001 * (dragWheels / 4);
+      const k = 1 - drag * 0.001 * (dragWheels / 4) ** 2;
       F[v] *= k;
       F[v + 1] *= k;
       F[v + 2] *= k;
