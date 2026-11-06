@@ -177,6 +177,35 @@ if (section == 'loops') {
     }
 }
 
+// Plastic walls: steer into one at 150 km/h for a set time, then compare the way the car goes before and after.
+// A mirror bounce leaves at the same angle it came in; a glancing one keeps (or gains) speed, a head-on one sends it back.
+if (section == 'walls') {
+  const floor = [{ n: 'PlaneStart', x: 0, y: 0, z: 0 }];
+  for (let i = -22; i <= 22; i++) for (let j = -22; j <= 22; j++) if (i || j) floor.push({ n: 'Plane', x: i * 4, y: 0, z: j * 4 });
+  const vel = (l, from, to) => { const a = at(l, from), b = at(l, to), dt = (b.f - a.f) / 1000; return [(b.x - a.x) / dt, (b.y - a.y) / dt, (b.z - a.z) / dt]; };
+  const kmh = (u) => +(Math.hypot(...u) * 3.6).toFixed(0);
+  const deg = (u) => +((Math.atan2(Math.abs(u[0]), Math.abs(u[2])) * 180) / Math.PI).toFixed(1);
+  const sideWalls = [...floor];
+  for (let z = -8; z >= -84; z -= 4) for (const x of [-4, 4]) for (const r of [1, 3]) sideWalls.push({ n: 'PlasticWallFour', x, y: 0, z, r });
+  for (const ms of [120, 250, 450, 800]) {
+    const l = await drive(sideWalls, 7000, { up: true }, [{ kmh: 150, ctl: { up: true, right: true } }, { after: ms, ctl: { up: true } }]);
+    // The hit: the first frame where the car stops moving towards the wall it was heading for.
+    let hit = -1;
+    for (let i = 3; i < l.length; i++) { const a = vel(l, l[i - 2].f, l[i - 1].f), b = vel(l, l[i - 1].f, l[i].f); if (Math.abs(a[0]) > 2 && Math.sign(a[0]) != Math.sign(b[0])) { hit = l[i].f; break; } }
+    if (hit < 0) { report('steer ' + ms + ' ms', { hit: false }); continue; }
+    // Right after the bounce (the reflection itself) and 0.3 s later (after the tyres have had their say).
+    const vi = vel(l, hit - 80, hit - 30), vb = vel(l, hit + 50, hit + 100), vo = vel(l, hit + 250, hit + 350);
+    report('steer ' + ms + ' ms', { inDeg: deg(vi), bounceDeg: deg(vb), kmhBounce: kmh(vb), outDeg: deg(vo), kmhIn: kmh(vi), kmhOut: kmh(vo), forwardIn: +(-vi[2] * 3.6).toFixed(0), forwardOut: +(-vo[2] * 3.6).toFixed(0), upOut: +(vo[1] * 3.6).toFixed(0), spinDeg: +((2 * Math.acos(Math.min(1, Math.abs(at(l, hit - 30).q.reduce((s, v, k) => s + v * at(l, hit + 350).q[k], 0))))) * 57.3).toFixed(0) });
+  }
+  const headOn = [...floor];
+  for (let x = -8; x <= 8; x += 4) headOn.push({ n: 'PlasticWallFour', x, y: 0, z: -40 });
+  const l = await drive(headOn, 6000);
+  let hit = -1;
+  for (let i = 3; i < l.length; i++) { const a = vel(l, l[i - 2].f, l[i - 1].f), b = vel(l, l[i - 1].f, l[i].f); if (a[2] < -2 && b[2] > a[2] * 0.5) { hit = l[i].f; break; } }
+  if (hit > 0) { const vi = vel(l, hit - 80, hit - 30), vo = vel(l, hit + 250, hit + 350); report('head-on', { kmhIn: kmh(vi), kmhOut: kmh(vo), forwardOut: +(-vo[2] * 3.6).toFixed(0), upOut: +(vo[1] * 3.6).toFixed(0) }); }
+  else report('head-on', { hit: false });
+}
+
 // Respawn heading after a checkpoint: drive through one, press respawn, read which way the car faces.
 if (section == 'respawn') {
   const heading = (q) => +((Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1])) * 180) / Math.PI).toFixed(1);

@@ -87,7 +87,9 @@ self.TM = (() => {
       records = 0;
     const zones = [],
       cells = new Map(),
-      spawns = [];
+      spawns = [],
+      // Plastic collision triangles by 5-unit cell, world coordinates: the bounce reads its surface normal from these.
+      walls = { tris: [], cells: new Map() };
     track.forEachPart((x, y, z, id) => {
       if (!isTM(id)) {
         records++;
@@ -97,7 +99,7 @@ self.TM = (() => {
       if (p.p != null) records++;
       for (const m of physicsMeshes(p)) extra += m[4] * 3;
     });
-    fxBegin(carId, zones, cells, extra > 0, spawns);
+    fxBegin(carId, zones, cells, extra > 0, spawns, walls);
     if (extra == 0) return { vertices: mountain, records };
 
     loadSync();
@@ -111,9 +113,11 @@ self.TM = (() => {
         wx = x * 5,
         wy = y * 5,
         wz = z * 5;
+      const bouncy = p.u != null && SURFACES[p.u].bounce;
       for (const m of physicsMeshes(p)) {
         const P = positions(m),
-          I = indices(m);
+          I = indices(m),
+          o0 = o;
         for (let i = 0; i < I.length; i++, o += 3) {
           const v = I[i] * 3,
             a = P[v],
@@ -123,6 +127,22 @@ self.TM = (() => {
           out[o + 1] = M[3] * a + M[4] * b + M[5] * c + wy - off.y;
           out[o + 2] = M[6] * a + M[7] * b + M[8] * c + wz - off.z;
         }
+        if (bouncy)
+          for (let t = o0; t < o; t += 9) {
+            const k = walls.tris.length / 9,
+              T = [];
+            for (let j = 0; j < 9; j++) T.push(out[t + j] + (j % 3 == 0 ? off.x : j % 3 == 1 ? off.y : off.z));
+            walls.tris.push(...T);
+            const lo = [0, 1, 2].map((a) => Math.floor(Math.min(T[a], T[a + 3], T[a + 6]) / 5)),
+              hi = [0, 1, 2].map((a) => Math.floor(Math.max(T[a], T[a + 3], T[a + 6]) / 5));
+            for (let cx = lo[0]; cx <= hi[0]; cx++)
+              for (let cy = lo[1]; cy <= hi[1]; cy++)
+                for (let cz = lo[2]; cz <= hi[2]; cz++) {
+                  const key = cellKey(cx, cy, cz),
+                    l = walls.cells.get(key);
+                  l ? l.push(k) : walls.cells.set(key, [k]);
+                }
+          }
       }
       if (p.u != null || p.r) {
         const entry = { u: p.u ?? null, r: p.r ? { x: wx, y: wy, z: wz, M, boxes: p.r } : null };
@@ -183,13 +203,13 @@ self.TM = (() => {
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
   ];
   // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
-  // window: longest collision in frames), then judged as a whole. pop is always added on top of the rebound.
-  // The car leaves at restitution x the speed it hit with, plus pop, plus lift upward. Each bounce that follows another
-  // before the car is back on its wheels (or within `chain` frames) is scaled by fade again, so a crash gives one big
-  // bounce and then settles instead of hopping forever.
+  // window: longest collision in frames), then judged as a whole.
+  // The bounce mirrors the car's velocity off the surface: the part along it is kept, the part into it comes back at
+  // restitution x the speed it hit with, plus pop. Each bounce that follows another before the car is back on its wheels
+  // (or within `chain` frames) has that rebound scaled by fade again, so a crash settles instead of hopping forever.
   // While the hit lasts the car's spin is held down (grip), and after the bounce it is zeroed and kept damped for
   // `steady` frames (calm per frame), so the car flies off flat the same way every time instead of tumbling.
-  const BOUNCE = { hit: 0.5, window: 30, minInto: 6, share: 0.45, restitution: 0.9, pop: 4, lift: 2, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
+  const BOUNCE = { hit: 0.5, window: 30, minInto: 4, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -213,9 +233,85 @@ self.TM = (() => {
     return null;
   };
 
+  // Closest point to p on triangle abc, written into out.
+  function closestOnTri(px, py, pz, T, i, out) {
+    const ax = T[i], ay = T[i + 1], az = T[i + 2],
+      abx = T[i + 3] - ax, aby = T[i + 4] - ay, abz = T[i + 5] - az,
+      acx = T[i + 6] - ax, acy = T[i + 7] - ay, acz = T[i + 8] - az,
+      apx = px - ax, apy = py - ay, apz = pz - az,
+      d1 = abx * apx + aby * apy + abz * apz,
+      d2 = acx * apx + acy * apy + acz * apz;
+    const set = (u, v) => {
+      out[0] = ax + abx * u + acx * v;
+      out[1] = ay + aby * u + acy * v;
+      out[2] = az + abz * u + acz * v;
+    };
+    if (d1 <= 0 && d2 <= 0) return set(0, 0);
+    const bpx = px - T[i + 3], bpy = py - T[i + 4], bpz = pz - T[i + 5],
+      d3 = abx * bpx + aby * bpy + abz * bpz,
+      d4 = acx * bpx + acy * bpy + acz * bpz;
+    if (d3 >= 0 && d4 <= d3) return set(1, 0);
+    const vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) return set(d1 / (d1 - d3), 0);
+    const cpx = px - T[i + 6], cpy = py - T[i + 7], cpz = pz - T[i + 8],
+      d5 = abx * cpx + aby * cpy + abz * cpz,
+      d6 = acx * cpx + acy * cpy + acz * cpz;
+    if (d6 >= 0 && d5 <= d6) return set(0, 1);
+    const vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) return set(0, d2 / (d2 - d6));
+    const va = d3 * d6 - d5 * d4;
+    if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+      const w = (d4 - d3) / (d4 - d3 + (d5 - d6));
+      return set(1 - w, w);
+    }
+    const den = 1 / (va + vb + vc);
+    return set(vb * den, vc * den);
+  }
+  // The plastic surface a hit came from: the nearest plastic triangle within reach of the car's centre whose face
+  // points the way the car was pushed (dx,dy,dz, unit). Returns its normal, facing the car, or null.
+  const nearPt = [0, 0, 0];
+  function plasticNormal(walls, x, y, z, dx, dy, dz) {
+    const T = walls.tris,
+      cx = Math.floor(x / 5),
+      cy = Math.floor(y / 5),
+      cz = Math.floor(z / 5);
+    let best = null,
+      bestD = 3.5 * 3.5;
+    const seen = new Set();
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++) {
+          const l = walls.cells.get(cellKey(cx + i, cy + j, cz + k));
+          if (!l) continue;
+          for (const t of l) {
+            if (seen.has(t)) continue;
+            seen.add(t);
+            const b = t * 9;
+            closestOnTri(x, y, z, T, b, nearPt);
+            const ex = x - nearPt[0],
+              ey = y - nearPt[1],
+              ez = z - nearPt[2],
+              d = ex * ex + ey * ey + ez * ez;
+            if (d >= bestD) continue;
+            let nx = (T[b + 4] - T[b + 1]) * (T[b + 8] - T[b + 2]) - (T[b + 5] - T[b + 2]) * (T[b + 7] - T[b + 1]),
+              ny = (T[b + 5] - T[b + 2]) * (T[b + 6] - T[b]) - (T[b + 3] - T[b]) * (T[b + 8] - T[b + 2]),
+              nz = (T[b + 3] - T[b]) * (T[b + 7] - T[b + 1]) - (T[b + 4] - T[b + 1]) * (T[b + 6] - T[b]);
+            const nl = Math.hypot(nx, ny, nz);
+            if (nl < 1e-9) continue;
+            ((nx /= nl), (ny /= nl), (nz /= nl));
+            if (nx * ex + ny * ey + nz * ez < 0) ((nx = -nx), (ny = -ny), (nz = -nz));
+            // A surface that pushed the car must face roughly the way it was pushed; the scrape's friction skews that.
+            if (nx * dx + ny * dy + nz * dz < 0.3) continue;
+            best = [nx, ny, nz];
+            bestD = d;
+          }
+        }
+    return best;
+  }
+
   const cars = new Map();
-  function fxBegin(carId, zones, cells, active, spawns = []) {
-    cars.set(carId, { zones, cells, active, spawns, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1 });
+  function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -520,22 +616,21 @@ self.TM = (() => {
 
     // Plastic bounce: a hit on the side or roof of the car throws it back off the plastic, the way it came.
     // A real collision takes several frames, so the velocity change is added up over the whole hit and judged at its end.
-    // It counts when it removed a good share of the speed the car hit with, which leaves out brushing a rail at speed.
+    // It counts when it stopped a good share of the speed the car hit the surface with.
     const vx = F[v],
       vy = F[v + 1],
       vz = F[v + 2],
       last = c.last,
       w = (body + 328) >> 2,
-      // Is a hit along n on the car's side or roof, against plastic?
-      plasticHit = (nx, ny, nz) => {
-        const up = (1 - 2 * (qx * qx + qz * qz)) * ny + 2 * (qx * qy - qw * qz) * nx + 2 * (qy * qz + qw * qx) * nz,
-          side = (1 - 2 * (qy * qy + qz * qz)) * nx + 2 * (qx * qy + qw * qz) * ny + 2 * (qx * qz - qw * qy) * nz;
-        if (!(Math.abs(side) > 0.55 || up < -0.55)) return false;
-        for (const r of [0.3, 0.8, 1.3, 1.8]) {
-          const f = cellAt(c.cells, x - nx * r, y - ny * r, z - nz * r);
-          if (f != null && SURFACES[f].bounce) return true;
-        }
-        return false;
+      // The plastic surface normal behind a hit (h: summed velocity change), if the hit was on the car's body (nose, tail,
+      // sides or roof: anything but the wheels).
+      normalOf = (h) => {
+        const m = Math.sqrt(h.sx * h.sx + h.sy * h.sy + h.sz * h.sz);
+        if (m < 1e-6 || !c.walls.tris.length) return null;
+        const n = plasticNormal(c.walls, x, y, z, h.sx / m, h.sy / m, h.sz / m);
+        if (!n) return null;
+        const up = (1 - 2 * (qx * qx + qz * qz)) * n[1] + 2 * (qx * qy - qw * qz) * n[0] + 2 * (qy * qz + qw * qx) * n[2];
+        return up > 0.5 ? null : n;
       };
     if (c.bounceWait > 0) c.bounceWait--;
     // Back on three or four wheels: the next bounce is a fresh one.
@@ -561,29 +656,29 @@ self.TM = (() => {
           H.frames++;
         }
         // Mid-hit on plastic: hold the spin down now, before the contact has had time to tumble the car.
-        const h = c.hit,
-          m = Math.sqrt(h.sx * h.sx + h.sy * h.sy + h.sz * h.sz);
-        if (c.bounceWait == 0 && m > 1e-6 && plasticHit(h.sx / m, h.sy / m, h.sz / m)) {
+        const n = c.bounceWait == 0 ? normalOf(c.hit) : null;
+        if (n) {
           F[w] *= BOUNCE.grip;
           F[w + 1] *= BOUNCE.grip;
           F[w + 2] *= BOUNCE.grip;
         }
       } else if (H) {
         c.hit = null;
-        const sum = Math.sqrt(H.sx * H.sx + H.sy * H.sy + H.sz * H.sz);
-        if (sum > 1e-6 && c.bounceWait == 0) {
-          const nx = H.sx / sum,
-            ny = H.sy / sum,
-            nz = H.sz / sum,
-            into = -(H.vx * nx + H.vy * ny + H.vz * nz);
-          if (into > BOUNCE.minInto && sum > BOUNCE.share * into && plasticHit(nx, ny, nz)) {
+        const n = c.bounceWait == 0 ? normalOf(H) : null;
+        if (n) {
+          const [ax, ay, az] = n,
+            hitIn = -(H.vx * ax + H.vy * ay + H.vz * az),
+            stopped = H.sx * ax + H.sy * ay + H.sz * az;
+          if (hitIn > BOUNCE.minInto && stopped > BOUNCE.share * hitIn) {
+            // Mirror the velocity the car hit with, like light off a mirror: the part along the surface is kept whole,
+            // the part into it comes back out at restitution plus pop. A glancing hit leaves a little faster, nearly
+            // the way it was going; a head-on hit sends the car straight back; a roof hit sends it up.
             c.chainLevel = c.chainLeft > 0 ? c.chainLevel * BOUNCE.fade : 1;
             c.chainLeft = BOUNCE.chain;
-            const k = c.chainLevel,
-              out = (into * BOUNCE.restitution + BOUNCE.pop) * k - (vx * nx + vy * ny + vz * nz);
-            F[v] += nx * out;
-            F[v + 1] += ny * out + BOUNCE.lift * k;
-            F[v + 2] += nz * out;
+            const out = (hitIn * BOUNCE.restitution + BOUNCE.pop) * c.chainLevel;
+            F[v] = H.vx + ax * (hitIn + out);
+            F[v + 1] = H.vy + ay * (hitIn + out);
+            F[v + 2] = H.vz + az * (hitIn + out);
             F[w] = F[w + 1] = F[w + 2] = 0;
             c.steady = BOUNCE.steady;
             c.bounceWait = BOUNCE.cooldown;
