@@ -122,6 +122,9 @@ function hPath(segs, start = [0, 10, 0]) {
   return { segs: out, length: s0, end: [x, z, h] };
 }
 
+// Most a road may bend, climb or bank between two cross-sections, in radians (2.5 degrees).
+const SMOOTH = 2.5 * (Math.PI / 180);
+
 // Turns a horizontal path, a height function y(s) and a roll function roll(s) into sampled frames.
 // roll > 0 lifts the left side. The pivot is the slab's bottom centre, the same pivot stock tilted parts use.
 function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, offset = () => 0, marks = [] } = {}) {
@@ -135,11 +138,37 @@ function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, o
   // Extra cuts where a surface pattern changes colour (plank seams, panel joints).
   for (const m of marks) if (m > 0 && m < path.length) all.push(m);
   all.sort((a, b) => a - b);
+  const segAt = (v) => path.segs.find((g) => v <= g.s0 + g.L + 1e-9) ?? path.segs[path.segs.length - 1];
+  // Extra cuts wherever the road bends, climbs or banks by more than SMOOTH between two cuts, so turns,
+  // hills and dips are smooth to drive while straight, flat pieces keep the cuts they had.
+  const dir = (v) => {
+      const g = segAt(v),
+        h = g.at(v - g.s0)[2],
+        e = 1e-3;
+      return norm([Math.sin(h), (y(v + e) - y(v - e)) / (2 * e), -Math.cos(h)]);
+    },
+    bend = (a, b) => {
+      const da = dir(a),
+        db = dir(b);
+      return Math.acos(Math.min(1, da[0] * db[0] + da[1] * db[1] + da[2] * db[2])) + Math.abs(roll(b) - roll(a));
+    },
+    fine = [];
+  for (let k = 0; k < all.length; k++) {
+    fine.push(all[k]);
+    if (k + 1 == all.length) break;
+    const a = all[k],
+      b = all[k + 1];
+    if (b - a < 0.5) continue;
+    // Sampled at quarters too, so an S-bend that ends where it started still counts as bent.
+    let t = 0;
+    for (let q = 0; q < 4; q++) t += bend(a + ((b - a) * q) / 4, a + ((b - a) * (q + 1)) / 4);
+    const n = Math.min(Math.ceil(t / SMOOTH), Math.floor((b - a) / 0.25));
+    for (let i = 1; i < n; i++) fine.push(a + ((b - a) * i) / n);
+  }
   const ss = [];
-  for (const v of all) {
+  for (const v of fine) {
     if (ss.length && v - ss[ss.length - 1].s < 1e-4) continue;
-    const seg = path.segs.find((g) => v <= g.s0 + g.L + 1e-9) ?? path.segs[path.segs.length - 1];
-    ss.push({ s: v, seg });
+    ss.push({ s: v, seg: segAt(v) });
   }
   const rings = [];
   for (let i = 0; i < ss.length; i++) {
@@ -166,7 +195,7 @@ function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, o
 // shiftAt(u) gives the sideways offset at fraction u of this arc, for loops that come out beside where they went in.
 function loopRings(r, a0, a1, { centerY = r, centerZ = 10, shiftAt = () => 0, step = 5 } = {}) {
   const L = Math.abs(a1 - a0) * r,
-    n = Math.max(2, Math.round(L / step)),
+    n = Math.max(2, Math.round(L / step), Math.ceil(Math.abs(a1 - a0) / SMOOTH)),
     rings = [];
   for (let i = 0; i <= n; i++) {
     const u = i / n,
