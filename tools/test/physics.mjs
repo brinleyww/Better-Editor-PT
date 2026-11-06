@@ -1,4 +1,4 @@
-// Drives real cars in the game's physics worker. No rendering, no UI.
+﻿// Drives real cars in the game's physics worker. No rendering, no UI.
 // node tools/test/physics.mjs surfaces   handling numbers for stock, plastic and wood
 // node tools/test/physics.mjs regress    gates, turbo, climbs, loops, verifier
 import { openEditor } from './lib.mjs';
@@ -323,6 +323,15 @@ if (section == 'gameplay') {
       return JSON.stringify({a:await scan(),b:await scan()});
     })()`);
     report('Verifier with ' + plate + ', realtime finish ' + est, JSON.parse(found));
+  }
+}
+if (section == 'banks') {
+  // Bank transitions, crests and a hill: how much the car's height jitters frame to frame (lower is smoother).
+  const rough = (l) => { let s = 0; for (let i = 2; i < l.length; i++) s += Math.abs(l[i].y - 2 * l[i - 1].y + l[i - 2].y); return +(s * 1000 / l.length).toFixed(2); };
+  for (const surface of ['Plastic', 'Wood']) {
+    const seq = [surface + 'StartRoad', ...Array(6).fill(surface + 'RoadStraight'), { n: surface + 'RoadToTiltShortL', len: 4 }, { n: surface + 'RoadTilt' }, { n: surface + 'RoadToTiltShortR', r: 2, len: 4 }, ...Array(3).fill(surface + 'RoadStraight'), { n: surface + 'RoadCrest1', len: 8 }, ...Array(30).fill(surface + 'RoadStraight')];
+    const l = await drive(lane(seq), 7000), e = last(l);
+    report(surface + ' banks + crest', { roughness: rough(l.filter((s) => s.z < -140 && s.z > -200)), kmh: +e.v.toFixed(0), endX: +e.x.toFixed(1), endY: +e.y.toFixed(2) });
   }
 }
 console.log(c.logs.filter((l) => !/Failed to connect|NETFAIL/.test(l)).slice(0, 10));

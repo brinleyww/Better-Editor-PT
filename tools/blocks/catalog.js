@@ -166,7 +166,7 @@ function halfpipeProfile(st) {
   // floor 10 wide, quarter circles of radius 5 up both sides, total width 20, same footprint as a platform
   return () => {
     const polys = [];
-    const N = 6,
+    const N = 18,
       r = 5,
       t = DECK;
     const lo = (a) => [5 + Math.sin(a) * (r + t), r - Math.cos(a) * (r + t) + t],
@@ -185,8 +185,10 @@ function halfpipeProfile(st) {
           pts: side > 0 ? q : q.map(([x, y]) => [-x, y]).reverse(),
           cap: st.under,
           mats: (e, ring) => {
+            // The faces between two neighbouring segments are hidden inside the wall.
+            if ((e == 1 && i < N - 1) || (e == 3 && i > 0)) return null;
             const top = side > 0 ? e == 2 : e == 0;
-            return top ? (i == N - 1 ? st.line(ring) : st.deck(ring)) : st.under;
+            return top ? (i >= N - N / 6 ? st.line(ring) : st.deck(ring)) : st.under;
           },
         });
       }
@@ -610,7 +612,7 @@ function buildSurface(surface) {
           return { ...poly, pts };
         });
       };
-      put('PipeEntry', 'Platform to half-pipe', TH, 'Half-pipe', roadPart(st, flatten, [{ line: 40 }], { step: 2.5 }));
+      put('PipeEntry', 'Platform to half-pipe', TH, 'Half-pipe', roadPart(st, flatten, [{ line: 40 }], { step: 0.5 }));
     }
   }
 

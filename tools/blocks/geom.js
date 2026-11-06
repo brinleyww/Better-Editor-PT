@@ -141,16 +141,16 @@ function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, o
   const segAt = (v) => path.segs.find((g) => v <= g.s0 + g.L + 1e-9) ?? path.segs[path.segs.length - 1];
   // Extra cuts wherever the road bends, climbs or banks by more than SMOOTH between two cuts, so turns,
   // hills and dips are smooth to drive while straight, flat pieces keep the cuts they had.
-  const dir = (v) => {
+  // Banking and climbing are cut finer than turning: a twist or a crest is felt through the wheels much more.
+  const ang = (v) => {
       const g = segAt(v),
-        h = g.at(v - g.s0)[2],
         e = 1e-3;
-      return norm([Math.sin(h), (y(v + e) - y(v - e)) / (2 * e), -Math.cos(h)]);
+      return [g.at(v - g.s0)[2], Math.atan((y(v + e) - y(v - e)) / (2 * e)), roll(v)];
     },
     bend = (a, b) => {
-      const da = dir(a),
-        db = dir(b);
-      return Math.acos(Math.min(1, da[0] * db[0] + da[1] * db[1] + da[2] * db[2])) + Math.abs(roll(b) - roll(a));
+      const A = ang(a),
+        B = ang(b);
+      return Math.abs(B[0] - A[0]) + 2 * Math.abs(B[1] - A[1]) + 4 * Math.abs(B[2] - A[2]);
     },
     fine = [];
   for (let k = 0; k < all.length; k++) {
@@ -158,11 +158,11 @@ function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, o
     if (k + 1 == all.length) break;
     const a = all[k],
       b = all[k + 1];
-    if (b - a < 0.5) continue;
+    if (b - a < 0.4) continue;
     // Sampled at quarters too, so an S-bend that ends where it started still counts as bent.
     let t = 0;
     for (let q = 0; q < 4; q++) t += bend(a + ((b - a) * q) / 4, a + ((b - a) * (q + 1)) / 4);
-    const n = Math.min(Math.ceil(t / SMOOTH), Math.floor((b - a) / 0.25));
+    const n = Math.min(Math.ceil(t / SMOOTH), Math.floor((b - a) / 0.2));
     for (let i = 1; i < n; i++) fine.push(a + ((b - a) * i) / n);
   }
   const ss = [];
@@ -195,7 +195,7 @@ function roadRings(path, { y = () => 0, roll = () => 0, step = 5, arcStep = 5, o
 // shiftAt(u) gives the sideways offset at fraction u of this arc, for loops that come out beside where they went in.
 function loopRings(r, a0, a1, { centerY = r, centerZ = 10, shiftAt = () => 0, step = 5 } = {}) {
   const L = Math.abs(a1 - a0) * r,
-    n = Math.max(2, Math.round(L / step), Math.ceil(Math.abs(a1 - a0) / SMOOTH)),
+    n = Math.max(2, Math.round(L / step), Math.ceil(Math.abs(a1 - a0) / (0.6 * SMOOTH))),
     rings = [];
   for (let i = 0; i <= n; i++) {
     const u = i / n,
@@ -224,10 +224,11 @@ function wallRings(h, zw = -10, step = 5, y0 = 0) {
 
 // Sweeps closed convex polygons along rings. `polys(ring)` returns [{pts:[[x,y],...], mats:(edge, ring)=>material, cap}],
 // with pts counter-clockwise in (R,U) as seen from behind the travel direction. Vertex counts must not change along the path.
-function sweep(mesh, rings, polys) {
+function sweep(mesh, rings, polys0) {
   // Each ring knows where the next one is, so a pattern can tell a thin seam band from a full panel.
   for (let k = 0; k < rings.length; k++) rings[k].next = k + 1 < rings.length ? rings[k + 1].s : rings[k].s;
   const place = (r, pt) => add(add(r.p, mul(r.R, pt[0])), mul(r.U, pt[1]));
+  const polys = splitTwisted(rings, polys0, place);
   const first = polys(rings[0]);
   for (let pi = 0; pi < first.length; pi++) {
     const n = first[pi].pts.length;
@@ -259,8 +260,91 @@ function sweep(mesh, rings, polys) {
   }
 }
 
+// Where a section banks or changes shape between two rings, a wide quad is twisted and its two triangles fold
+// along the diagonal into a ridge (0.1-0.2 units on a banking road, felt as a bump every cut).
+// Those edges are split into strips narrow enough that every quad is close to flat.
+const TWIST = 0.02;
+function splitTwisted(rings, polys, place) {
+  const P0 = polys(rings[0]),
+    splits = P0.map((p) => p.pts.map(() => 1));
+  for (let k = 0; k + 1 < rings.length; k++) {
+    const A = polys(rings[k]),
+      B = polys(rings[k + 1]);
+    for (let pi = 0; pi < A.length; pi++) {
+      const n = A[pi].pts.length;
+      for (let e = 0; e < n; e++) {
+        const pa = A[pi].pts[e],
+          pb = A[pi].pts[(e + 1) % n];
+        // Undersides are never driven on.
+        if (pb[0] - pa[0] > 0.5 * Math.hypot(pb[0] - pa[0], pb[1] - pa[1])) continue;
+        if (!A[pi].mats(e, rings[k])) continue;
+        const a = place(rings[k], pa),
+          b = place(rings[k], pb),
+          c = place(rings[k + 1], B[pi].pts[(e + 1) % n]),
+          d = place(rings[k + 1], B[pi].pts[e]),
+          nn = norm(cross(sub(b, a), sub(d, a))),
+          dev = Math.abs(dot(sub(c, a), nn));
+        splits[pi][e] = Math.max(splits[pi][e], Math.min(32, Math.ceil(dev / TWIST)));
+      }
+    }
+  }
+  if (splits.every((s) => s.every((v) => v == 1))) return polys;
+  return (ring) =>
+    polys(ring).map((p, pi) => {
+      const pts = [],
+        from = [];
+      p.pts.forEach((q, e) => {
+        const r = p.pts[(e + 1) % p.pts.length],
+          n = splits[pi][e];
+        for (let i = 0; i < n; i++) {
+          pts.push([q[0] + ((r[0] - q[0]) * i) / n, q[1] + ((r[1] - q[1]) * i) / n]);
+          from.push(e);
+        }
+      });
+      return { ...p, pts, mats: (e, rr) => p.mats(from[e], rr) };
+    });
+}
+
 // A surface patch over a (u,v) grid with a slab under it. f(u,v) -> point, the top faces `want(p)`.
-function patch(mesh, f, nu, nv, { mat, under, want, thick = 0.21 }) {
+// The grid is refined until neighbouring cells bend by about PATCH_BEND, so hills and bowls drive smoothly.
+// A crease meant to be there (two slopes meeting) only crosses a few of a cell's sub-cells, so each cell is
+// judged by its median sub-cell bend, which a crease does not move. A cone's tip bends without end, so the
+// worst tenth of cells is left out too.
+const PATCH_BEND = 2 * (Math.PI / 180);
+function patchRefine(f, nu, nv) {
+  const k0 = 8,
+    NU = nu * k0,
+    NV = nv * k0,
+    P = [];
+  for (let i = 0; i <= NU; i++) {
+    P.push([]);
+    for (let j = 0; j <= NV; j++) P[i].push(f(i / NU, j / NV));
+  }
+  const nrm = (i, j) => norm(cross(sub(P[i + 1][j], P[i][j]), sub(P[i][j + 1], P[i][j])));
+  const bend = (n0, n1) => Math.acos(Math.min(1, Math.abs(dot(n0, n1))));
+  const cells = [];
+  for (let ci = 0; ci < nu; ci++)
+    for (let cj = 0; cj < nv; cj++) {
+      const b = [];
+      for (let i = ci * k0; i < (ci + 1) * k0 - 1; i++)
+        for (let j = cj * k0; j < (cj + 1) * k0 - 1; j++) {
+          const n0 = nrm(i, j);
+          b.push(Math.max(bend(n0, nrm(i + 1, j)), bend(n0, nrm(i, j + 1))));
+        }
+      b.sort((x, y) => x - y);
+      cells.push(b[b.length >> 1] * k0);
+    }
+  cells.sort((x, y) => x - y);
+  const worst = cells[Math.floor(cells.length * 0.9)];
+  return Math.max(1, Math.min(Math.ceil(worst / PATCH_BEND), Math.floor(96 / Math.max(nu, nv))));
+}
+
+function patch(mesh, f, nu0, nv0, { mat: mat0, under, want, thick = 0.21 }) {
+  // mat(i, j) still gets the coarse cell, so checker and plank patterns keep their size.
+  const k = patchRefine(f, nu0, nv0),
+    nu = nu0 * k,
+    nv = nv0 * k,
+    mat = typeof mat0 == 'function' ? (i, j) => mat0(Math.floor(i / k), Math.floor(j / k)) : mat0;
   const P = [];
   for (let i = 0; i <= nu; i++) {
     P.push([]);
