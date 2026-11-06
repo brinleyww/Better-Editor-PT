@@ -58438,7 +58438,10 @@
             this.loadedResource();
           }),
             t.addEventListener("error", () => {
-              throw (this.loadedResource(), new Error("Failed to load image: " + e));
+              const n = (t.tries = (t.tries ?? 0) + 1);
+              if (n <= 3) return void setTimeout(() => (t.src = e + (e.includes("?") ? "&" : "?") + "retry=" + n), 500 * n);
+              console.warn("Failed to load image: " + e);
+              this.loadedResource();
             }),
             (t.src = e));
         }

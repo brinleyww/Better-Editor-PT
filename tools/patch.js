@@ -201,6 +201,20 @@ apply('main.bundle.js', [
               (0, d.gn)(this, r, "f")`,
   ],
   ['save string', 'return (r.push(n, !0), g.l(r.result));', 'return (r.push(n, !0), (this.hasExtendedParts() ? self.TM.SAVE_PREFIX : "") + g.l(r.result));'],
+  [
+    // A preload only warms the cache, and the page loads the image again where it is drawn. One failed request (a
+    // flaky connection, GitHub Pages mid-deploy) used to throw and take the whole game down: retry, then carry on.
+    'image preload retries',
+    `            t.addEventListener("error", () => {
+              throw (this.loadedResource(), new Error("Failed to load image: " + e));
+            }),`,
+    `            t.addEventListener("error", () => {
+              const n = (t.tries = (t.tries ?? 0) + 1);
+              if (n <= 3) return void setTimeout(() => (t.src = e + (e.includes("?") ? "&" : "?") + "retry=" + n), 500 * n);
+              console.warn("Failed to load image: " + e);
+              this.loadedResource();
+            }),`,
+  ],
   ['export string', 'return (f.push(c, !0), "PolyTrack2" + g.l(f.result));', 'return (f.push(c, !0), (this.hasExtendedParts() ? self.TM.EXPORT_PREFIX : "PolyTrack2") + g.l(f.result));'],
   [
     'read save string',
