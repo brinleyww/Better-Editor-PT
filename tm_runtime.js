@@ -175,10 +175,10 @@ self.TM = (() => {
   const SURFACES = [
     // Plastic: almost no grip, very strong acceleration at low speed, and it throws the car back when hit side-on or roof-first.
     { gripFront: 0.45, gripRear: 0.36, launch: 34, launchUntil: 45, bounce: true },
-    // Wood: so much grip that the tyres never let go, which makes drifting impossible.
+    // Wood: a little more grip than road. The tyres' grip also limits braking, so much more than this makes it stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
     // so it pulls harder the faster you go without running away.
-    { gripFront: 6, gripRear: 6, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
+    { gripFront: 1.2, gripRear: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
   ];

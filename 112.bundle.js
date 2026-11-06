@@ -1958,7 +1958,7 @@
               (t.translate(0, W.A.partSize / 2, 0), (e = new w.eaF(t, (0, i.gn)(this, je, "f"))));
             } else if (((e = t.trackPartData.colors.get(at.A.Summer)?.clone()), null == e))
               throw new Error("Track part mesh has not loaded yet");
-            if (t.trackPartData.configuration.tm) {
+            if (t.trackPartData?.configuration.tm) {
               // Show the colour that will actually be placed: the picked colour, or this environment's default.
               let n = (0, i.gn)(this, Kt, "m", Zn).call(this);
               if (n == at.A.Default)
