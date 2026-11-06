@@ -206,6 +206,46 @@ if (section == 'walls') {
   else report('head-on', { hit: false });
 }
 
+// Slides on plastic: start a slide with a hard right, then either countersteer (left) or keep holding right.
+// slip: angle between the nose and the way the car goes, degrees. A caught slide comes back near 0; a spin passes 90.
+if (section == 'slides') {
+  const P = [{ n: 'PlasticStartPlat', x: 0, y: 0, z: 0 }];
+  for (let i = -22; i <= 22; i++) for (let j = -22; j <= 22; j++) if (i || j) P.push({ n: 'PlasticPlatBase', x: i * 4, y: 0, z: j * 4 });
+  const slipOf = (l, i) => { const a = l[i - 1], b = l[i], q = b.q, dt = (b.f - a.f) / 1000, vx = (b.x - a.x) / dt, vz = (b.z - a.z) / dt, nx = 2 * (q[0] * q[2] + q[3] * q[1]), nz = 1 - 2 * (q[0] * q[0] + q[1] * q[1]); return (Math.atan2(nx * vz - nz * vx, nx * vx + nz * vz) * 180) / Math.PI; };
+  for (const [name, after, until] of [['countersteer 0.5 s', { up: true, left: true }, 1200], ['countersteer held 1.5 s', { up: true, left: true }, 2200], ['hold the turn', { up: true, right: true }, 2200], ['let go', { up: true }, 2200]]) {
+    const l = await drive(P, 7000, { up: true }, [{ kmh: 140, ctl: { up: true, right: true } }, { after: 700, ctl: after }, { after: until, ctl: { up: true } }]);
+    const t = await c.evaluate('window.__trigger');
+    const s = (from, to) => { let m = 0; for (let i = 1; i < l.length; i++) if (l[i].f >= from && l[i].f <= to) m = Math.max(m, Math.abs(slipOf(l, i))); return +m.toFixed(0); };
+    const i1 = l.findIndex((q) => q.f >= t + 1400), i2 = l.findIndex((q) => q.f >= t + 2900);
+    report(name, { slipAt700: +Math.abs(slipOf(l, l.findIndex((q) => q.f >= t + 700))).toFixed(0), maxSlipAfter: s(t + 700, t + 2900), slipAt1400: +Math.abs(slipOf(l, i1)).toFixed(0), slipAt2900: +Math.abs(slipOf(l, i2)).toFixed(0), kmhAt2900: +l[i2].v.toFixed(0) });
+  }
+}
+
+// Bugslide: slide off a raised plastic floor and land on road below while still sliding. A bugslide keeps the speed
+// through the landing slide; without one the slide scrubs it off. The edge goes where a flat-floor run slides most.
+if (section == 'bugslide') {
+  const slipOf = (l, i) => { const a = l[i - 1], b = l[i], q = b.q, dt = (b.f - a.f) / 1000, vx = (b.x - a.x) / dt, vz = (b.z - a.z) / dt, nx = 2 * (q[0] * q[2] + q[3] * q[1]), nz = 1 - 2 * (q[0] * q[0] + q[1] * q[1]); return (Math.atan2(nx * vz - nz * vx, nx * vx + nz * vz) * 180) / Math.PI; };
+  const plan = [{ kmh: 180, ctl: { up: true, right: true } }, { after: 380, ctl: { up: true } }];
+  const flat = [{ n: 'PlasticStartPlat', x: 0, y: 1, z: 0 }];
+  for (let z = -4; z >= -160; z -= 4) for (const x of [-8, -4, 0, 4, 8]) flat.push({ n: 'PlasticPlatBase', x, y: 1, z });
+  let l = await drive(flat, 6000, { up: true }, plan);
+  let peak = { s: 0, z: 0 };
+  for (let i = 1; i < l.length; i++) { if (l[i].v < 50) continue; const s = Math.abs(slipOf(l, i)); if (s > peak.s) peak = { s, z: l[i].z }; }
+  const edge = Math.floor(peak.z / 20) * 4 + 4; // last raised piece, in tiles: the car leaves just before the peak
+  report('flat run', { peakSlip: +peak.s.toFixed(0), atZ: +peak.z.toFixed(0), edgeTile: edge });
+  const P = flat.filter((p) => p.z >= edge);
+  for (let z = edge - 4; z >= edge - 120; z -= 4) for (let x = -24; x <= 24; x += 4) P.push({ n: 'Plane', x, y: 0, z });
+  l = await drive(P, 6000, { up: true }, plan);
+  let air = 0, land = -1;
+  for (let i = 1; i < l.length; i++) { if (l[i].y > 4) air = i; else if (air && l[i].y < 2) { land = i; break; } }
+  if (land < 0) { report('bugslide', { landed: false }); } else {
+    // True speed from positions (the game's readout only counts speed along the nose, which reads low mid-slide).
+    const f = l[land].f, sp = (t) => { const a = at(l, t - 25), b = at(l, t + 25); return +((Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / ((b.f - a.f) / 1000)) * 3.6).toFixed(0); };
+    const sl = (t) => +Math.abs(slipOf(l, l.indexOf(at(l, t)))).toFixed(0);
+    report('bugslide', { slipAtLanding: sl(f), kmh: [-100, 100, 300, 600, 1000].map((d) => sp(f + d)), slip: [100, 300, 600, 1000].map((d) => sl(f + d)) });
+  }
+}
+
 // Respawn heading after a checkpoint: drive through one, press respawn, read which way the car faces.
 if (section == 'respawn') {
   const heading = (q) => +((Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1])) * 180) / Math.PI).toFixed(1);

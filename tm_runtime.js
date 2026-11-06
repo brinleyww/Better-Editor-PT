@@ -211,6 +211,14 @@ self.TM = (() => {
   // `steady` frames (calm per frame), so the car flies off flat the same way every time instead of tumbling.
   const BOUNCE = { hit: 0.5, window: 30, minInto: 4, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
+  // Countersteering on plastic, once the car slides more than `from` (radians) above minSpeed (units per second):
+  // frontGrip multiplies the front tyres' grip, and the yaw rate is pulled by `pull` per frame towards catchRate x slip.
+  const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, pull: 0.012, hold: 300 };
+  // Bugslides: start above minSpeed (units per second) and minSlip (radians) on a landing after `air` frames off the
+  // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
+  // speed kept at keep per frame (about 2% a second lost); over below endSlip.
+  const BUG = { minSpeed: 100 / 3.6, minSlip: 0.17, endSlip: 0.05, frames: 1200, air: 120, window: 150, kink: 0.99, grip: 0.55, keep: 0.99998 };
+
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
   // Surface under a point: grass regions inside a part win, then the part's own surface.
@@ -311,7 +319,7 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1 });
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchLeft: 0 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -330,6 +338,7 @@ self.TM = (() => {
     }
     if (out.reset) {
       clear(c);
+      c.bug = 0;
       c.justReset = true;
     }
     if (c.noEngine) out.up = false;
@@ -501,9 +510,27 @@ self.TM = (() => {
       fy = 2 * (qy * qz - qw * qx),
       fz = 1 - 2 * (qx * qx + qy * qy);
 
+    // Slides. The car's +x axis is its left and +y its up; lat is the sideways speed, + when the car moves to the left of
+    // where its nose points, and slip the angle between the nose and the way the car is going. Yaw + turns left.
+    const av = (body + 328) >> 2,
+      lx = 1 - 2 * (qy * qy + qz * qz),
+      ly = 2 * (qx * qy + qw * qz),
+      lz = 2 * (qx * qz - qw * qy),
+      upx = 2 * (qx * qy - qw * qz),
+      upy = 1 - 2 * (qx * qx + qz * qz),
+      upz = 2 * (qy * qz + qw * qx),
+      lat = F[v] * lx + F[v + 1] * ly + F[v + 2] * lz,
+      fwd = F[v] * fx + F[v + 1] * fy + F[v + 2] * fz,
+      slip = Math.atan2(lat, Math.abs(fwd)),
+      steer = c.ctl ? (c.ctl.left ? 1 : 0) - (c.ctl.right ? 1 : 0) : 0,
+      // Countersteering: steering towards the side the car is sliding to.
+      counter = Math.hypot(lat, fwd) > SLIDE.minSpeed && steer != 0 && Math.sign(steer) == Math.sign(lat) && Math.abs(slip) > SLIDE.from;
+
     // Tyres: each wheel gets the grip of the surface under it for the next frame.
     // Wheels are btWheelInfo structs: normal at +0, contact point at +16, in contact at +84, friction slip at +228.
-    const wheels = U[(U[(car + 32) >> 2] + 144) >> 2];
+    const wheels = U[(U[(car + 32) >> 2] + 144) >> 2],
+      normals = [];
+    let plasticWheels = 0;
     if (c.stockGrip == null) c.stockGrip = F[(wheels + 228) >> 2];
     let launchWheels = 0,
       launch = 0,
@@ -530,6 +557,12 @@ self.TM = (() => {
           rest = (9.81 / F[(body + 344) >> 2]) / 4;
         if (load > rest) grip = 1 + ((grip - 1) * rest) / load;
       }
+      if (surface && surface.bounce) {
+        plasticWheels++;
+        if (counter && w < 2) grip *= SLIDE.frontGrip;
+      }
+      if (c.bug > 0) grip *= BUG.grip;
+      normals.push(F[g], F[g + 1], F[g + 2]);
       F[g + 57] = c.stockGrip * grip;
       if (surface && surface.drag) {
         dragWheels++;
@@ -543,6 +576,50 @@ self.TM = (() => {
         launchWheels++;
         launch = surface.launch;
         launchUntil = surface.launchUntil;
+      }
+    }
+
+    // Countersteering on plastic: the front tyres bite harder and the car's spin is pulled towards the way it is going,
+    // so a slide can be caught instead of spinning out.
+    // The pull lasts `hold` frames past the countersteer, so catching a slide does not whip the car round the other way.
+    if (counter) c.catchLeft = SLIDE.hold;
+    else if (c.catchLeft > 0) c.catchLeft--;
+    if (c.catchLeft > 0 && plasticWheels >= 2) {
+      const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
+        d = (SLIDE.catchRate * slip - yaw) * SLIDE.pull;
+      F[av] += upx * d;
+      F[av + 1] += upy * d;
+      F[av + 2] += upz * d;
+    }
+
+    // Bugslides: landing, or crossing a sharp change of slope, while already sliding fast locks the car into a slide
+    // that keeps its speed (gravity still counts) and turns less, until the slide straightens, the car leaves the
+    // ground, or the gas is let go or the brake pressed.
+    let kink = false;
+    for (let i = 0; i < normals.length; i += 3)
+      for (let j = i + 3; j < normals.length; j += 3)
+        if (normals[i] * normals[j] + normals[i + 1] * normals[j + 1] + normals[i + 2] * normals[j + 2] < BUG.kink) kink = true;
+    // A sliding car lands one or two wheels first, so the first touch after real airtime opens a short landing window.
+    if (contacts >= 1 && c.air >= BUG.air) c.landing = BUG.window;
+    else if (c.landing > 0) c.landing--;
+    const spd = Math.hypot(F[v], F[v + 1], F[v + 2]);
+    c.air = contacts == 0 ? c.air + 1 : 0;
+    if (c.bug == 0 && c.gas && (contacts >= 2 && c.landing > 0 || contacts >= 3 && kink) && Math.abs(slip) >= BUG.minSlip && spd >= BUG.minSpeed) {
+      c.bug = BUG.frames;
+      c.bugV = spd;
+      c.landing = 0;
+    }
+    if (c.bug > 0) {
+      c.bug--;
+      if (!c.gas || Math.abs(slip) < BUG.endSlip || c.air > BUG.air) c.bug = 0;
+      else {
+        c.bugV = Math.max(spd, c.bugV * BUG.keep - 0.00981 * (F[v + 1] / spd));
+        if (spd < c.bugV) {
+          const k = c.bugV / spd;
+          F[v] *= k;
+          F[v + 1] *= k;
+          F[v + 2] *= k;
+        }
       }
     }
 
