@@ -80,10 +80,15 @@ if (section == 'surfaces') {
     for (const [name, start, piece] of SURF.slice(1)) {
       if (only && only != name) continue;
       const parts = [{ n: 'PlaneStart', x: 0, y: 5, z: 0, a: axis }]; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) parts.push({ n: piece, x: i * 4, y: 0, z: j * 4 });
-      const l = await drive(parts, 4500, {});
+      const l = await drive(parts, 12000, {});
       let hit = -1; for (let i = 2; i < l.length; i++) if (l[i - 1].y < 4 && l[i].y > l[i - 1].y + 1e-3) { hit = i; break; }
       let rebound = 0; if (hit > 0) for (let i = hit; i < l.length; i++) rebound = Math.max(rebound, l[i].y);
-      report(how + ' drop on ' + name, { fromY: +l[0].y.toFixed(1), impactAtY: hit > 0 ? +l[hit].y.toFixed(2) : null, reboundToY: hit > 0 ? +rebound.toFixed(2) : null });
+      // How far the car turns, in degrees, in the 0.7 s after the hit: a clean bounce keeps it near 0.
+      let spinDeg = null;
+      if (hit > 0) { const a = l[hit - 1].q, b = at(l, l[hit].f + 700).q; spinDeg = +((2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3])))) * 180 / Math.PI).toFixed(1); }
+      // Every peak after the first hit, so a bounce that gains height each time shows up.
+      const peaks = []; for (let i = Math.max(hit, 1); hit > 0 && i + 1 < l.length; i++) if (l[i].y > l[i - 1].y && l[i].y >= l[i + 1].y && l[i].y > 2) peaks.push(+l[i].y.toFixed(1));
+      report(how + ' drop on ' + name, { fromY: +l[0].y.toFixed(1), impactAtY: hit > 0 ? +l[hit].y.toFixed(2) : null, reboundToY: hit > 0 ? +rebound.toFixed(2) : null, spinDeg, peaks });
     }
 }
 

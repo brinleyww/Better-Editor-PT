@@ -184,7 +184,12 @@ self.TM = (() => {
   ];
   // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
   // window: longest collision in frames), then judged as a whole. pop is always added on top of the rebound.
-  const BOUNCE = { hit: 0.5, window: 30, minInto: 6, share: 0.45, restitution: 0.95, pop: 3, cooldown: 150 };
+  // The car leaves at restitution x the speed it hit with, plus pop, plus lift upward. Each bounce that follows another
+  // before the car is back on its wheels (or within `chain` frames) is scaled by fade again, so a crash gives one big
+  // bounce and then settles instead of hopping forever.
+  // While the hit lasts the car's spin is held down (grip), and after the bounce it is zeroed and kept damped for
+  // `steady` frames (calm per frame), so the car flies off flat the same way every time instead of tumbling.
+  const BOUNCE = { hit: 0.5, window: 30, minInto: 6, share: 0.45, restitution: 0.9, pop: 4, lift: 2, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -210,7 +215,7 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = []) {
-    cars.set(carId, { zones, cells, active, spawns, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0 });
+    cars.set(carId, { zones, cells, active, spawns, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -519,8 +524,28 @@ self.TM = (() => {
     const vx = F[v],
       vy = F[v + 1],
       vz = F[v + 2],
-      last = c.last;
+      last = c.last,
+      w = (body + 328) >> 2,
+      // Is a hit along n on the car's side or roof, against plastic?
+      plasticHit = (nx, ny, nz) => {
+        const up = (1 - 2 * (qx * qx + qz * qz)) * ny + 2 * (qx * qy - qw * qz) * nx + 2 * (qy * qz + qw * qx) * nz,
+          side = (1 - 2 * (qy * qy + qz * qz)) * nx + 2 * (qx * qy + qw * qz) * ny + 2 * (qx * qz - qw * qy) * nz;
+        if (!(Math.abs(side) > 0.55 || up < -0.55)) return false;
+        for (const r of [0.3, 0.8, 1.3, 1.8]) {
+          const f = cellAt(c.cells, x - nx * r, y - ny * r, z - nz * r);
+          if (f != null && SURFACES[f].bounce) return true;
+        }
+        return false;
+      };
     if (c.bounceWait > 0) c.bounceWait--;
+    // Back on three or four wheels: the next bounce is a fresh one.
+    if (c.chainLeft > 0) c.chainLeft = contacts >= 3 ? 0 : c.chainLeft - 1;
+    if (c.steady > 0) {
+      c.steady--;
+      F[w] *= BOUNCE.calm;
+      F[w + 1] *= BOUNCE.calm;
+      F[w + 2] *= BOUNCE.calm;
+    }
     if (last && !c.justReset && Math.abs(x - last.x) + Math.abs(y - last.y) + Math.abs(z - last.z) < 5) {
       const dx = vx - last.vx,
         dy = vy - last.vy,
@@ -535,6 +560,14 @@ self.TM = (() => {
           H.sz += dz;
           H.frames++;
         }
+        // Mid-hit on plastic: hold the spin down now, before the contact has had time to tumble the car.
+        const h = c.hit,
+          m = Math.sqrt(h.sx * h.sx + h.sy * h.sy + h.sz * h.sz);
+        if (c.bounceWait == 0 && m > 1e-6 && plasticHit(h.sx / m, h.sy / m, h.sz / m)) {
+          F[w] *= BOUNCE.grip;
+          F[w + 1] *= BOUNCE.grip;
+          F[w + 2] *= BOUNCE.grip;
+        }
       } else if (H) {
         c.hit = null;
         const sum = Math.sqrt(H.sx * H.sx + H.sy * H.sy + H.sz * H.sz);
@@ -542,22 +575,18 @@ self.TM = (() => {
           const nx = H.sx / sum,
             ny = H.sy / sum,
             nz = H.sz / sum,
-            into = -(H.vx * nx + H.vy * ny + H.vz * nz),
-            up = (1 - 2 * (qx * qx + qz * qz)) * ny + 2 * (qx * qy - qw * qz) * nx + 2 * (qy * qz + qw * qx) * nz,
-            side = (1 - 2 * (qy * qy + qz * qz)) * nx + 2 * (qx * qy + qw * qz) * ny + 2 * (qx * qz - qw * qy) * nz;
-          if (into > BOUNCE.minInto && sum > BOUNCE.share * into && (Math.abs(side) > 0.55 || up < -0.55)) {
-            let plastic = false;
-            for (const r of [0.3, 0.8, 1.3, 1.8]) {
-              const f = cellAt(c.cells, x - nx * r, y - ny * r, z - nz * r);
-              if (f != null && SURFACES[f].bounce) plastic = true;
-            }
-            if (plastic) {
-              const out = into * BOUNCE.restitution + BOUNCE.pop - (vx * nx + vy * ny + vz * nz);
-              F[v] += nx * out;
-              F[v + 1] += ny * out;
-              F[v + 2] += nz * out;
-              c.bounceWait = BOUNCE.cooldown;
-            }
+            into = -(H.vx * nx + H.vy * ny + H.vz * nz);
+          if (into > BOUNCE.minInto && sum > BOUNCE.share * into && plasticHit(nx, ny, nz)) {
+            c.chainLevel = c.chainLeft > 0 ? c.chainLevel * BOUNCE.fade : 1;
+            c.chainLeft = BOUNCE.chain;
+            const k = c.chainLevel,
+              out = (into * BOUNCE.restitution + BOUNCE.pop) * k - (vx * nx + vy * ny + vz * nz);
+            F[v] += nx * out;
+            F[v + 1] += ny * out + BOUNCE.lift * k;
+            F[v + 2] += nz * out;
+            F[w] = F[w + 1] = F[w + 2] = 0;
+            c.steady = BOUNCE.steady;
+            c.bounceWait = BOUNCE.cooldown;
           }
         }
       }
