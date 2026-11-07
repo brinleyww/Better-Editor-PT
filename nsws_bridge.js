@@ -10,6 +10,44 @@
     let listening = false;
     let mode = "normal";
 
+    // Reports the block download (about 60 MB the first time) so NSWS can draw a loading bar over this frame.
+    let blocks = null;
+    let blocksSent = 0;
+    const realFetch = window.fetch;
+    window.fetch = function (input) {
+        const url = typeof input === "string" ? input : input?.url || "";
+        const p = realFetch.apply(window, arguments);
+        if (!/tm_blocks\.bin(\?|$)/.test(url)) return p;
+        return p.then((r) => {
+            if (!r.ok || !r.body) return r;
+            const total = Number(self.TM_DATA?.binBytes) || Number(r.headers.get("content-length")) || 0;
+            const reader = r.body.getReader();
+            blocks = { loaded: 0, total };
+            sendBlocks(true);
+            const stream = new ReadableStream({
+                async pull(c) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        blocks.loaded = Math.max(blocks.loaded, total);
+                        sendBlocks(true);
+                        return c.close();
+                    }
+                    blocks.loaded += value.byteLength;
+                    sendBlocks(false);
+                    c.enqueue(value);
+                },
+                cancel: (e) => reader.cancel(e),
+            });
+            return new Response(stream, { status: r.status, statusText: r.statusText, headers: r.headers });
+        });
+    };
+
+    function sendBlocks(now) {
+        if (!blocks || (!now && Date.now() - blocksSent < 150)) return;
+        blocksSent = Date.now();
+        post({ type: "progress", loaded: blocks.loaded, total: blocks.total });
+    }
+
     function currentTrack() {
         try {
             return self.__beEditorCurrent ? self.__beEditorCurrent() : null;
@@ -215,6 +253,7 @@
         if (msg.type === "hello") {
             if (lastSig === null) lastSig = signature();
             post({ type: "ready", version: 3,reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
+            sendBlocks(true);
         } else if (msg.type === "list") {
             reply({ tracks: listTracks() });
         } else if (msg.type === "import") {
