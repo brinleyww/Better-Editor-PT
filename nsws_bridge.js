@@ -118,6 +118,15 @@
                 result = { ok: false, error: "The editor couldn't read that track code." };
             }
             reply(result);
+        } else if (msg.type === "autosave") {
+            let result = { saved: false, reason: "closed" };
+            try {
+                if (self.__beAutosave) result = self.__beAutosave();
+            } catch (err) {
+                result = { saved: false, reason: "failed" };
+            }
+            if (result.saved) checkChanged();
+            reply(result);
         }
     });
     window.addEventListener("storage", (e) => {

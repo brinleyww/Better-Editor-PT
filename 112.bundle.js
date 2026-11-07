@@ -2099,7 +2099,17 @@
             (0, i.gn)(this, ve, "f").setFromExistingCheckpoints((0, i.gn)(this, jt, "f")),
             (0, i.GG)(this, Ln, null, "f"),
             (0, i.GG)(this, vn, new Date(), "f"),
-            (0, i.GG)(this, Ye, !1, "f"));
+            (0, i.GG)(this, Ye, !1, "f"),
+            (self.__beAutosave = () => {
+              if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };
+              const n = (0, i.gn)(this, un, "f");
+              if (null == n) return { saved: !1, reason: "unnamed" };
+              const ok = (0, i.gn)(this, $t, "f").saveCustomTrack(
+                { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },
+                (0, i.gn)(this, jt, "f").getTrackData(),
+              );
+              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });
+            }));
         }),
         (si = function () {
           const t = performance.now();
@@ -3577,7 +3587,8 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((0, i.GG)(this, ae, !1, "f"),
+          ((self.__beAutosave = null),
+            (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),
             (0, i.gn)(this, ve, "f").dispose(),

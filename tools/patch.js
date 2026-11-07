@@ -273,6 +273,9 @@ apply('main.bundle.js', [
 ]);
 
 apply('112.bundle.js', [
+  // nsws_bridge.js autosave: saves the open track under its name when it has unsaved changes.
+  ['autosave hook', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"));', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"),\n            (self.__beAutosave = () => {\n              if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };\n              const n = (0, i.gn)(this, un, "f");\n              if (null == n) return { saved: !1, reason: "unnamed" };\n              const ok = (0, i.gn)(this, $t, "f").saveCustomTrack(\n                { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },\n                (0, i.gn)(this, jt, "f").getTrackData(),\n              );\n              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });\n            }));'],
+  ['autosave hook cleared', '        dispose() {\n          ((0, i.GG)(this, ae, !1, "f"),', '        dispose() {\n          ((self.__beAutosave = null),\n            (0, i.GG)(this, ae, !1, "f"),'],
   [
     'thumbnail renderer',
     `(Vn = function () {
