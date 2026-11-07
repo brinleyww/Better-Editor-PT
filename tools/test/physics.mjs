@@ -132,8 +132,16 @@ if (section == 'regress') {
     }
   // Determinism through the game's own verifier: it accepts a run only if the car finishes on exactly that frame.
   {
-    const parts = lane(['WoodStartRoad', ...Array(5).fill('WoodRoadStraight'), 'PlasticFxTurboRoad', ...Array(10).fill('PlasticRoadStraight'), 'WoodCheckpointRoad', ...Array(10).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(6).fill('PlasticRoadStraight')]);
-    const l = await drive(parts, 9000), est = l.find((s) => s.fin != null)?.fin;
+    // node tools/test/physics.mjs verify [stock|ice]: stock checks the test rig itself on a track with no new blocks.
+    const parts =
+      process.argv[3] == 'stock'
+        ? lane(['Start', ...Array(15).fill('Straight'), 'Checkpoint', ...Array(10).fill('Straight'), 'Finish', ...Array(6).fill('Straight')])
+        : process.argv[3] == 'ice'
+          ? lane(['IceStartBob', ...Array(6).fill('IceBobStraight'), 'IceCheckpointBob', ...Array(4).fill('IceBobStraight'), 'IceBobToPlatShort', ...Array(4).fill('IcePlatBase'), 'IceFinishPlat', ...Array(4).fill('IcePlatBase')])
+          : lane(['WoodStartRoad', ...Array(5).fill('WoodRoadStraight'), 'PlasticFxTurboRoad', ...Array(10).fill('PlasticRoadStraight'), 'WoodCheckpointRoad', ...Array(10).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(6).fill('PlasticRoadStraight')]);
+    // The realtime car starts late by however long the track took to build, so the search window is moved back by
+    // the frame the car first moved on.
+    const l = await drive(parts, 9000), fin = l.find((s) => s.fin != null)?.fin, moved = l.find((s) => s.v > 0.5)?.f ?? 0, est = fin - moved;
     const found = await c.evaluate(`(async()=>{
       const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
       const scan=()=>new Promise(res=>{const w=new Worker('simulation_worker.bundle.js'),hits=[];let pend=0;const lo=${est}-150,hi=${est}+150;
@@ -143,7 +151,7 @@ if (section == 'regress') {
         },1500);});
       return JSON.stringify({a:await scan(),b:await scan()});
     })()`);
-    report('Verifier accepts one exact frame, twice', JSON.parse(found));
+    report('Verifier accepts one exact frame, twice (realtime finish ' + fin + ', first moved ' + moved + ')', JSON.parse(found));
   }
 }
 if (section == 'trace') {
@@ -311,7 +319,8 @@ if (section == 'gameplay') {
   // Slow motion and reactor boosts through the game's own verifier.
   for (const plate of ['PlasticFxSlowRoad', 'PlasticFxReactor2UpRoad', 'PlasticFxRouletteRoad']) {
     const parts = lane(['WoodStartRoad', ...Array(3).fill('WoodRoadStraight'), plate, ...Array(8).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(4).fill('PlasticRoadStraight')]);
-    const l = await drive(parts, 9000), est = l.find((s) => s.fin != null)?.fin;
+    // The realtime car starts late by however long the track took to build: search from the frame it first moved on.
+    const l = await drive(parts, 9000), fin = l.find((s) => s.fin != null)?.fin, est = fin == null ? null : fin - (l.find((s) => s.v > 0.5)?.f ?? 0);
     if (est == null) { report('Verifier with ' + plate, { finished: false }); continue; }
     const found = await c.evaluate(`(async()=>{
       const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
@@ -371,8 +380,16 @@ if (section == 'wiggle') {
 if (section == 'verify') {
   // Determinism through the game's own verifier: it accepts a run only if the car finishes on exactly that frame.
   {
-    const parts = lane(['WoodStartRoad', ...Array(5).fill('WoodRoadStraight'), 'PlasticFxTurboRoad', ...Array(10).fill('PlasticRoadStraight'), 'WoodCheckpointRoad', ...Array(10).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(6).fill('PlasticRoadStraight')]);
-    const l = await drive(parts, 9000), est = l.find((s) => s.fin != null)?.fin;
+    // node tools/test/physics.mjs verify [stock|ice]: stock checks the test rig itself on a track with no new blocks.
+    const parts =
+      process.argv[3] == 'stock'
+        ? lane(['Start', ...Array(15).fill('Straight'), 'Checkpoint', ...Array(10).fill('Straight'), 'Finish', ...Array(6).fill('Straight')])
+        : process.argv[3] == 'ice'
+          ? lane(['IceStartBob', ...Array(6).fill('IceBobStraight'), 'IceCheckpointBob', ...Array(4).fill('IceBobStraight'), 'IceBobToPlatShort', ...Array(4).fill('IcePlatBase'), 'IceFinishPlat', ...Array(4).fill('IcePlatBase')])
+          : lane(['WoodStartRoad', ...Array(5).fill('WoodRoadStraight'), 'PlasticFxTurboRoad', ...Array(10).fill('PlasticRoadStraight'), 'WoodCheckpointRoad', ...Array(10).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(6).fill('PlasticRoadStraight')]);
+    // The realtime car starts late by however long the track took to build, so the search window is moved back by
+    // the frame the car first moved on.
+    const l = await drive(parts, 9000), fin = l.find((s) => s.fin != null)?.fin, moved = l.find((s) => s.v > 0.5)?.f ?? 0, est = fin - moved;
     const found = await c.evaluate(`(async()=>{
       const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
       const scan=()=>new Promise(res=>{const w=new Worker('simulation_worker.bundle.js'),hits=[];let pend=0;const lo=${est}-150,hi=${est}+150;
@@ -382,7 +399,7 @@ if (section == 'verify') {
         },1500);});
       return JSON.stringify({a:await scan(),b:await scan()});
     })()`);
-    report('Verifier accepts one exact frame, twice', JSON.parse(found));
+    report('Verifier accepts one exact frame, twice (realtime finish ' + fin + ', first moved ' + moved + ')', JSON.parse(found));
   }}
 
 console.log(c.logs.filter((l) => !/Failed to connect|NETFAIL/.test(l)).slice(0, 10));
