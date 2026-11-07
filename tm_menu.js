@@ -3,7 +3,7 @@
 // Keeps the game's own look: its navy surfaces, button colours, font and section headings.
 (() => {
   const TABS = self.TM.data.tabs;
-  const ROAD = 4; // the stock blocks' browser, after the four surfaces in SURFACE_NAMES
+  const ROAD = 5; // the stock blocks' browser, after the surfaces and water in SURFACE_NAMES
   // The stock blocks, by their enum names: [tab, heading, [[name, label], ...]]. Tabs are the game's old categories.
   const ROAD_LAYOUT = [
     ['Gates', 'Start', [['Start', 'Start'], ['StartWide', 'Start, wide'], ['PlaneStart', 'Start on plane'], ['PlaneStartWide', 'Start on plane, wide']]],
@@ -306,9 +306,9 @@
     g.appendChild(grid);
   }
 
-  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Road'];
+  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water', 'Road'];
   // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser.
-  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium', 12: 'Ice' };
+  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium', 12: 'Ice', 13: 'Water' };
   const describe = (p) => {
     if (!p.b) return SURFACE_NAMES[p.f] + ': ' + p.l;
     const size = (a) => Math.round((p.b[1][a] - p.b[0][a]) / 5) || 1;

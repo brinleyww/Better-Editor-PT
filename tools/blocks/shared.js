@@ -349,7 +349,8 @@ function buildShared() {
   // Water is drawn with its own see-through material (tm_water.js): Water for the surface, WaterSide for the faces you see
   // from the side. Neither is ever collided with (NO_PHYSICS in build.js). Sides stop where a wall stands instead.
   {
-    const T = 'Water';
+    // Water is its own category in the editor (surface Water). Part names keep their Stadium prefix so tracks keep their ids.
+    const W = { surface: 'Water' };
     const SURF = 3; // pool water level above the block's floor
     // One water box: surface at `top` over a floor at `bot`. floorAt(z) is a ramp floor under part of it, or null.
     const waterBox = (m, x0, x1, z0, z1, bot, top, open, floorAt) => {
@@ -398,12 +399,12 @@ function buildShared() {
       waterBox(m, x0, x1, z0, z1, 0.21, SURF, open, floorAt);
       return m;
     };
-    const fx = { fx: { type: 'Water', center: [0, 1.5, 0], size: [20, 3, 20], surface: SURF } };
-    put('Water', 'Water', T, 'Pools', pool([]), fx);
-    put('WaterWall', 'Water, wall on one side', T, 'Pools', pool(['N']), fx);
-    put('WaterCorner', 'Water, corner walls', T, 'Pools', pool(['N', 'W']), fx);
-    put('WaterChannel', 'Water channel', T, 'Pools', pool(['W', 'E']), fx);
-    put('WaterRamp', 'Ramp out of the water', T, 'Pools', pool([], true), fx);
+    const fx = { ...W, fx: { type: 'Water', center: [0, 1.5, 0], size: [20, 3, 20], surface: SURF } };
+    put('Water', 'Water', 'Pools', 'Open water', pool([]), fx);
+    put('WaterWall', 'Water, wall on one side', 'Pools', 'Walled pools', pool(['N']), fx);
+    put('WaterCorner', 'Water, corner walls', 'Pools', 'Walled pools', pool(['N', 'W']), fx);
+    put('WaterChannel', 'Water channel', 'Pools', 'Walled pools', pool(['W', 'E']), fx);
+    put('WaterRamp', 'Ramp out of the water', 'Pools', 'Ramps', pool([], true), fx);
 
     // Shallow water: a thin layer over a concrete floor the car drives on, like TM's wet platforms. The wheels stay on
     // the floor; the water only drags a little and throws up spray (Shallow in tm_runtime.js).
@@ -420,11 +421,11 @@ function buildShared() {
       waterBox(m, x0, x1, z0, 10, DECK, DECK + SH, ['N', 'S', 'W', 'E'].filter((w) => !rim.includes(w)), null);
       return m;
     };
-    const sfx = (len) => ({ fx: { type: 'Shallow', center: [0, 1.5, 10 - len / 2], size: [20, 3, len], surface: DECK + SH } });
-    put('ShallowWater', 'Shallow water', T, 'Shallow water', shallow(20, []), sfx(20));
-    put('ShallowWaterHalf', 'Shallow water, half', T, 'Shallow water', shallow(10, []), sfx(10));
-    put('ShallowWaterKerb', 'Shallow water, kerb on one side', T, 'Shallow water', shallow(20, ['W']), sfx(20));
-    put('ShallowWaterKerbs', 'Shallow water, kerbs on both sides', T, 'Shallow water', shallow(20, ['W', 'E']), sfx(20));
+    const sfx = (len) => ({ ...W, fx: { type: 'Shallow', center: [0, 1.5, 10 - len / 2], size: [20, 3, len], surface: DECK + SH } });
+    put('ShallowWater', 'Shallow water', 'Shallow water', 'Open', shallow(20, []), sfx(20));
+    put('ShallowWaterHalf', 'Shallow water, half', 'Shallow water', 'Open', shallow(10, []), sfx(10));
+    put('ShallowWaterKerb', 'Shallow water, kerb on one side', 'Shallow water', 'With kerbs', shallow(20, ['W']), sfx(20));
+    put('ShallowWaterKerbs', 'Shallow water, kerbs on both sides', 'Shallow water', 'With kerbs', shallow(20, ['W', 'E']), sfx(20));
   }
 
   // ---- deco walls and deco platforms -------------------------------------------------------------------------------------

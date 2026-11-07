@@ -38,7 +38,7 @@ apply('main.bundle.js', [
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
   ['track store hook', '(Bd.add(this),', '(Bd.add(this),\n            (self.__beTrackStore = this),\n            (self.__beTrackData = Ml.A),'],
-  ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"),\n              (e[(e.Ice = 12)] = "Ice"));'],
+  ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"),\n              (e[(e.Ice = 12)] = "Ice"),\n              (e[(e.Water = 13)] = "Water"));'],
   [
     'part class',
     `constructor(e, t, n, i, r, a, s = null, o = null) {
@@ -74,7 +74,7 @@ apply('main.bundle.js', [
               (q) =>
                 new d(
                   null,
-                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice][q.f],
+                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice, r.A.Water][q.f],
                   q.i,
                   [],
                   self.TM.palette(q),
@@ -165,7 +165,10 @@ apply('main.bundle.js', [
               n = this.getPart(iu.A.StadiumGrassMound);
               break;
             case ru.A.Ice:
-              n = this.getPart(iu.A.IceBobCurve2);`,
+              n = this.getPart(iu.A.IceBobCurve2);
+              break;
+            case ru.A.Water:
+              n = this.getPart(iu.A.StadiumWaterCorner);`,
   ],
   [
     'codec context',
@@ -341,7 +344,7 @@ apply('112.bundle.js', [
             self.TM.ui.add(s, o, a, tm);`,
   ],
   [
-    'Road sits at the top of the category list, right under erase, then the four surfaces',
+    'Road sits at the top of the category list, right under erase, then the surfaces and water',
     `}),
                 (0, i.gn)(this, ue, "f").appendChild(e));
               const o = document.createElement("img");`,
@@ -429,7 +432,7 @@ apply('112.bundle.js', [
   const file = 'simulation_worker.bundle.js';
   apply(file, [
     ['part ids', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"));', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"),\n          self.TM.addEnum(t));'],
-    ['categories', '(t[(t.Sign = 8)] = "Sign"));', '(t[(t.Sign = 8)] = "Sign"),\n          (t[(t.Plastic = 9)] = "Plastic"),\n          (t[(t.Wood = 10)] = "Wood"),\n          (t[(t.Stadium = 11)] = "Stadium"),\n          (t[(t.Ice = 12)] = "Ice"));'],
+    ['categories', '(t[(t.Sign = 8)] = "Sign"));', '(t[(t.Sign = 8)] = "Sign"),\n          (t[(t.Plastic = 9)] = "Plastic"),\n          (t[(t.Wood = 10)] = "Wood"),\n          (t[(t.Stadium = 11)] = "Stadium"),\n          (t[(t.Ice = 12)] = "Ice"),\n          (t[(t.Water = 13)] = "Water"));'],
     [
       'part class',
       `constructor(t, e, i, r, s, n, a = null, o = null) {
@@ -463,7 +466,7 @@ apply('112.bundle.js', [
             (q) =>
               new lo(
                 null,
-                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice][q.f],
+                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice, Xa.Water][q.f],
                 q.i,
                 [],
                 self.TM.palette(q),

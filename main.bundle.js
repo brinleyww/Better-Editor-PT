@@ -8607,7 +8607,7 @@
               (q) =>
                 new d(
                   null,
-                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice][q.f],
+                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice, r.A.Water][q.f],
                   q.i,
                   [],
                   self.TM.palette(q),
@@ -31324,7 +31324,8 @@
               (e[(e.Plastic = 9)] = "Plastic"),
               (e[(e.Wood = 10)] = "Wood"),
               (e[(e.Stadium = 11)] = "Stadium"),
-              (e[(e.Ice = 12)] = "Ice"));
+              (e[(e.Ice = 12)] = "Ice"),
+              (e[(e.Water = 13)] = "Water"));
           })(i || (i = {})));
         const r = i;
       },
@@ -60486,6 +60487,9 @@
               break;
             case ru.A.Ice:
               n = this.getPart(iu.A.IceBobCurve2);
+              break;
+            case ru.A.Water:
+              n = this.getPart(iu.A.StadiumWaterCorner);
           }
           switch (t) {
             case wl.A.Summer:
