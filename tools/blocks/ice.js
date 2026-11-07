@@ -62,12 +62,15 @@ const bobFloor = (x) => {
   }
   return TOP;
 };
+// How far a wall's end face sits behind the ice, the rim and the outside.
+const CAP_IN = 0.04;
 // Each wall quad's edges, mirrored for the left wall: edge k of the mirrored polygon is edge MIRROR[k] of the right one.
 const MIRROR = [2, 1, 0, 3];
 
 // flat: 1 = channel, 0 = walls folded flat into a platform. wallL / wallR: extra height of a straight wall on that side.
 // paint colours the floor (the middle 9 units). The wall strips leave out their end faces: two pieces end to end would
-// put those faces in the same plane and draw a thin line round the channel at every joint.
+// put those faces in the same plane and draw a thin line round the channel at every joint. One end face per wall,
+// set back a little, closes the wall instead.
 function bobPolys(st, paint, { flat = 1, wallL = 0, wallR = 0 } = {}) {
   const O = BOB.out,
     C = BOB_CURVE,
@@ -97,6 +100,24 @@ function bobPolys(st, paint, { flat = 1, wallL = 0, wallR = 0 } = {}) {
           if (e == 3) return (floor && paint?.(ring)) || st.deck(ring);
           return null;
         },
+      });
+    }
+    // The wall's end face, on its own: the whole cross-section between the ice and the outside, set CAP_IN back from
+    // every visible face so a joint between two pieces has no edge for it to show through. Fanned from the bottom
+    // outside corner, which sees the whole convex curve. Only a full channel end gets one.
+    {
+      const e = CAP_IN,
+        pts = [[O - e, DECK], [O - e, TOP - e]];
+      for (let k = N; k >= 0; k--) {
+        const a = BOB.curl * Math.pow(C[k][2], BOB.shape),
+          x = C[k][0] * flat + O * C[k][2] * (1 - flat),
+          y = C[k][1] * flat + DECK * (1 - flat);
+        pts.push([x + e * Math.sin(a), Math.min(TOP - e, Math.max(DECK, y - e * Math.cos(a)))]);
+      }
+      polys.push({
+        pts: side > 0 ? pts : [pts[0], ...pts.slice(1).reverse()].map(([x, y]) => [-x, y]),
+        cap: flat > 0.999 ? st.side : null,
+        mats: () => null,
       });
     }
     if (extra) {
