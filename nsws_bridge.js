@@ -125,6 +125,52 @@
         return { ok: true, name, opened: false };
     }
 
+    // NSWS shares this site's localStorage, so copies stop well before it is full.
+    const COPY_ROOM = 3500000;
+
+    // Copies NSWS's My Tracks in for the editor's Load list; a track already saved here (same track or name) is left alone.
+    function copyIn(list) {
+        const TD = self.__beTrackData;
+        const store = self.__beTrackStore;
+        if (!TD || !store) return { ok: false, error: "The editor is still loading. Try again in a moment." };
+        let used = 0;
+        try {
+            for (const k of Object.keys(localStorage)) used += k.length + (localStorage.getItem(k) || "").length;
+        } catch {}
+        const ids = new Set();
+        store.forEachCustomTrack((id) => ids.add(id));
+        const results = [];
+        let changed = false;
+        for (const item of Array.isArray(list) ? list : []) {
+            const code = item?.code;
+            let parsed = null;
+            try {
+                parsed = typeof code === "string" ? TD.fromExportString(code) : null;
+            } catch {}
+            if (!parsed) {
+                results.push({ ok: false });
+                continue;
+            }
+            const { trackMetadata: meta, trackData: data } = parsed;
+            const id = data.getId();
+            const name = String(meta.name || "Track");
+            if (ids.has(id) || store.checkCustomTrackNameExists(name)) {
+                results.push({ ok: true, name, existed: true });
+                continue;
+            }
+            if (used + code.length > COPY_ROOM || !store.saveCustomTrack({ name, author: meta.author ?? null, lastModified: meta.lastModified ?? null }, data)) {
+                results.push({ ok: false, full: true });
+                continue;
+            }
+            used += code.length;
+            ids.add(id);
+            changed = true;
+            results.push({ ok: true, name });
+        }
+        if (changed) checkChanged();
+        return { ok: true, results };
+    }
+
     const wait = (test, ms) => new Promise((resolve) => {
         const end = Date.now() + ms;
         (function check() {
@@ -168,7 +214,7 @@
         const reply = (body) => post(Object.assign({ type: msg.type, reqId: msg.reqId }, body));
         if (msg.type === "hello") {
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 2, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
+            post({ type: "ready", version: 3,reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
         } else if (msg.type === "list") {
             reply({ tracks: listTracks() });
         } else if (msg.type === "import") {
@@ -177,6 +223,14 @@
                 result = importCode(msg.code);
             } catch (err) {
                 result = { ok: false, error: "The editor couldn't read that track code." };
+            }
+            reply(result);
+        } else if (msg.type === "copy") {
+            let result;
+            try {
+                result = copyIn(msg.tracks);
+            } catch (err) {
+                result = { ok: false, error: "The editor couldn't take those tracks." };
             }
             reply(result);
         } else if (msg.type === "edit") {
