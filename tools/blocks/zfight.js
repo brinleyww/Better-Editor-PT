@@ -3,6 +3,7 @@
 // Run: node tools/blocks/zfight.js
 const { buildSurface } = require('./catalog');
 const { buildShared } = require('./shared');
+const { buildIce } = require('./ice');
 
 const NEAR = 0.03; // planes closer than this flicker at editor distances
 
@@ -44,7 +45,7 @@ function overlap(A, B) {
   return sa.some((p) => inside(p, sb)) || sb.some((p) => inside(p, sa)) || inside(ca, sb) || inside(cb, sa);
 }
 
-const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared()];
+const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce()];
 const bad = [];
 for (const p of parts) {
   const tris = [];

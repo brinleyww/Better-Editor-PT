@@ -1067,4 +1067,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons };
+module.exports = { PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet };

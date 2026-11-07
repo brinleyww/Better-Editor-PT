@@ -218,9 +218,9 @@
     g.appendChild(grid);
   }
 
-  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium'];
+  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice'];
   // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser.
-  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium' };
+  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium', 12: 'Ice' };
   const describe = (p) => {
     const size = (a) => Math.round((p.b[1][a] - p.b[0][a]) / 5) || 1;
     return SURFACE_NAMES[p.f] + ': ' + p.l + ' (' + Math.max(1, Math.round(size(0) / 4)) + 'x' + Math.max(1, Math.round(size(2) / 4)) + ', ' + size(1) + ' high)';

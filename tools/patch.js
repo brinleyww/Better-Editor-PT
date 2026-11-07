@@ -27,7 +27,7 @@ apply('index.html', [
 
 apply('main.bundle.js', [
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
-  ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"));'],
+  ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"),\n              (e[(e.Ice = 12)] = "Ice"));'],
   [
     'part class',
     `constructor(e, t, n, i, r, a, s = null, o = null) {
@@ -63,7 +63,7 @@ apply('main.bundle.js', [
               (q) =>
                 new d(
                   null,
-                  [r.A.Plastic, r.A.Wood, r.A.Stadium][q.f],
+                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice][q.f],
                   q.i,
                   [],
                   self.TM.palette(q),
@@ -148,7 +148,10 @@ apply('main.bundle.js', [
               n = this.getPart(iu.A.WoodRoadCurve2);
               break;
             case ru.A.Stadium:
-              n = this.getPart(iu.A.StadiumGrassMound);`,
+              n = this.getPart(iu.A.StadiumGrassMound);
+              break;
+            case ru.A.Ice:
+              n = this.getPart(iu.A.IceBobCurve2);`,
   ],
   [
     'codec context',
@@ -390,7 +393,7 @@ apply('112.bundle.js', [
   const file = 'simulation_worker.bundle.js';
   apply(file, [
     ['part ids', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"));', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"),\n          self.TM.addEnum(t));'],
-    ['categories', '(t[(t.Sign = 8)] = "Sign"));', '(t[(t.Sign = 8)] = "Sign"),\n          (t[(t.Plastic = 9)] = "Plastic"),\n          (t[(t.Wood = 10)] = "Wood"),\n          (t[(t.Stadium = 11)] = "Stadium"));'],
+    ['categories', '(t[(t.Sign = 8)] = "Sign"));', '(t[(t.Sign = 8)] = "Sign"),\n          (t[(t.Plastic = 9)] = "Plastic"),\n          (t[(t.Wood = 10)] = "Wood"),\n          (t[(t.Stadium = 11)] = "Stadium"),\n          (t[(t.Ice = 12)] = "Ice"));'],
     [
       'part class',
       `constructor(t, e, i, r, s, n, a = null, o = null) {
@@ -424,7 +427,7 @@ apply('112.bundle.js', [
             (q) =>
               new lo(
                 null,
-                [Xa.Plastic, Xa.Wood, Xa.Stadium][q.f],
+                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice][q.f],
                 q.i,
                 [],
                 self.TM.palette(q),

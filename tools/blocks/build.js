@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { buildSurface } = require('./catalog');
 const { buildShared } = require('./shared');
+const { buildIce } = require('./ice');
 const { rasterTiles } = require('./geom');
 
 const site = path.join(__dirname, '..', '..');
@@ -102,6 +103,12 @@ const MATERIALS = litAll({
   Flag: '#d13a2c',
   Inflatable: '#e8513f',
   InflatableB: '#f2f2f2',
+  Ice: '#d4ecfa',
+  IceB: '#c6e3f6',
+  IceLine: '#ffffff',
+  IceRim: '#2f6fd0',
+  IceWall: '#eef2f6',
+  IceUnder: '#5f7487',
   Pillar: '#7a7d84',
   PillarEdge: '#3f4249',
 }, ['FinishWhite', 'FinishBlack']);
@@ -142,8 +149,15 @@ const PALETTES = {
     { id: 3, colors: { Grass: '#c9a86a', GrassB: '#bf9c5e', Concrete: '#c9b38f', DecoWall: '#cdb48d' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: { Concrete: PLASTIC_CUSTOM[i], DecoWall: PLASTIC_CUSTOM[i], DecoPlatform: PLASTIC_CUSTOM[i] } })),
   ]),
+  // Ice: the rim takes the custom colours, the ice itself stays ice.
+  Ice: litSlots([
+    { id: 1, colors: {} },
+    { id: 2, colors: { IceRim: '#ffffff', IceWall: '#dfe6ee' } },
+    { id: 3, colors: { IceRim: '#d13a2c' } },
+    ...CUSTOM_IDS.map((id, i) => ({ id, colors: { IceRim: PLASTIC_CUSTOM[i] } })),
+  ]),
 };
-const SURFACE_INDEX = { Plastic: 0, Wood: 1, Stadium: 2 };
+const SURFACE_INDEX = { Plastic: 0, Wood: 1, Stadium: 2, Ice: 3 };
 
 // Every (axis, rotation) as an exact integer matrix, derived from the game's own rotation quaternions.
 const S = Math.SQRT1_2;
@@ -166,12 +180,12 @@ const ROTATIONS = Q.map((row) => row.map(mat3));
 function main() {
   const reg = fs.existsSync(idsFile) ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : {};
   let nextId = Math.max(FIRST_ID - 1, ...Object.values(reg)) + 1;
-  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared()];
+  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce()];
   // Collision meshes: the same blocks built again without the surface patterns. The pattern strips are coplanar,
   // so they only cost the physics time; the plain mesh has the same shape with far fewer triangles.
   process.env.BE_PLAIN = '1';
   for (const k of Object.keys(require.cache)) if (k.includes(path.sep + 'blocks' + path.sep)) delete require.cache[k];
-  const plain = new Map([...require('./catalog').buildSurface('Plastic'), ...require('./catalog').buildSurface('Wood'), ...require('./shared').buildShared()].map((q) => [q.name, q.mesh]));
+  const plain = new Map([...require('./catalog').buildSurface('Plastic'), ...require('./catalog').buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce()].map((q) => [q.name, q.mesh]));
   delete process.env.BE_PLAIN;
   const seen = new Set();
   const matNames = Object.keys(MATERIALS),
@@ -263,7 +277,7 @@ function main() {
     if (p.fx) e.x = p.fx;
     if (p.spawnDir) e.sd = p.spawnDir;
     if (p.ph[4]) e.ph = p.ph;
-    // Physics surface for the whole part: 0 plastic, 1 wood, 2 penalty grass; absent = stock physics.
+    // Physics surface for the whole part: 0 plastic, 1 wood, 2 penalty grass, 3 ice, 4 bobsleigh; absent = stock physics.
     const u = p.u !== undefined ? p.u : f < 2 ? f : null;
     if (u != null) e.u = u;
     // Grass inside a part of another surface: boxes around its grass faces, in the part's own frame.
@@ -301,7 +315,7 @@ function main() {
     binBytes: bin.length,
     materials: matNames.map((m) => MATERIALS[m]),
     materialNames: matNames,
-    palettes: [PALETTES.Plastic, PALETTES.Wood, PALETTES.Stadium],
+    palettes: [PALETTES.Plastic, PALETTES.Wood, PALETTES.Stadium, PALETTES.Ice],
     noPhysics: NO_PHYSICS.map((m) => matIndex.get(m)),
     rotations: ROTATIONS,
     proxies: [...proxies.values()],

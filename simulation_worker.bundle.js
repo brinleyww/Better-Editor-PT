@@ -11028,7 +11028,8 @@ importScripts("tm_parts.js", "tm_runtime.js");
           (t[(t.Sign = 8)] = "Sign"),
           (t[(t.Plastic = 9)] = "Plastic"),
           (t[(t.Wood = 10)] = "Wood"),
-          (t[(t.Stadium = 11)] = "Stadium"));
+          (t[(t.Stadium = 11)] = "Stadium"),
+          (t[(t.Ice = 12)] = "Ice"));
       })(ja || (ja = {}));
       const Xa = ja;
       var $a;
@@ -15398,7 +15399,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
             (q) =>
               new lo(
                 null,
-                [Xa.Plastic, Xa.Wood, Xa.Stadium][q.f],
+                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice][q.f],
                 q.i,
                 [],
                 self.TM.palette(q),

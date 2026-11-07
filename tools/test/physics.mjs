@@ -43,7 +43,7 @@ const lane = (items, x = 0, y = 0, z0 = 0) => { let z = z0; return items.map((n)
 
 if (section == 'surfaces') {
   const floor = (start, piece, n = 22) => { const p = [{ n: start, x: 0, y: 0, z: 0 }]; for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) if (i || j) p.push({ n: piece, x: i * 4, y: 0, z: j * 4 }); return p; };
-  const SURF = [['stock', 'PlaneStart', 'Plane'], ['plastic', 'PlasticStartPlat', 'PlasticPlatBase'], ['wood', 'WoodStartPlat', 'WoodPlatBase']];
+  const SURF = [['stock', 'PlaneStart', 'Plane'], ['plastic', 'PlasticStartPlat', 'PlasticPlatBase'], ['wood', 'WoodStartPlat', 'WoodPlatBase'], ['ice', 'IceStartPlat', 'IcePlatBase']];
   const nose = (q) => [2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1])];
   // How fast the rear axle moves sideways, km/h: zero when the tyres hold, large in a slide.
   const slide = (l, from, to) => { let max = 0; for (let i = 1; i < l.length; i++) { const a = l[i - 1], b = l[i]; if (b.f < from || b.f > to) continue; const dt = (b.f - a.f) / 1000; if (dt <= 0) continue; const [ax, az] = nose(a.q), [bx, bz] = nose(b.q); const vx = (b.x - bx * 1.36 - (a.x - ax * 1.36)) / dt, vz = (b.z - bz * 1.36 - (a.z - az * 1.36)) / dt; max = Math.max(max, Math.abs(vx * bz - vz * bx) * 3.6); } return +max.toFixed(1); };
@@ -334,6 +334,40 @@ if (section == 'banks') {
     report(surface + ' banks + crest', { roughness: rough(l.filter((s) => s.z < -140 && s.z > -200)), kmh: +e.v.toFixed(0), endX: +e.x.toFixed(1), endY: +e.y.toFixed(2) });
   }
 }
+if (section == 'bob') {
+  // Bobsleigh: straights into a curve with nobody steering; the channel walls should carry the car round.
+  for (const [curve, len] of [['IceBobCurve2', 8], ['IceBobCurve3', 12], ['IceBobCurveWall3', 12]]) {
+    const parts = lane(['IceStartBob', ...Array(10).fill('IceBobStraight')]);
+    const z0 = -44;
+    parts.push({ n: curve, x: 0, y: 0, z: z0 });
+    // How high the car rides while it is in the curve, and how fast it comes out of the far end.
+    const l = await drive(parts, 9000), zin = z0 * 5 + 10, inCurve = l.filter((s) => s.z < zin && s.z > zin - len * 5 - 5);
+    const peak = inCurve.reduce((a, b) => Math.max(a, b.y), 0), kin = inCurve[0]?.v, kout = inCurve[inCurve.length - 1]?.v;
+    report('Bobsleigh into ' + curve, { maxY: +peak.toFixed(1), kmhIn: +(kin ?? 0).toFixed(0), kmhOut: +(kout ?? 0).toFixed(0) });
+  }
+  {
+    const parts = lane(['IceStartBob', ...Array(30).fill('IceBobStraight')]);
+    const l = await drive(parts, 8000), moved = l.find((s) => s.v > 0.5)?.f ?? 0;
+    report('Bobsleigh straight', { ms0to100: l.find((s) => s.v >= 100)?.f - moved, kmhAt6s: +at(l, moved + 6000).v.toFixed(0), endX: +last(l).x.toFixed(2) });
+  }
+}
+
+if (section == 'wiggle') {
+  // Wood wiggles: flick left/right every `period` ms from 200 km/h for 3 s, against holding straight.
+  for (const surface of ['Wood', 'Plastic']) {
+    const parts = lane([surface + 'StartPlat', ...Array(160).fill(surface + 'PlatBase')]);
+    for (const x of [-8, -4, 4, 8]) parts.push(...lane(Array(161).fill(surface + 'PlatBase'), x));
+    for (const period of [0, 130, 100, 170, 50, 300]) {
+      const plan = [{ kmh: 200, ctl: { up: true } }];
+      // The first flick is half as long, so the car weaves about a straight line.
+      if (period) for (let t = 0, k = 0; t < 3000; t += k == 0 ? period / 2 : period, k++) plan.push({ after: t, ctl: { up: true, left: k % 2 == 0, right: k % 2 == 1 } });
+      plan.push({ after: 3000, ctl: { up: true } });
+      const l = await drive(parts, 12000, { up: true }, plan), t0 = await c.evaluate('window.__trigger');
+      report(surface + (period ? ' wiggle every ' + period + ' ms' : ' straight'), { kmhAt3s: +at(l, t0 + 3000).v.toFixed(1), x: +at(l, t0 + 3000).x.toFixed(1) });
+    }
+  }
+}
+
 console.log(c.logs.filter((l) => !/Failed to connect|NETFAIL/.test(l)).slice(0, 10));
 await c.close();
 process.exit(0);
