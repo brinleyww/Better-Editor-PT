@@ -284,6 +284,20 @@ apply('112.bundle.js', [
   // nsws_bridge.js autosave: saves the open track under its name when it has unsaved changes.
   ['autosave hook', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"));', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"),\n            (self.__beEditorDirty = () => !(0, i.gn)(this, Ye, "f")),\n            (self.__beAutosave = () => {\n              if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };\n              const n = (0, i.gn)(this, un, "f");\n              if (null == n) return { saved: !1, reason: "unnamed" };\n              const ok = (0, i.gn)(this, $t, "f").saveCustomTrack(\n                { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },\n                (0, i.gn)(this, jt, "f").getTrackData(),\n              );\n              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });\n            }));'],
   ['autosave hook cleared', '        dispose() {\n          ((0, i.GG)(this, ae, !1, "f"),', '        dispose() {\n          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = null),\n            (0, i.GG)(this, ae, !1, "f"),'],
+  // Every stock block goes under one Road category (1) and its browser, like the four surfaces.
+  [
+    'stock blocks share the Road category',
+    `const n = t[e];
+            let s = (0, i.gn)(this, zn, "f").find((t) => t.category == n.configuration.category)?.partPanel;`,
+    `const n = t[e],
+              tm = n.configuration.tm ?? self.TM.ui.stockPart(n.configuration),
+              cat = n.configuration.tm ? n.configuration.category : 1;
+            let s = (0, i.gn)(this, zn, "f").find((t) => t.category == cat)?.partPanel;`,
+  ],
+  ['Road category icon', 'getCategoryMesh(\n                  n.configuration.category,', 'getCategoryMesh(\n                  cat,'],
+  ['Road category button', 'Qn).call(this, n.configuration.category),', 'Qn).call(this, cat),'],
+  ['Road category entry', '(0, i.gn)(this, zn, "f").push({\n                  category: n.configuration.category,', '(0, i.gn)(this, zn, "f").push({\n                  category: cat,'],
+  ['Road category part', '              isStart: null != n.configuration.startOffset,\n              category: n.configuration.category,', '              isStart: null != n.configuration.startOffset,\n              category: cat,'],
   [
     'thumbnail renderer',
     `(Vn = function () {
@@ -317,18 +331,18 @@ apply('112.bundle.js', [
     `              0);
             const a = document.createElement("img");
             ((a.className = "loading"), o.appendChild(a));
-            n.configuration.tm ? self.TM.ui.add(s, o, a, n.configuration.tm) : s.appendChild(o);`,
+            self.TM.ui.add(s, o, a, tm);`,
   ],
   [
-    'plastic and wood sit at the top of the category list, right under erase',
+    'Road sits at the top of the category list, right under erase, then the four surfaces',
     `}),
                 (0, i.gn)(this, ue, "f").appendChild(e));
               const o = document.createElement("img");`,
     `}),
                 n.configuration.tm
-                  ? (0, i.gn)(this, ue, "f").insertBefore(e, (0, i.gn)(this, ue, "f").children[n.configuration.tm.f + 1])
+                  ? (0, i.gn)(this, ue, "f").insertBefore(e, (0, i.gn)(this, ue, "f").children[n.configuration.tm.f + 2] ?? null)
                   : (0, i.gn)(this, ue, "f").appendChild(e),
-                self.TM.ui.labelCategory(e, n.configuration.category));
+                self.TM.ui.labelCategory(e, cat));
               const o = document.createElement("img");`,
   ],
   [
@@ -365,7 +379,7 @@ apply('112.bundle.js', [
             }
             ((e.material = t.trackPartData?.configuration.tm ? self.TM.ui.ghostMaterial(w, (0, i.gn)(this, je, "f")) : (0, i.gn)(this, je, "f")),`,
   ],
-  ['no eager thumbnails', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src")) {', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src") && !n.trackPartData.configuration.tm) {'],
+  ['no eager thumbnails', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src")) {', 'if (n.category == t && null != n.id && !n.image.hasAttribute("src") && !n.button.__tm) {'],
   [
     'environment change',
     `for (const e of (0, i.gn)(this, Gn, "f"))
@@ -388,7 +402,7 @@ apply('112.bundle.js', [
     `const e = (0, i.gn)(this, Gn, "f")[t];
             e.isCheckpoint ? (0, i.gn)(this, ve, "f").show() : (0, i.gn)(this, ve, "f").hide();`,
     `const e = (0, i.gn)(this, Gn, "f")[t];
-            self.TM.ui.onSelect(e.trackPartData?.configuration.tm);
+            self.TM.ui.onSelect(e.button.__tm?.part);
             e.isCheckpoint ? (0, i.gn)(this, ve, "f").show() : (0, i.gn)(this, ve, "f").hide();`,
   ],
   [

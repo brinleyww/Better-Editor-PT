@@ -1,7 +1,92 @@
-// The Plastic and Wood block browser in the editor's side panel. Page only, loaded after tm_runtime.js.
+// The block browser in the editor's side panel: one for each surface, and one for the stock road blocks.
+// Page only, loaded after tm_runtime.js.
 // Keeps the game's own look: its navy surfaces, button colours, font and section headings.
 (() => {
   const TABS = self.TM.data.tabs;
+  const ROAD = 4; // the stock blocks' browser, after the four surfaces in SURFACE_NAMES
+  // The stock blocks, by their enum names: [tab, heading, [[name, label], ...]]. Tabs are the game's old categories.
+  const ROAD_LAYOUT = [
+    ['Gates', 'Start', [['Start', 'Start'], ['StartWide', 'Start, wide'], ['PlaneStart', 'Start on plane'], ['PlaneStartWide', 'Start on plane, wide']]],
+    ['Gates', 'Checkpoint', [['Checkpoint', 'Checkpoint'], ['CheckpointWide', 'Checkpoint, wide'], ['PlaneCheckpoint', 'Checkpoint on plane'], ['PlaneCheckpointWide', 'Checkpoint on plane, wide']]],
+    ['Gates', 'Finish', [['Finish', 'Finish'], ['FinishWide', 'Finish, wide'], ['PlaneFinish', 'Finish on plane'], ['PlaneFinishWide', 'Finish on plane, wide']]],
+    ['Road', 'Straights', [['Straight', 'Straight'], ['StraightPillarBottom', 'Straight on pillar'], ['StraightPillarShort', 'Straight on short pillar']]],
+    ['Road', 'Sharp turns', [['TurnSharp', 'Sharp turn'], ['TurnSharpPillarBottom', 'Sharp turn on pillar'], ['TurnSharpPillarShort', 'Sharp turn on short pillar']]],
+    ['Road', 'Junctions', [
+      ['IntersectionT', 'T junction'], ['IntersectionTPillarBottom', 'T junction on pillar'], ['IntersectionTPillarShort', 'T junction on short pillar'],
+      ['IntersectionCross', 'Crossroads'], ['IntersectionCrossPillarBottom', 'Crossroads on pillar'], ['IntersectionCrossPillarShort', 'Crossroads on short pillar'],
+      ['IntersectionY', 'Y junction'], ['IntersectionYLong', 'Y junction, long'],
+    ]],
+    ['Road', 'Slopes', [['SlopeUp', 'Slope up'], ['SlopeUpLong', 'Slope up, long'], ['SlopeDown', 'Slope down'], ['SlopeDownLong', 'Slope down, long'], ['Slope', 'Slope']]],
+    ['Road', 'Steep slopes', [['SlopeUpVertical', 'Slope up to vertical'], ['SlopeToVertical', 'Slope to vertical']]],
+    ['Road', 'Banked', [['StraightTilted', 'Banked straight'], ['ToTiltedLeft', 'To banked, left'], ['ToTiltedRight', 'To banked, right']]],
+    ['Turns', 'Turns', [['TurnShort', 'Short turn'], ['TurnLong', 'Long turn'], ['TurnLong2', 'Long turn 2'], ['TurnLong3', 'Long turn 3']]],
+    ['Turns', 'S-turns', [['TurnSLeft', 'S-turn, left'], ['TurnSRight', 'S-turn, right'], ['TurnSLongLeft', 'Long S-turn, left'], ['TurnSLongRight', 'Long S-turn, right']]],
+    ['Turns', 'Turns onto wide road', [['TurnShortLeftWide', 'Short turn, left'], ['TurnShortRightWide', 'Short turn, right'], ['TurnLongLeftWide', 'Long turn, left'], ['TurnLongRightWide', 'Long turn, right']]],
+    ['Turns', 'Banked turns', [['TurnShortTilted', 'Banked short turn'], ['TurnLongTilted', 'Banked long turn'], ['TurnLong2Tilted', 'Banked long turn 2'], ['TurnLong3Tilted', 'Banked long turn 3']]],
+    ['Wide road', 'To wide road', [['ToWideMiddle', 'To wide, middle'], ['ToWideLeft', 'To wide, left'], ['ToWideRight', 'To wide, right'], ['ToWideDouble', 'To wide, double'], ['ToWideDiagonal', 'To wide, diagonal']]],
+    ['Wide road', 'Straights and corners', [['StraightWide', 'Wide straight'], ['InnerCornerWide', 'Inner corner'], ['OuterCornerWide', 'Outer corner']]],
+    ['Wide road', 'Slopes', [
+      ['SlopeUpLeftWide', 'Slope up, left'], ['SlopeUpRightWide', 'Slope up, right'], ['SlopeUpLongLeftWide', 'Slope up long, left'], ['SlopeUpLongRightWide', 'Slope up long, right'],
+      ['SlopeDownLeftWide', 'Slope down, left'], ['SlopeDownRightWide', 'Slope down, right'], ['SlopeDownLongLeftWide', 'Slope down long, left'], ['SlopeDownLongRightWide', 'Slope down long, right'],
+      ['SlopeLeftWide', 'Slope, left'], ['SlopeRightWide', 'Slope, right'],
+    ]],
+    ['Wide road', 'Steep slopes', [['SlopeUpVerticalLeftWide', 'Slope up to vertical, left'], ['SlopeUpVerticalRightWide', 'Slope up to vertical, right'], ['SlopeToVerticalLeftWide', 'Slope to vertical, left'], ['SlopeToVerticalRightWide', 'Slope to vertical, right']]],
+    ['Planes', 'Flat', [['Plane', 'Plane'], ['PlanePillarBottom', 'Plane on pillar'], ['PlanePillarShort', 'Plane on short pillar'], ['HalfPlane', 'Half plane'], ['QuarterPlane', 'Quarter plane'], ['PlaneCorner', 'Plane corner']]],
+    ['Planes', 'Slopes', [
+      ['PlaneSlopeUp', 'Slope up'], ['PlaneSlopeUpLong', 'Slope up, long'], ['PlaneSlopeDown', 'Slope down'], ['PlaneSlopeDownLong', 'Slope down, long'], ['PlaneSlope', 'Slope'],
+      ['HalfPlaneSlopeBottomLeft', 'Half slope, bottom left'], ['HalfPlaneSlopeBottomRight', 'Half slope, bottom right'], ['HalfPlaneSlopeTopLeft', 'Half slope, top left'], ['HalfPlaneSlopeTopRight', 'Half slope, top right'],
+    ]],
+    ['Planes', 'Steep slopes', [['PlaneSlopeVerticalBottom', 'Vertical slope, bottom'], ['PlaneSlopeToVertical', 'Slope to vertical']]],
+    ['Planes', 'Bridges', [['PlaneBridge', 'Bridge'], ['PlaneBridgeCorner', 'Bridge corner'], ['PlaneBridgeIntersectionT', 'Bridge T junction'], ['PlaneBridgeIntersectionCross', 'Bridge crossroads']]],
+    ['Planes', 'Walls', [['PlaneWall', 'Wall'], ['PlaneWallCorner', 'Wall corner'], ['PlaneWallInnerCorner', 'Wall inner corner']]],
+    ['Planes', 'Wall slopes', [
+      ['PlaneWallSlopeLeft', 'Wall slope, left'], ['PlaneWallSlopeRight', 'Wall slope, right'],
+      ['PlaneWallSlopeUpLeft', 'Wall slope up, left'], ['PlaneWallSlopeUpRight', 'Wall slope up, right'], ['PlaneWallSlopeDownLeft', 'Wall slope down, left'], ['PlaneWallSlopeDownRight', 'Wall slope down, right'],
+      ['PlaneWallSlopeUpLongLeft', 'Wall slope up long, left'], ['PlaneWallSlopeUpLongRight', 'Wall slope up long, right'], ['PlaneWallSlopeDownLongLeft', 'Wall slope down long, left'], ['PlaneWallSlopeDownLongRight', 'Wall slope down long, right'],
+    ]],
+    ['Blocks', 'Blocks', [['Block', 'Block'], ['HalfBlock', 'Half block'], ['QuarterBlock', 'Quarter block'], ['BlockInnerCorner', 'Inner corner'], ['BlockOuterCorner', 'Outer corner']]],
+    ['Blocks', 'Sloped edges', [
+      ['BlockSlopedDown', 'Sloped down'], ['BlockSlopedDownInnerCorner', 'Sloped down, inner corner'], ['BlockSlopedDownOuterCorner', 'Sloped down, outer corner'],
+      ['BlockSlopedUp', 'Sloped up'], ['BlockSlopedUpInnerCorner', 'Sloped up, inner corner'], ['BlockSlopedUpOuterCorner', 'Sloped up, outer corner'],
+    ]],
+    ['Blocks', 'Slopes', [
+      ['BlockSlopeUp', 'Slope up'], ['BlockSlopeUpLong', 'Slope up, long'], ['BlockSlopeDown', 'Slope down'], ['BlockSlopeDownLong', 'Slope down, long'],
+      ['HalfBlockSlopeBottomLeft', 'Half slope, bottom left'], ['HalfBlockSlopeBottomRight', 'Half slope, bottom right'], ['HalfBlockSlopeTopLeft', 'Half slope, top left'], ['HalfBlockSlopeTopRight', 'Half slope, top right'],
+    ]],
+    ['Blocks', 'Steep slopes', [
+      ['BlockSlopeVerticalTop', 'Vertical slope, top'], ['BlockSlopeVerticalBottom', 'Vertical slope, bottom'], ['BlockSlopeToVertical', 'Slope to vertical'],
+      ['BlockSlopeVerticalCornerTop', 'Vertical corner, top'], ['BlockSlopeVerticalCornerBottom', 'Vertical corner, bottom'],
+      ['BlockSlopeVerticalInnerCornerTop', 'Vertical inner corner, top'], ['BlockSlopeVerticalInnerCornerBottom', 'Vertical inner corner, bottom'],
+    ]],
+    ['Blocks', 'Bridges', [['BlockBridge', 'Bridge'], ['BlockBridgeCorner', 'Bridge corner'], ['BlockBridgeIntersectionT', 'Bridge T junction'], ['BlockBridgeIntersectionCross', 'Bridge crossroads']]],
+    ['Wall track', 'Walls', [['WallTrackBottom', 'Bottom'], ['WallTrackMiddle', 'Middle'], ['WallTrackTop', 'Top'], ['WallTrackSlopeToVertical', 'Slope to vertical']]],
+    ['Wall track', 'Corners', [
+      ['WallTrackBottomCorner', 'Bottom corner'], ['WallTrackMiddleCorner', 'Middle corner'], ['WallTrackTopCorner', 'Top corner'],
+      ['WallTrackBottomInnerCorner', 'Bottom inner corner'], ['WallTrackInnerCorner', 'Inner corner'], ['WallTrackTopInnerCorner', 'Top inner corner'],
+    ]],
+    ['Wall track', 'Floor and ceiling', [
+      ['WallTrackFloor', 'Floor'], ['WallTrackFloorCorner', 'Floor corner'], ['WallTrackFloorPlaneCorner', 'Floor to plane corner'],
+      ['WallTrackCeiling', 'Ceiling'], ['WallTrackCeilingCorner', 'Ceiling corner'], ['WallTrackCeilingPlaneCorner', 'Ceiling to plane corner'],
+    ]],
+    ['Pillars', 'Pillars', [['PillarShort', 'Short'], ['PillarBottom', 'Bottom'], ['PillarMiddle', 'Middle'], ['PillarTop', 'Top'], ['PillarShortSlope', 'Short, on slope'], ['PillarTopSlope', 'Top, on slope']]],
+    ['Pillars', 'Branches', [1, 2, 3, 4, 5].flatMap((k) => [['PillarBranch' + k, 'Branch ' + k], ['PillarBranch' + k + 'Bottom', 'Branch ' + k + ', bottom'], ['PillarBranch' + k + 'Middle', 'Branch ' + k + ', middle'], ['PillarBranch' + k + 'Top', 'Branch ' + k + ', top']])],
+    ['Signs', 'Signs', [['SignArrowLeft', 'Arrow left'], ['SignArrowRight', 'Arrow right'], ['SignArrowUp', 'Arrow up'], ['SignArrowDown', 'Arrow down'], ['SignWarning', 'Warning'], ['SignWrongWay', 'Wrong way']]],
+  ];
+  const ROAD_TABS = [...new Set(ROAD_LAYOUT.map((r) => r[0])), 'Other'];
+  let stockParts = null; // stock id -> menu entry { i, f, t, s, l, o }, built on first use from the game's enum
+  const stockPart = (cfg) => {
+    if (!stockParts) {
+      stockParts = new Map();
+      let o = 0;
+      for (const [t, s, list] of ROAD_LAYOUT)
+        for (const [name, l] of list) {
+          const i = self.TM.stockIds.get(name);
+          if (i != null) stockParts.set(i, { i, f: ROAD, t, s, l, o: ++o });
+        }
+    }
+    // A stock block missing from the layout still shows up, under Other.
+    return stockParts.get(cfg.id) ?? { i: cfg.id, f: ROAD, t: 'Other', s: 'Other', l: 'Block ' + cfg.id, o: 1e9 };
+  };
   const RECENT_KEY = 'better_editor_recent_parts';
   const RECENT_MAX = 12;
   let thumb = null; // set by the editor: (partId, img) => renders the thumbnail for the current environment
@@ -39,7 +124,7 @@
   const loadRecent = () => {
     try {
       const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
-      return Array.isArray(v) ? v.filter((id) => self.TM.byId.has(id)) : [];
+      return Array.isArray(v) ? v.filter((id) => Number.isInteger(id)) : [];
     } catch {
       return [];
     }
@@ -59,7 +144,8 @@
     }
   });
 
-  function build(panel) {
+  function build(panel, f) {
+    const tabList = f == ROAD ? ROAD_TABS : TABS;
     panel.classList.add('tm');
     const head = document.createElement('div');
     head.className = 'tm-head';
@@ -87,7 +173,7 @@
     body.append(tabs, list);
     panel.append(head, body);
 
-    const state = { panel, title, search, name, tabs, list, none, tab: TABS[0], groups: new Map(), tabButtons: new Map(), entries: [], selected: null, recentGroup: null };
+    const state = { panel, title, search, name, tabs, list, none, tab: tabList[0], groups: new Map(), tabButtons: new Map(), entries: [], selected: null, recentGroup: null };
 
     const tabButton = (t) => {
       const b = document.createElement('button');
@@ -101,8 +187,10 @@
       state.tabButtons.set(t, b);
     };
     tabButton('Recent');
-    for (const t of TABS) tabButton(t);
+    for (const t of tabList) tabButton(t);
     list.appendChild(none);
+    // Stock headings in layout order, whatever order the game lists its blocks in.
+    if (f == ROAD) for (const [t, s] of ROAD_LAYOUT) group(state, t, s);
 
     // Typing must not reach the editor's shortcuts (WASD moves the camera, R rotates, ...).
     for (const type of ['keydown', 'keyup', 'keypress']) search.addEventListener(type, (e) => {
@@ -218,10 +306,11 @@
     g.appendChild(grid);
   }
 
-  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice'];
+  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Road'];
   // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser.
   const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium', 12: 'Ice' };
   const describe = (p) => {
+    if (!p.b) return SURFACE_NAMES[p.f] + ': ' + p.l;
     const size = (a) => Math.round((p.b[1][a] - p.b[0][a]) / 5) || 1;
     return SURFACE_NAMES[p.f] + ': ' + p.l + ' (' + Math.max(1, Math.round(size(0) / 4)) + 'x' + Math.max(1, Math.round(size(2) / 4)) + ', ' + size(1) + ' high)';
   };
@@ -230,8 +319,9 @@
     setThumbnailRenderer(fn) {
       thumb = fn;
     },
+    stockPart,
     add(panel, button, image, part) {
-      const state = panels.get(panel) ?? build(panel);
+      const state = panels.get(panel) ?? build(panel, part.f);
       if (!state.title.textContent) state.title.textContent = SURFACE_NAMES[part.f] + ' blocks';
       const s = group(state, part.t, part.s);
       state.tabButtons.get(part.t)?.classList.remove('empty');
@@ -242,7 +332,10 @@
       button.title = label;
       button.addEventListener('mouseenter', () => (state.name.textContent = label));
       button.addEventListener('mouseleave', () => (state.name.textContent = state.selected?.label ?? ''));
-      s.grid.appendChild(button);
+      // Stock blocks keep their layout order inside a heading; surface blocks arrive in order already.
+      const next = part.o == null ? null : [...s.grid.children].find((b) => b.__tm.part.o > part.o);
+      s.grid.insertBefore(button, next ?? null);
+      s.heading.classList.remove('off'); // a heading made ahead of its blocks was hidden as empty
       state.entries.push(entry);
       owner.set(part.i, { state, entry });
       seen.observe(button);
@@ -265,7 +358,7 @@
     },
     // Called when a block is actually placed.
     onPlaced(id) {
-      if (!self.TM.isTM(id)) return;
+      if (!owner.has(id)) return;
       const l = loadRecent().filter((x) => x != id);
       l.unshift(id);
       l.length = Math.min(l.length, RECENT_MAX);
@@ -302,7 +395,7 @@
       return m;
     },
     skipEager(entry) {
-      if (!entry.trackPartData?.configuration.tm) return false;
+      if (!entry.button.__tm) return false;
       entry.image.removeAttribute('src');
       entry.image.className = 'loading';
       return true;

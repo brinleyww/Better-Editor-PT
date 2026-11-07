@@ -8,7 +8,9 @@ self.TM = (() => {
 
   // ---- part table --------------------------------------------------------------------------------------------
   const isTM = (id) => id >= FIRST_ID;
+  const stockIds = new Map(); // stock part name -> id, read from the game's own enum before ours are added
   const addEnum = (e) => {
+    for (const k in e) if (typeof e[k] == 'number') stockIds.set(k, e[k]);
     for (const p of D.parts) {
       e[p.n] = p.i;
       e[p.i] = p.n;
@@ -1025,6 +1027,7 @@ self.TM = (() => {
     version: D.version,
     isTM,
     addEnum,
+    stockIds,
     parts: D.parts,
     byId,
     load,

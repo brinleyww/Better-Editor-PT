@@ -1763,25 +1763,27 @@
               }));
           });
           for (let e = 0; e < t.length; e++) {
-            const n = t[e];
-            let s = (0, i.gn)(this, zn, "f").find((t) => t.category == n.configuration.category)?.partPanel;
+            const n = t[e],
+              tm = n.configuration.tm ?? self.TM.ui.stockPart(n.configuration),
+              cat = n.configuration.tm ? n.configuration.category : 1;
+            let s = (0, i.gn)(this, zn, "f").find((t) => t.category == cat)?.partPanel;
             if (null == s) {
               ((s = document.createElement("div")),
                 (s.className = "part-panel hidden"),
                 (0, i.gn)(this, pe, "f").prepend(s));
               const t = (0, i.gn)(this, Jt, "f").getCategoryMesh(
-                  n.configuration.category,
+                  cat,
                   (0, i.gn)(this, jt, "f").environment,
                 ),
                 e = document.createElement("button");
               (e.addEventListener("click", () => {
-                ((0, i.gn)(this, Kt, "m", Qn).call(this, n.configuration.category),
+                ((0, i.gn)(this, Kt, "m", Qn).call(this, cat),
                   (0, i.gn)(this, Ft, "f").playUIClick());
               }),
                 n.configuration.tm
-                  ? (0, i.gn)(this, ue, "f").insertBefore(e, (0, i.gn)(this, ue, "f").children[n.configuration.tm.f + 1])
+                  ? (0, i.gn)(this, ue, "f").insertBefore(e, (0, i.gn)(this, ue, "f").children[n.configuration.tm.f + 2] ?? null)
                   : (0, i.gn)(this, ue, "f").appendChild(e),
-                self.TM.ui.labelCategory(e, n.configuration.category));
+                self.TM.ui.labelCategory(e, cat));
               const o = document.createElement("img");
               ((o.className = "loading"),
                 Rt(t).then((t) => {
@@ -1789,7 +1791,7 @@
                 }),
                 e.appendChild(o),
                 (0, i.gn)(this, zn, "f").push({
-                  category: n.configuration.category,
+                  category: cat,
                   button: e,
                   image: o,
                   partPanel: s,
@@ -1803,7 +1805,7 @@
               0);
             const a = document.createElement("img");
             ((a.className = "loading"), o.appendChild(a));
-            n.configuration.tm ? self.TM.ui.add(s, o, a, n.configuration.tm) : s.appendChild(o);
+            self.TM.ui.add(s, o, a, tm);
             const r = [];
             let h;
             if (n.colors.size <= 1) h = null;
@@ -1839,7 +1841,7 @@
               isCheckpoint:
                 null != n.configuration.detector && n.configuration.detector.type == dt.A.Checkpoint,
               isStart: null != n.configuration.startOffset,
-              category: n.configuration.category,
+              category: cat,
             };
             (0, i.gn)(this, Gn, "f").push(l);
           }
@@ -2009,7 +2011,7 @@
                   e = at.A.Desert;
               }
               for (const n of (0, i.gn)(this, Gn, "f"))
-                if (n.category == t && null != n.id && !n.image.hasAttribute("src") && !n.trackPartData.configuration.tm) {
+                if (n.category == t && null != n.id && !n.image.hasAttribute("src") && !n.button.__tm) {
                   const t = (0, i.gn)(this, Jt, "f").getPart(n.id).colors.get(e);
                   if (null == t) throw new Error("Mesh is not loaded");
                   ((n.image.className = "loading"),
@@ -2041,7 +2043,7 @@
           if ((null != e && (e.selectedIndex = t), null != t)) {
             if (t < 0 && t >= (0, i.gn)(this, Gn, "f").length) throw new Error("Part index out of bounds");
             const e = (0, i.gn)(this, Gn, "f")[t];
-            self.TM.ui.onSelect(e.trackPartData?.configuration.tm);
+            self.TM.ui.onSelect(e.button.__tm?.part);
             e.isCheckpoint ? (0, i.gn)(this, ve, "f").show() : (0, i.gn)(this, ve, "f").hide();
             const n = (0, i.gn)(this, Kt, "m", Zn).call(this);
             if (null != e.id)
