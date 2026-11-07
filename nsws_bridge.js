@@ -100,6 +100,42 @@
         return { ok: true, name, opened: false };
     }
 
+    const wait = (test, ms) => new Promise((resolve) => {
+        const end = Date.now() + ms;
+        (function check() {
+            if (test()) resolve(true);
+            else if (Date.now() > end) resolve(false);
+            else setTimeout(check, 100);
+        })();
+    });
+
+    function savedTrack(name) {
+        let found = null;
+        self.__beTrackStore?.forEachCustomTrack((id, meta, data) => {
+            if (!found && meta.name === name) found = { meta, data };
+        });
+        return found;
+    }
+
+    // Opens the editor (without the menu) on a saved track, or on an empty one when name is null.
+    // force: false answers {dirty: true} instead of dropping unsaved changes.
+    async function editTrack(name, force, fresh) {
+        if (!self.__beStartEditor || !self.__beTrackStore) return { ok: false, error: "The editor is still loading. Try again in a moment." };
+        if (!force && self.__beEditorDirty?.()) return { ok: false, dirty: true };
+        const track = name != null ? savedTrack(name) : null;
+        if (name != null && !track) return { ok: false, error: "The editor has no saved track called \"" + name + "\"." };
+        if (!self.__beEditorOpen || (fresh && !track)) {
+            // Starting the editor while the game is still loading gets undone when loading finishes.
+            await wait(() => !document.querySelector(".loading-screen"), 60000);
+            await new Promise((r) => setTimeout(r, 500));
+            self.__beStartEditor();
+            if (!(await wait(() => self.__beEditorOpen, 20000))) return { ok: false, error: "The editor didn't open." };
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        if (track) self.__beEditorOpen(track.meta, null, () => Promise.resolve(track.data));
+        return { ok: true, name: track ? track.meta.name : null };
+    }
+
     window.addEventListener("message", (e) => {
         const msg = e.data;
         if (e.source !== window.parent || !msg || msg.nsws !== "be" || !ORIGIN.test(e.origin)) return;
@@ -107,7 +143,7 @@
         const reply = (body) => post(Object.assign({ type: msg.type, reqId: msg.reqId }, body));
         if (msg.type === "hello") {
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 1, reqId: msg.reqId, loaded: !!self.__beTrackStore });
+            post({ type: "ready", version: 2, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
         } else if (msg.type === "list") {
             reply({ tracks: listTracks() });
         } else if (msg.type === "import") {
@@ -118,6 +154,8 @@
                 result = { ok: false, error: "The editor couldn't read that track code." };
             }
             reply(result);
+        } else if (msg.type === "edit") {
+            editTrack(typeof msg.name === "string" ? msg.name : null, !!msg.force, !!msg.fresh).then(reply, () => reply({ ok: false, error: "The editor couldn't open that track." }));
         } else if (msg.type === "autosave") {
             let result = { saved: false, reason: "closed" };
             try {

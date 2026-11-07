@@ -27,6 +27,9 @@ apply('index.html', [
 ]);
 
 apply('main.bundle.js', [
+  // nsws_bridge.js starts the editor without the menu.
+  ['no first-launch race when embedded', '              : this.isFirstSession()\n                ? { type: "tutorial" }', '              : this.isFirstSession() && window.parent === window\n                ? { type: "tutorial" }'],
+  ['editor starter', '            J = (t, i, a, c, h) => {', '            beStart = (self.__beStartEditor = Q),\n            J = (t, i, a, c, h) => {'],
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
@@ -273,9 +276,12 @@ apply('main.bundle.js', [
 ]);
 
 apply('112.bundle.js', [
+  // nsws_bridge.js opens saved tracks straight into the editor.
+  ['editor track loader', '                "cancel",\n                !0,\n                () => {\n                  (((0, i.gn)(this, re, "f").className = "editor-ui"), (0, i.gn)(this, we, "f").hide());\n                },\n                (t, e, n) => {', '                "cancel",\n                !0,\n                () => {\n                  (((0, i.gn)(this, re, "f").className = "editor-ui"), (0, i.gn)(this, we, "f").hide());\n                },\n                (self.__beEditorOpen = (t, e, n) => {'],
+  ['editor track loader end', '                      .finally(() => {\n                        ((0, i.gn)(this, be, "f")?.dispose(), (0, i.GG)(this, be, null, "f"));\n                      }));\n                },\n              ),\n              "f",', '                      .finally(() => {\n                        ((0, i.gn)(this, be, "f")?.dispose(), (0, i.GG)(this, be, null, "f"));\n                      }));\n                }),\n              ),\n              "f",'],
   // nsws_bridge.js autosave: saves the open track under its name when it has unsaved changes.
-  ['autosave hook', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"));', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"),\n            (self.__beAutosave = () => {\n              if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };\n              const n = (0, i.gn)(this, un, "f");\n              if (null == n) return { saved: !1, reason: "unnamed" };\n              const ok = (0, i.gn)(this, $t, "f").saveCustomTrack(\n                { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },\n                (0, i.gn)(this, jt, "f").getTrackData(),\n              );\n              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });\n            }));'],
-  ['autosave hook cleared', '        dispose() {\n          ((0, i.GG)(this, ae, !1, "f"),', '        dispose() {\n          ((self.__beAutosave = null),\n            (0, i.GG)(this, ae, !1, "f"),'],
+  ['autosave hook', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"));', '            (0, i.GG)(this, vn, new Date(), "f"),\n            (0, i.GG)(this, Ye, !1, "f"),\n            (self.__beEditorDirty = () => !(0, i.gn)(this, Ye, "f")),\n            (self.__beAutosave = () => {\n              if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };\n              const n = (0, i.gn)(this, un, "f");\n              if (null == n) return { saved: !1, reason: "unnamed" };\n              const ok = (0, i.gn)(this, $t, "f").saveCustomTrack(\n                { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },\n                (0, i.gn)(this, jt, "f").getTrackData(),\n              );\n              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });\n            }));'],
+  ['autosave hook cleared', '        dispose() {\n          ((0, i.GG)(this, ae, !1, "f"),', '        dispose() {\n          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = null),\n            (0, i.GG)(this, ae, !1, "f"),'],
   [
     'thumbnail renderer',
     `(Vn = function () {

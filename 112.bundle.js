@@ -2100,6 +2100,7 @@
             (0, i.GG)(this, Ln, null, "f"),
             (0, i.GG)(this, vn, new Date(), "f"),
             (0, i.GG)(this, Ye, !1, "f"),
+            (self.__beEditorDirty = () => !(0, i.gn)(this, Ye, "f")),
             (self.__beAutosave = () => {
               if ((0, i.gn)(this, Ye, "f")) return { saved: !1, reason: "clean" };
               const n = (0, i.gn)(this, un, "f");
@@ -3104,7 +3105,7 @@
                 () => {
                   (((0, i.gn)(this, re, "f").className = "editor-ui"), (0, i.gn)(this, we, "f").hide());
                 },
-                (t, e, n) => {
+                (self.__beEditorOpen = (t, e, n) => {
                   ((0, i.gn)(this, we, "f").hide(),
                     (0, i.GG)(this, Sn, !0, "f"),
                     (0, i.GG)(this, be, new gi.A(!0), "f"),
@@ -3149,7 +3150,7 @@
                       .finally(() => {
                         ((0, i.gn)(this, be, "f")?.dispose(), (0, i.GG)(this, be, null, "f"));
                       }));
-                },
+                }),
               ),
               "f",
             ),
@@ -3587,7 +3588,7 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((self.__beAutosave = null),
+          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = null),
             (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),

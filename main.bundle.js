@@ -63989,7 +63989,7 @@
             ? { type: "join-multiplayer", inviteCode: e }
             : I.qb()
               ? { type: "host-multiplayer" }
-              : this.isFirstSession()
+              : this.isFirstSession() && window.parent === window
                 ? { type: "tutorial" }
                 : null;
         }
@@ -64331,6 +64331,7 @@
                 }
               });
             },
+            beStart = (self.__beStartEditor = Q),
             J = (t, i, a, c, h) => {
               o.trigger(() =>
                 I.RN("start-game").finally(() => {
