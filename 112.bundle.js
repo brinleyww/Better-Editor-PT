@@ -1595,6 +1595,7 @@
             ((0, i.GG)(this, mn, t, "f"), (0, i.GG)(this, vn, new Date(), "f"));
         }),
         (Un = function (t) {
+          if (self.__beExitHook?.()) return;
           const e = () => {
             (0, i.gn)(this, Xt, "f").trigger(() => {
               ((0, i.GG)(this, Ye, !0, "f"),

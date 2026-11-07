@@ -18,6 +18,13 @@
         }
     }
 
+    // Exit and Escape in the editor close it back to the NSWS menu; the track stays open with its changes.
+    self.__beExitHook = () => {
+        if (!parentOrigin) return false;
+        post({ type: "exit" });
+        return true;
+    };
+
     // Rocket League and Royale only exist in the NSWS game, so with either picked the editor's Test runs there.
     self.__beTestHook = () => {
         if (mode === "normal" || !parentOrigin) return false;
