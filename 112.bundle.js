@@ -2724,9 +2724,14 @@
             (x.innerHTML = '<img class="button-icon" src="images/test.svg"> '),
             x.append((0, i.gn)(this, Vt, "f").get("Test")),
             x.addEventListener("click", () => {
-              ((0, i.gn)(this, Ft, "f").playUIClick(), (0, i.gn)(this, Kt, "m", Hn).call(this));
+              ((0, i.gn)(this, Ft, "f").playUIClick(), self.__beTestHook?.() || (0, i.gn)(this, Kt, "m", Hn).call(this));
             }),
-            k.appendChild(x));
+            k.appendChild(x),
+            (self.__beEditorCurrent = () => {
+              const t = (0, i.gn)(this, un, "f"),
+                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") };
+              return { name: t, author: e.author, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) };
+            }));
           const y = document.createElement("button");
           ((y.className = "button"),
             (y.innerHTML = '<img class="button-icon" src="images/random.svg"> '),
@@ -3588,7 +3593,7 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = null),
+          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = null),
             (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),

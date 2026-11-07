@@ -8,6 +8,24 @@
     let parentOrigin = null;
     let lastSig = null;
     let listening = false;
+    let mode = "normal";
+
+    function currentTrack() {
+        try {
+            return self.__beEditorCurrent ? self.__beEditorCurrent() : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // Rocket League and Royale only exist in the NSWS game, so with either picked the editor's Test runs there.
+    self.__beTestHook = () => {
+        if (mode === "normal" || !parentOrigin) return false;
+        const t = currentTrack();
+        if (!t) return false;
+        post({ type: "test", mode, name: t.name, code: t.code });
+        return true;
+    };
 
     function post(msg) {
         if (!parentOrigin) return;
@@ -156,6 +174,11 @@
             reply(result);
         } else if (msg.type === "edit") {
             editTrack(typeof msg.name === "string" ? msg.name : null, !!msg.force, !!msg.fresh).then(reply, () => reply({ ok: false, error: "The editor couldn't open that track." }));
+        } else if (msg.type === "current") {
+            reply({ track: currentTrack() });
+        } else if (msg.type === "mode") {
+            mode = ["rocket", "royale"].includes(msg.mode) ? msg.mode : "normal";
+            reply({ ok: true });
         } else if (msg.type === "autosave") {
             let result = { saved: false, reason: "closed" };
             try {
