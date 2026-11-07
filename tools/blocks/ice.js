@@ -24,7 +24,7 @@ const ICE = {
 // the middle and the walls steepen evenly all the way up. The curve is cut wherever it turns BEND, so it is smooth
 // and evenly shaded from floor to lip. Inside solid walls that fill the block to its edges; the lip is 4.6 up,
 // inside one layer, and the walls' outsides and ends stand straight up.
-const BOB = { out: 10, height: 4.4, curl: Math.PI / 2, shape: 2, bend: 2 * (Math.PI / 180), maxLen: 0.6 };
+const BOB = { out: 10, height: 4.4, curl: Math.PI / 2, shape: 2, bend: 1.5 * (Math.PI / 180), maxLen: 0.6 };
 const BOB_CURVE = (() => {
   const { height, curl, shape, bend, maxLen } = BOB,
     n = 4000,
@@ -140,6 +140,8 @@ function onFloor(m) {
   return m;
 }
 const bobProfile = (st, paint, opt) => () => bobPolys(st, paint, opt);
+// Bobsleigh curves are cut every 3 degrees of turn, so the walls round the outside have no bumps for the car to feel.
+const bobArc = (r) => Math.max(0.4, r * 3 * DEG);
 
 function buildIce() {
   const st = ICE,
@@ -156,21 +158,21 @@ function buildIce() {
     bob('BobStraight', 'Bobsleigh', T, 'Straights', roadPart(st, P, [{ line: 20 }]));
     bob('BobStraightX2', 'Bobsleigh, 2 long', T, 'Straights', roadPart(st, P, [{ line: 40 }]));
     bob('BobHalf', 'Bobsleigh, half', T, 'Straights', roadPart(st, P, [{ line: 10 }]));
-    [10, 30, 50, 70, 90].forEach((r, i) => bob('BobCurve' + (i + 1), 'Bobsleigh curve ' + (i + 1), T, 'Curves', roadPart(st, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) })));
+    [10, 30, 50, 70, 90].forEach((r, i) => bob('BobCurve' + (i + 1), 'Bobsleigh curve ' + (i + 1), T, 'Curves', roadPart(st, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
     // A right turn's outer wall is on the left. The wall is one more layer of ice to ride up on.
-    [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWall' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high outer wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) })));
-    [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWallIn' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high inner wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallR: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) })));
+    [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWall' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high outer wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
+    [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWallIn' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high inner wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallR: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
     bob('BobStraightWall', 'Bobsleigh, high wall on the left', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5 }), [{ line: 20 }]));
     bob('BobStraightWalls', 'Bobsleigh, high walls both sides', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5, wallR: 5 }), [{ line: 20 }]));
     // Chicanes: two arcs of radius 25 and 53.13 degrees shift the channel one block sideways over two blocks.
     const S = Math.atan2(4, 3);
     for (const dir of [1, -1])
-      bob('BobChicane' + (dir > 0 ? 'R' : 'L'), 'Bobsleigh chicane, ' + (dir > 0 ? 'right' : 'left'), T, 'Chicanes', roadPart(st, P, [{ r: 25, ang: S, dir }, { r: 25, ang: S, dir: -dir }], { arcStep: 2.5 }));
+      bob('BobChicane' + (dir > 0 ? 'R' : 'L'), 'Bobsleigh chicane, ' + (dir > 0 ? 'right' : 'left'), T, 'Chicanes', roadPart(st, P, [{ r: 25, ang: S, dir }, { r: 25, ang: S, dir: -dir }], { arcStep: bobArc(25) }));
     // Long chicanes: two 45 degree arcs shift one block sideways, with straights so the piece is four blocks long.
     for (const dir of [1, -1]) {
       const r = 20 / (2 * (1 - Math.SQRT1_2)),
         fwd = 2 * r * Math.SQRT1_2;
-      bob('BobChicaneLong' + (dir > 0 ? 'R' : 'L'), 'Bobsleigh long chicane, ' + (dir > 0 ? 'right' : 'left'), T, 'Chicanes', roadPart(st, P, [{ line: (80 - fwd) / 2 }, { r, ang: 45 * DEG, dir }, { r, ang: 45 * DEG, dir: -dir }, { line: (80 - fwd) / 2 }], { arcStep: 2.5 }));
+      bob('BobChicaneLong' + (dir > 0 ? 'R' : 'L'), 'Bobsleigh long chicane, ' + (dir > 0 ? 'right' : 'left'), T, 'Chicanes', roadPart(st, P, [{ line: (80 - fwd) / 2 }, { r, ang: 45 * DEG, dir }, { r, ang: 45 * DEG, dir: -dir }, { line: (80 - fwd) / 2 }], { arcStep: bobArc(r) }));
     }
     for (const { g, n, L } of slopes) {
       const sub = n + ' slopes';
@@ -180,7 +182,7 @@ function buildIce() {
     }
     // Climbing and diving turns, the way bobsleigh tracks wind down a hill.
     for (const [i, r] of [30, 50].entries())
-      bob('BobCurveClimb' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', climbing one layer', T, 'Slope curves', roadPart(st, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r), y: (s) => 5 * smooth(s / (r * 90 * DEG)) }));
+      bob('BobCurveClimb' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', climbing one layer', T, 'Slope curves', roadPart(st, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r), y: (s) => 5 * smooth(s / (r * 90 * DEG)) }));
     const TC = 'Crests and dips';
     bob('BobCrest', 'Bobsleigh crest', T, TC, roadPart(st, P, [{ line: 40 }], { step: 2.5, y: (s) => 5 * (0.5 - 0.5 * Math.cos((s / 40) * 2 * Math.PI)) }));
     bob('BobDip', 'Bobsleigh dip', T, TC, roadPart(st, P, [{ line: 40 }], { step: 2.5, y: (s) => 5 - 5 * (0.5 - 0.5 * Math.cos((s / 40) * 2 * Math.PI)) }));

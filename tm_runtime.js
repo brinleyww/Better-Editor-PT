@@ -136,8 +136,7 @@ self.TM = (() => {
       const bouncy = p.u != null && SURFACES[p.u].bounce;
       for (const m of physicsMeshes(p)) {
         const P = positions(m),
-          I = indices(m),
-          o0 = o;
+          I = indices(m);
         for (let i = 0; i < I.length; i++, o += 3) {
           const v = I[i] * 3,
             a = P[v],
@@ -147,11 +146,22 @@ self.TM = (() => {
           out[o + 1] = M[3] * a + M[4] * b + M[5] * c + wy - off.y;
           out[o + 2] = M[6] * a + M[7] * b + M[8] * c + wz - off.z;
         }
-        if (bouncy)
-          for (let t = o0; t < o; t += 9) {
+      }
+      // The bounce's walls: the part's own bounce list (no deco, poles or gate banners) when it has one.
+      if (bouncy)
+        for (const m of p.bw ? [p.bw] : physicsMeshes(p)) {
+          const P = positions(m),
+            I = indices(m);
+          for (let t = 0; t < I.length; t += 3) {
             const k = walls.tris.length / 9,
               T = [];
-            for (let j = 0; j < 9; j++) T.push(out[t + j] + (j % 3 == 0 ? off.x : j % 3 == 1 ? off.y : off.z));
+            for (let j = 0; j < 3; j++) {
+              const q = I[t + j] * 3;
+              T.push(...rotate(M, P[q], P[q + 1], P[q + 2]));
+              T[3 * j] += wx;
+              T[3 * j + 1] += wy;
+              T[3 * j + 2] += wz;
+            }
             walls.tris.push(...T);
             const lo = [0, 1, 2].map((a) => Math.floor(Math.min(T[a], T[a + 3], T[a + 6]) / 5)),
               hi = [0, 1, 2].map((a) => Math.floor(Math.max(T[a], T[a + 3], T[a + 6]) / 5));
@@ -163,7 +173,7 @@ self.TM = (() => {
                   l ? l.push(k) : walls.cells.set(key, [k]);
                 }
           }
-      }
+        }
       if (p.u != null || p.r) {
         const entry = { u: p.u ?? null, r: p.r ? { x: wx, y: wy, z: wz, M, boxes: p.r } : null };
         rotatedTiles(id, rot, axis).forEach((tx, ty, tz) => {
@@ -246,21 +256,24 @@ self.TM = (() => {
   const SURFACES = [
     // Plastic: almost no grip, very strong acceleration at low speed, and it throws the car back when hit side-on or roof-first.
     { gripFront: 0.45, gripRear: 0.36, launch: 34, launchUntil: 45, bounce: true },
-    // Wood: a little more grip than road. The tyres' grip also limits braking, so much more than this makes it stop dead.
+    // Wood: grips hard, like TM2020 dry wood: half as much again as before. The tyres' grip also limits braking, so while
+    // the brake is down wood holds the car with brakeGrip instead, or it would stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
     // so it pulls harder the faster you go without running away.
-    { gripFront: 1.2, gripRear: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
+    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
     // Platform ice: the tyres barely hold, so the car slides; steering turns the car itself (ice.yaw, rad/s) and the
     // way it is going swings round to its nose at ice.align x sin(slip) rad/s, so a held turn settles into a steady
     // slide instead of spinning. Sliding costs ice.loss x sin^2(slip) of the speed per second. The tyres cannot put
     // the engine down either, so the launch push stands in for it up to launchUntil. stick (units/s^2) presses the
-    // car onto bobsleigh ice, and on a bobsleigh wall `follow` (per second) turns the car's climb up the wall into
-    // speed along the channel, so the walls carry the car round a curve instead of throwing it over the top.
+    // car onto bobsleigh ice, and near the top of a bobsleigh wall `follow` (per second) turns the car's climb up the wall
+    // into speed along the channel, so the walls carry the car round a curve instead of throwing it over the top. It
+    // starts where the wall's normal has `from` upward (0.5: a 60 degree wall) and grows with the square of the way
+    // from there to straight up, so the car rides freely up the lower and middle wall and is held at the lip.
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
-    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 25 } },
+    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5 } },
   ];
   // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
   // window: longest collision in frames), then judged as a whole.
@@ -280,12 +293,6 @@ self.TM = (() => {
   // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
   // speed kept at keep per frame (about 2% a second lost); over below endSlip.
   const BUG = { minSpeed: 100 / 3.6, minSlip: 0.17, endSlip: 0.05, frames: 1200, air: 120, window: 150, kink: 0.99, grip: 0.55, keep: 0.99998 };
-  // Wood wiggles: flicking the steering from one side to the other above minSpeed (units per second), with at least
-  // three wheels on wood and the car not sliding (maxSlip, radians), adds speed along the way the car is going.
-  // A flick `best` frames after the last one adds `gain` units per second, falling off over `width`; nothing outside
-  // min..max frames. Until the next flick is due the tyres' scrub costs no speed, so a good rhythm beats driving
-  // straight while mashing the keys or slow weaving only loses speed to the scrub.
-  const WIGGLE = { minSpeed: 120 / 3.6, maxSlip: 0.25, gain: 0.5, best: 130, width: 55, min: 60, max: 260 };
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -387,13 +394,17 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, wigT: 0, wigAt: -1e9, wigDir: 0, wigLeft: 0, wigV: 0 });
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0 });
   }
+  // Every effect on the car ends: effect blocks, wet tyres. On a Reset block, a checkpoint and a respawn.
   const clear = (c) => {
     c.boostLeft = 0;
+    c.boost = null;
     c.reactorLeft = 0;
+    c.reactor = null;
     c.slow = false;
     c.noEngine = c.noBrake = c.noSteer = c.cruise = c.fragile = false;
+    c.wet = 0;
   };
   // Filters the controls going into the car. Always returns a fresh object; stock tracks pass straight through.
   function fxControls(carId, r) {
@@ -406,7 +417,7 @@ self.TM = (() => {
     }
     if (out.reset) {
       clear(c);
-      c.bug = c.wigLeft = c.catchRamp = 0;
+      c.bug = c.catchRamp = 0;
       c.justReset = true;
     }
     if (c.noEngine) out.up = false;
@@ -470,9 +481,13 @@ self.TM = (() => {
     c.lastState = c.slow ? stateBuffer.slice(0) : null;
     let water = null; // the water the car is in or just above
 
+    // A respawn moves the car further in one frame than it can drive.
+    if (c.last && Math.abs(x - c.last.x) + Math.abs(y - c.last.y) + Math.abs(z - c.last.z) > 5) clear(c);
+    const cp = s.getUint16(pos - 2, true);
+    if (cp > c.lastCp) clear(c);
+
     // Passing a diagonal checkpoint: the physics just saved a respawn point facing along the grid. Turn it to face
     // along the diagonal road, the way the car was going, and move it to just behind the gate on that line.
-    const cp = s.getUint16(pos - 2, true);
     if (cp > c.lastCp && c.spawns.length) {
       let best = null,
         bestD = 625;
@@ -622,6 +637,7 @@ self.TM = (() => {
       const f = cellAt(c.cells, F[g + 4] - F[g] * 0.1, F[g + 5] - F[g + 1] * 0.1, F[g + 6] - F[g + 2] * 0.1),
         surface = f == null ? null : SURFACES[f];
       let grip = surface ? (w < 2 ? surface.gripFront : surface.gripRear) : 1; // wheels 0 and 1 steer
+      if (surface && surface.brakeGrip && c.ctl && c.ctl.down) grip = Math.min(grip, surface.brakeGrip);
       if (grip > 1) {
         // Extra grip is a fixed amount, sized at the wheel's resting load: it does not grow with load.
         // In a loop the tyres carry many times their resting load, and grip that scaled with it would spin
@@ -746,11 +762,11 @@ self.TM = (() => {
         F[v] -= nx * k;
         F[v + 1] -= ny * k;
         F[v + 2] -= nz * k;
-        // Uphill along the wall: world up with the wall's normal taken out. Only on walls steeper than 45 degrees.
+        // Uphill along the wall: world up with the wall's normal taken out. Only on walls steeper than `from`.
         const ax = nx / (nl || 1),
           ay = ny / (nl || 1),
           az = nz / (nl || 1);
-        if (ice.follow && nl > 0 && ay < 0.7) {
+        if (ice.follow && nl > 0 && ay < ice.from) {
           let wx = -ax * ay,
             wy = 1 - ay * ay,
             wz = -az * ay;
@@ -761,7 +777,8 @@ self.TM = (() => {
           const up = F[v] * wx + F[v + 1] * wy + F[v + 2] * wz;
           if (up > 0) {
             const before = Math.hypot(F[v], F[v + 1], F[v + 2]),
-              d = up * Math.min(1, ice.follow * 0.001);
+              steep = 1 - ay / ice.from,
+              d = up * Math.min(1, ice.follow * 0.001 * steep * steep);
             F[v] -= wx * d;
             F[v + 1] -= wy * d;
             F[v + 2] -= wz * d;
@@ -773,32 +790,6 @@ self.TM = (() => {
               F[v + 2] *= k2;
             }
           }
-        }
-      }
-    }
-
-    // Wood wiggles: a well-timed flick of the steering from one side to the other gives a little speed.
-    c.wigT++;
-    if (steer != 0 && steer != c.wigDir) {
-      const dt = c.wigT - c.wigAt;
-      if (c.wigDir != 0 && c.gas && expoWheels >= 3 && spd > WIGGLE.minSpeed && Math.abs(slip) < WIGGLE.maxSlip && dt >= WIGGLE.min && dt <= WIGGLE.max) {
-        c.wigV = Math.max(spd, c.wigLeft > 0 ? c.wigV : 0) + WIGGLE.gain * Math.exp(-(((dt - WIGGLE.best) / WIGGLE.width) ** 2));
-        c.wigLeft = WIGGLE.max;
-      }
-      c.wigDir = steer;
-      c.wigAt = c.wigT;
-    }
-    if (c.wigLeft > 0) {
-      c.wigLeft--;
-      if (!c.gas || expoWheels < 3 || Math.abs(slip) > 2 * WIGGLE.maxSlip) c.wigLeft = 0;
-      else {
-        // Gravity still counts on a slope.
-        c.wigV = Math.max(spd, c.wigV - 0.00981 * (F[v + 1] / spd));
-        if (spd < c.wigV) {
-          const k = c.wigV / spd;
-          F[v] *= k;
-          F[v + 1] *= k;
-          F[v + 2] *= k;
         }
       }
     }

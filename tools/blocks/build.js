@@ -123,6 +123,8 @@ const MATERIALS = litAll({
 // Drawn but never collided with: the car sinks through water instead of driving on it.
 const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
 const GRASS_MATS = ['Grass', 'GrassB'];
+// Gate banners and finish hoops are poles, not walls: the plastic bounce leaves them out, like deco and the soft boxes.
+const NO_BOUNCE = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack'];
 
 // Stock colour slots: env variants plus Custom0-8. Same slots as stock Block parts.
 const CUSTOM_IDS = [32, 33, 34, 35, 36, 37, 38, 39, 40];
@@ -251,21 +253,36 @@ function main() {
       mats.push([matIndex.get(m), po, pos.length, io, ind.length]);
     }
     {
-      // One indexed list for collision, every solid material together.
+      // One indexed list for collision, every solid material together. bounce: the triangles of it that throw the
+      // car back on plastic, the same vertices without deco, gate banners, hoops and anything in a soft box.
       const idx = new Map(),
         pos = [],
-        ind = [];
-      for (const [m, list] of plain.get(p.name).byMat) {
+        ind = [],
+        bounce = [],
+        pm = plain.get(p.name),
+        soft = pm.soft ?? [],
+        isSoft = (a, b, c) => soft.some(([lo, hi]) => [0, 1, 2].every((k) => {
+          const m = (a[k] + b[k] + c[k]) / 3;
+          return m >= lo[k] && m <= hi[k];
+        }));
+      let skipped = 0;
+      for (const [m, list] of pm.byMat) {
         if (NO_PHYSICS.includes(m)) continue;
-        for (const v of list) {
-          const key = v.map((n) => n.toFixed(4)).join(',');
-          let i = idx.get(key);
-          if (i == null) {
-            i = pos.length / 3;
-            idx.set(key, i);
-            pos.push(+v[0].toFixed(4), +v[1].toFixed(4), +v[2].toFixed(4));
+        for (let t = 0; t < list.length; t += 3) {
+          const tri = [];
+          for (const v of list.slice(t, t + 3)) {
+            const key = v.map((n) => n.toFixed(4)).join(',');
+            let i = idx.get(key);
+            if (i == null) {
+              i = pos.length / 3;
+              idx.set(key, i);
+              pos.push(+v[0].toFixed(4), +v[1].toFixed(4), +v[2].toFixed(4));
+            }
+            ind.push(i);
+            tri.push(i);
           }
-          ind.push(i);
+          if (p.tab == 'Deco' || NO_BOUNCE.includes(m) || isSoft(list[t], list[t + 1], list[t + 2])) skipped++;
+          else bounce.push(...tri);
         }
       }
       if (pos.length / 3 > 65535) throw new Error('too many collision vertices in ' + p.name);
@@ -274,6 +291,11 @@ function main() {
       const io = offset;
       push(new Uint16Array(ind));
       p.ph = [-1, po, pos.length, io, ind.length];
+      if (skipped) {
+        const bo = offset;
+        push(new Uint16Array(bounce));
+        p.bw = [-1, po, pos.length, bo, bounce.length];
+      }
       physTris += ind.length / 3;
     }
     totalTris += p.mesh.tris;
@@ -289,6 +311,7 @@ function main() {
     // Physics surface for the whole part: 0 plastic, 1 wood, 2 penalty grass, 3 ice, 4 bobsleigh; absent = stock physics.
     const u = p.u !== undefined ? p.u : f < 2 ? f : null;
     if (u != null) e.u = u;
+    if (p.bw && u === 0) e.bw = p.bw;
     // Grass inside a part of another surface: boxes around its grass faces, in the part's own frame.
     if (u != 2) {
       const boxes = new Map();

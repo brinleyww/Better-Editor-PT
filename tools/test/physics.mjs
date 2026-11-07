@@ -375,26 +375,18 @@ if (section == 'bob') {
     const peak = inCurve.reduce((a, b) => Math.max(a, b.y), 0), kin = inCurve[0]?.v, kout = inCurve[inCurve.length - 1]?.v;
     report('Bobsleigh into ' + curve, { maxY: +peak.toFixed(1), kmhIn: +(kin ?? 0).toFixed(0), kmhOut: +(kout ?? 0).toFixed(0) });
   }
+  // Climbing the wall on a straight: at each speed steer left for `ms`, then let go. How high the car gets, and
+  // whether it stays in the channel (the lip is 4.6 up).
+  for (const [kmh, ms] of [[100, 500], [160, 400], [220, 300]]) {
+    const parts = lane(['IceStartBob', ...Array(40).fill('IceBobStraight')]);
+    const l = await drive(parts, 12000, { up: true }, [{ kmh, ctl: { up: true, left: true } }, { after: ms, ctl: { up: true } }]), t = await c.evaluate('window.__trigger');
+    const after = l.filter((s) => s.f > t && s.f < t + 3000);
+    report('Bobsleigh climb at ' + kmh, { maxY: +Math.max(...after.map((s) => s.y)).toFixed(2), maxX: +Math.max(...after.map((s) => Math.abs(s.x))).toFixed(2), kmhAfter: +at(l, t + 3000).v.toFixed(0) });
+  }
   {
     const parts = lane(['IceStartBob', ...Array(30).fill('IceBobStraight')]);
     const l = await drive(parts, 8000), moved = l.find((s) => s.v > 0.5)?.f ?? 0;
     report('Bobsleigh straight', { ms0to100: l.find((s) => s.v >= 100)?.f - moved, kmhAt6s: +at(l, moved + 6000).v.toFixed(0), endX: +last(l).x.toFixed(2) });
-  }
-}
-
-if (section == 'wiggle') {
-  // Wood wiggles: flick left/right every `period` ms from 200 km/h for 3 s, against holding straight.
-  for (const surface of ['Wood', 'Plastic']) {
-    const parts = lane([surface + 'StartPlat', ...Array(160).fill(surface + 'PlatBase')]);
-    for (const x of [-8, -4, 4, 8]) parts.push(...lane(Array(161).fill(surface + 'PlatBase'), x));
-    for (const period of [0, 130, 100, 170, 50, 300]) {
-      const plan = [{ kmh: 200, ctl: { up: true } }];
-      // The first flick is half as long, so the car weaves about a straight line.
-      if (period) for (let t = 0, k = 0; t < 3000; t += k == 0 ? period / 2 : period, k++) plan.push({ after: t, ctl: { up: true, left: k % 2 == 0, right: k % 2 == 1 } });
-      plan.push({ after: 3000, ctl: { up: true } });
-      const l = await drive(parts, 12000, { up: true }, plan), t0 = await c.evaluate('window.__trigger');
-      report(surface + (period ? ' wiggle every ' + period + ' ms' : ' straight'), { kmhAt3s: +at(l, t0 + 3000).v.toFixed(1), x: +at(l, t0 + 3000).x.toFixed(1) });
-    }
   }
 }
 

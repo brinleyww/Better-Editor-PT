@@ -173,6 +173,8 @@ function stockGate(st, kind, key, opt = {}) {
   if (wide) m.byMat = shiftMesh(m, 10).byMat;
   // Stock: travel is -z with the gate at z = 0. On a wall the road climbs +y and the deck faces +z.
   const place = key == 'Wall' ? ([x, y, z]) => [x, 10 - z, -10 + y] : (opt.place ?? ((p) => p));
+  // The arch is poles, not walls: a box round each post and round the banner keeps it from bouncing the car.
+  const archPts = [[], [], []];
   for (const t of opt.arch === false ? [] : STOCK[fam][kind].arch) {
     const v = [0, 1, 2].map((k) => {
       const p = t.slice(1 + 3 * k, 4 + 3 * k);
@@ -181,7 +183,10 @@ function stockGate(st, kind, key, opt = {}) {
       return place(p);
     });
     m.tri(t[0], v[0], v[1], v[2]);
+    const cx = (t[1] + t[4] + t[7]) / 3;
+    archPts[cx < -2 ? 0 : cx > 2 ? 2 : 1].push(...v);
   }
+  for (const pts of archPts) if (pts.length) softAround(m, pts, 0.05);
   return m;
 }
 
@@ -360,6 +365,9 @@ function gateArch(m, w, st, kind, y0 = 0, roll = 0) {
   const P = (x, y, z = 0) => [x * c + y * s, y0 + y * c - x * s, z];
   m.beam(st.solidB, P(-w, 0.1), P(-w, top), pw);
   m.beam(st.solidB, P(w, 0.1), P(w, top), pw);
+  // The posts and banner are poles, not walls: hitting them does not bounce the car.
+  for (const x of [-w, w]) softAround(m, [P(x, 0.1), P(x, top)], pw + 0.1);
+  softAround(m, [P(-w, top - 1), P(w, top + 0.3)], 0.5);
   const a = P(-w, top),
     b = P(w, top),
     h = 0.75;
@@ -386,6 +394,13 @@ function gateArch(m, w, st, kind, y0 = 0, roll = 0) {
     m.beam(col, add(a, [0, -0.2, 0]), add(b, [0, -0.2, 0]), 0.36);
     void b;
   }
+}
+
+// A no-bounce box round some points, grown by pad on every side.
+function softAround(m, pts, pad) {
+  const lo = [0, 1, 2].map((k) => Math.min(...pts.map((p) => p[k])) - pad),
+    hi = [0, 1, 2].map((k) => Math.max(...pts.map((p) => p[k])) + pad);
+  m.softBox(lo, hi);
 }
 
 function paintBand(st, a, b, mat) {

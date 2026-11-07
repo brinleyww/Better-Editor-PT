@@ -20,6 +20,11 @@ class Mesh {
   constructor() {
     this.byMat = new Map();
     this.tris = 0;
+    // Boxes round posts and poles: plastic triangles inside them collide but never throw the car back (build.js).
+    this.soft = [];
+  }
+  softBox(min, max) {
+    this.soft.push([min, max]);
   }
   tri(mat, a, b, c) {
     if (len(cross(sub(b, a), sub(c, a))) < 1e-6) return;
@@ -81,6 +86,7 @@ class Mesh {
   }
   merge(other, offset = [0, 0, 0]) {
     for (const [m, l] of other.byMat) for (let i = 0; i < l.length; i += 3) this.tri(m, add(l[i], offset), add(l[i + 1], offset), add(l[i + 2], offset));
+    for (const [a, b] of other.soft ?? []) this.soft.push([add(a, offset), add(b, offset)]);
   }
 }
 
