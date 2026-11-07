@@ -158,6 +158,8 @@ The physics engine (`polytrack_physics.wasm`) is stripped and reads part ids as 
 
 These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A different engine build needs them checked again.
 
+**Physics versions:** `physics.json` holds the physics version and, for each earlier version, a commit that still drives that way. Any change to how cars drive (the physics in `tm_runtime.js`, collision meshes, a part's surface or effect data) runs `node tools/physics-bump.js` first and goes in with the bumped file. Not So Weekly Shorts uses it to move older leaderboard times to an Old physics board and to replay them on their own commit.
+
 ### 5. Data formats
 
 `tm_parts.js` sets `self.TM_DATA`:
@@ -205,6 +207,7 @@ This formats `_original/app` into `_original/formatted`, copies the assets to th
 | `_original/formatted` | The same bundles, formatted; the input to `patch.js` |
 | `tools/blocks` | Block generator |
 | `tools/patch.js`, `tools/deobfuscate.js`, `tools/build-all.js` | Build steps |
+| `tools/physics-bump.js`, `physics.json` | Physics version for leaderboards that keep runs (see How the physics fits in) |
 | `tools/test` | Headless Chrome tests that drive real cars (they expect Chrome at the standard Windows install path) |
 | `docs` | Block list, track code format, a map of the formatted code |
 
