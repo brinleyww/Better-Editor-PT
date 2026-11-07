@@ -53,14 +53,25 @@ self.TM = (() => {
 
   // Render geometry for one colour slot: non-indexed positions and a matching colour array.
   // `toRgb(hex)` must return linear [r,g,b] (the page passes THREE.Color so it matches stock vertex colours).
+  // Water is drawn last, surface before sides, and `groups` ([first vertex, count, material 1]) marks it for the
+  // see-through water material; it is null for parts without water.
+  const WATER_ORDER = { Water: 1, WaterSide: 2 };
   function renderArrays(id, slotColors, toRgb) {
     const p = byId.get(id);
     let tris = 0;
     for (const m of p.m) tris += m[4];
     const pos = new Float32Array(tris * 3),
-      col = new Float32Array(tris * 3);
+      col = new Float32Array(tris * 3),
+      order = (m) => WATER_ORDER[D.materialNames[m[0]]] ?? 0,
+      meshes = [...p.m].sort((a, b) => order(a) - order(b)),
+      groups = [];
     let o = 0;
-    for (const m of p.m) {
+    for (const m of meshes) {
+      if (order(m)) {
+        const last = groups[groups.length - 1];
+        if (last && last[3] == order(m)) last[1] += m[4];
+        else groups.push([o / 3, m[4], 1, order(m)]);
+      }
       const name = D.materialNames[m[0]],
         rgb = toRgb(slotColors[name] ?? D.materials[m[0]]),
         P = positions(m),
@@ -75,7 +86,9 @@ self.TM = (() => {
         col[o + 2] = rgb[2];
       }
     }
-    return { pos, col };
+    if (!groups.length) return { pos, col, groups: null };
+    groups.unshift([0, groups[0][0], 0]);
+    return { pos, col, groups: groups.map((g) => g.slice(0, 3)) };
   }
 
   // ---- physics ---------------------------------------------------------------------------------------------------
@@ -164,17 +177,29 @@ self.TM = (() => {
         const c = rotate(M, p.d.center[0], p.d.center[1], p.d.center[2]);
         spawns.push({ x: wx + c[0], y: wy + c[1], z: wz + c[2], dir: rotate(M, p.sd[0], p.sd[1], p.sd[2]) });
       }
-      if (p.x) {
-        const c = rotate(M, p.x.center[0], p.x.center[1], p.x.center[2]),
-          s = rotate(M, p.x.size[0] / 2, p.x.size[1] / 2, p.x.size[2] / 2);
-        zones.push({
-          type: p.x.type,
-          min: [wx + c[0] - Math.abs(s[0]), wy + c[1] - Math.abs(s[1]), wz + c[2] - Math.abs(s[2])],
-          max: [wx + c[0] + Math.abs(s[0]), wy + c[1] + Math.abs(s[1]), wz + c[2] + Math.abs(s[2])],
-        });
-      }
+      if (p.x) zones.push(zoneOf(p, wx, wy, wz, M));
     });
     return { vertices: out, records };
+  }
+  // A placed part's effect box in world space.
+  function zoneOf(p, wx, wy, wz, M) {
+    const c = rotate(M, p.x.center[0], p.x.center[1], p.x.center[2]),
+      s = rotate(M, p.x.size[0] / 2, p.x.size[1] / 2, p.x.size[2] / 2);
+    return {
+      type: p.x.type,
+      min: [wx + c[0] - Math.abs(s[0]), wy + c[1] - Math.abs(s[1]), wz + c[2] - Math.abs(s[2])],
+      max: [wx + c[0] + Math.abs(s[0]), wy + c[1] + Math.abs(s[1]), wz + c[2] + Math.abs(s[2])],
+      surface: p.x.surface != null ? wy + rotate(M, 0, p.x.surface, 0)[1] : null, // water level
+    };
+  }
+  // Every effect box on a track, for the page (water splashes).
+  function zones(track) {
+    const out = [];
+    track.forEachPart((x, y, z, id, rot, axis) => {
+      const p = isTM(id) ? byId.get(id) : null;
+      if (p?.x) out.push(zoneOf(p, x * 5, y * 5, z * 5, D.rotations[axis][rot]));
+    });
+    return out;
   }
   // id written into the wasm's one-byte part record, or null when the part has no record there.
   const physicsId = (id) => (isTM(id) ? (byId.get(id).p ?? null) : id);
@@ -196,7 +221,26 @@ self.TM = (() => {
     Reactor2Up: { dir: 1, push: 11, air: 10, frames: 6000 },
     Reactor2Down: { dir: -1, push: 22, air: 10, frames: 6000 },
   };
-  const WATER = { drag: 3, lift: 7 };
+  // Water, after Trackmania 2020. How deep the car is decides how much it counts (k, 0 to 1: deep water counts fully once
+  // the car's underside is `depth` units under). Drag grows with speed, lin x v + quad x v^2 (units/s^2), so it bleeds
+  // speed away without setting a top speed; the engine only pulls (1 - engine x k) as hard; lift holds the car up against
+  // gravity and sink damps its vertical speed (per second), so it sinks slowly; right (rad/s^2) turns it back upright.
+  // Shallow water sits over a floor the car drives on: only a little drag and a softer engine.
+  // Bounce: the car skips off deep water like a stone when it hits the surface from above at minSpeed or more along the
+  // water (units/s), falling no steeper than maxSlope (fall speed / speed along), upright at least `upright`. It comes back
+  // up at rebound x its fall speed (at least minUp), keeps `keep` of its speed and has its pitch and roll spin x calm.
+  // Steering never adds speed to a bounce. guard: frames before another bounce can start.
+  // Wet tyres: water soaks them at soak per second; on the ground they dry at dry per second (not on ice, not in the air).
+  // A wet tyre's grip is x (1 - wetGrip x wetness), by the surface under it: stock road, then plastic, wood, grass.
+  const WATER = {
+    deep: { lin: 0.02, quad: 0.0008, engine: 0.6, lift: 6.4, sink: 1.5, right: 4, depth: 1 },
+    shallow: { lin: 0.01, quad: 0.0003, engine: 0.4, lift: 0, sink: 0, right: 0, depth: 0.5 },
+    bounce: { minSpeed: 41.7, maxSlope: 0.35, upright: 0.7, rebound: 0.5, minUp: 5, keep: 0.985, calm: 0.5, guard: 80 },
+    under: 0.45, // car origin to its underside
+    soak: 0.6,
+    dry: 0.1,
+    wetGrip: { road: 0.15, 0: 0.3, 1: 0.75, 2: 0.3 },
+  };
 
   // What each new surface does to a wheel touching it. Index = part.f, 0 plastic, 1 wood.
   const SURFACES = [
@@ -343,7 +387,7 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, wigT: 0, wigAt: -1e9, wigDir: 0, wigLeft: 0, wigV: 0 });
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, wigT: 0, wigAt: -1e9, wigDir: 0, wigLeft: 0, wigV: 0 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -424,7 +468,7 @@ self.TM = (() => {
       z = s.getFloat32(pos + 8, true);
     if (flags & 2) return; // finished
     c.lastState = c.slow ? stateBuffer.slice(0) : null;
-    let inWater = false;
+    let water = null; // the water the car is in or just above
 
     // Passing a diagonal checkpoint: the physics just saved a respawn point facing along the grid. Turn it to face
     // along the diagonal road, the way the car was going, and move it to just behind the gate on that line.
@@ -466,7 +510,7 @@ self.TM = (() => {
     for (let i = 0; i < c.zones.length; i++) {
       const q = c.zones[i],
         hit = x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2];
-      if (hit && q.type == 'Water') inWater = true;
+      if ((q.type == 'Water' || q.type == 'Shallow') && x >= q.min[0] && x <= q.max[0] && z >= q.min[2] && z <= q.max[2] && y >= q.min[1] - 1 && y <= q.surface + 3) water = q;
       if (!hit) {
         inside.delete(i);
         continue;
@@ -591,6 +635,7 @@ self.TM = (() => {
         if (w < 2) grip *= 1 + (SLIDE.frontGrip - 1) * ease;
       }
       if (c.bug > 0) grip *= BUG.grip;
+      if (c.wet > 0) grip *= 1 - (WATER.wetGrip[f == null ? 'road' : f] ?? 0) * c.wet;
       normals.push(F[g], F[g + 1], F[g + 2]);
       F[g + 57] = c.stockGrip * grip;
       if (surface && surface.drag) {
@@ -790,13 +835,58 @@ self.TM = (() => {
       F[v + 2] *= k;
     }
 
-    // Water: slows the car hard and holds it up a little, so it sinks slowly and can drive out.
-    if (inWater) {
-      const k = 1 - WATER.drag * 0.001;
-      F[v] *= k;
-      F[v + 1] = F[v + 1] * k + WATER.lift * 0.001;
-      F[v + 2] *= k;
-    }
+    // Water (see WATER).
+    const W = water ? (water.type == 'Water' ? WATER.deep : WATER.shallow) : null,
+      under = y - WATER.under,
+      k = W ? Math.min(1, Math.max(0, (water.surface - under) / W.depth)) : 0;
+    if (c.waterGuard > 0) c.waterGuard--;
+    if (water && water.type == 'Water') {
+      const B = WATER.bounce,
+        along = Math.hypot(F[v], F[v + 2]),
+        fall = -F[v + 1];
+      // Skipping off the surface: only on the way down, from above it, fast, flat and upright.
+      if (c.overWater && under <= water.surface && fall > 0 && c.waterGuard == 0 && along >= B.minSpeed && fall <= B.maxSlope * along && upy >= B.upright) {
+        F[v + 1] = Math.max(B.rebound * fall, B.minUp);
+        F[v] *= B.keep;
+        F[v + 2] *= B.keep;
+        // Keep the spin about the car's up axis (its heading), calm pitch and roll.
+        const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz;
+        for (let a = 0; a < 3; a++) F[av + a] = (F[av + a] - [upx, upy, upz][a] * yaw) * B.calm + [upx, upy, upz][a] * yaw;
+        c.waterGuard = B.guard;
+      }
+      c.overWater = under > water.surface;
+    } else c.overWater = true;
+    if (k > 0) {
+      // Drag along the way the car is going, growing with speed.
+      const sp = Math.hypot(F[v], F[v + 1], F[v + 2]);
+      if (sp > 0.01) {
+        const d = Math.min(sp, k * (W.lin * sp + W.quad * sp * sp) * 0.001) / sp;
+        F[v] -= F[v] * d;
+        F[v + 1] -= F[v + 1] * d;
+        F[v + 2] -= F[v + 2] * d;
+      }
+      // A softer engine: take back part of what the car gained along its nose this frame while on the gas.
+      if (c.gas && c.last && contacts > 0) {
+        const gain = fwd - (c.last.vx * fx + c.last.vy * fy + c.last.vz * fz);
+        if (gain > 0 && gain < 0.05) {
+          const cut = gain * W.engine * k;
+          F[v] -= fx * cut;
+          F[v + 1] -= fy * cut;
+          F[v + 2] -= fz * cut;
+        }
+      }
+      if (W.lift) F[v + 1] = F[v + 1] * (1 - W.sink * k * 0.001) + W.lift * k * 0.001;
+      if (W.right && upy < 0.95) {
+        // Turn back towards upright about the axis between the car's up and the world's.
+        const ax = -upz,
+          az = upx,
+          n = Math.hypot(ax, az) || 1,
+          t = W.right * k * 0.001;
+        F[av] += (ax / n) * t;
+        F[av + 2] += (az / n) * t;
+      }
+      c.wet = Math.min(1, c.wet + WATER.soak * 0.001);
+    } else if (c.wet > 0 && contacts > 0 && iceWheels == 0) c.wet = Math.max(0, c.wet - WATER.dry * 0.001);
 
     // Reactor boost: thrust along the car's own up axis for the whole effect; in the air the gas pushes along the nose
     // and steering turns the car about its up axis.
@@ -1035,6 +1125,7 @@ self.TM = (() => {
     prepareCar,
     physicsId,
     proxyConfigs,
+    zones,
     fxControls,
     fxStep,
     fxSkip,

@@ -173,7 +173,7 @@ function stockGate(st, kind, key, opt = {}) {
   if (wide) m.byMat = shiftMesh(m, 10).byMat;
   // Stock: travel is -z with the gate at z = 0. On a wall the road climbs +y and the deck faces +z.
   const place = key == 'Wall' ? ([x, y, z]) => [x, 10 - z, -10 + y] : (opt.place ?? ((p) => p));
-  for (const t of STOCK[fam][kind].arch) {
+  for (const t of opt.arch === false ? [] : STOCK[fam][kind].arch) {
     const v = [0, 1, 2].map((k) => {
       const p = t.slice(1 + 3 * k, 4 + 3 * k);
       // Road posts start inside the barrier; with no barrier they stand on the deck.
@@ -182,6 +182,51 @@ function stockGate(st, kind, key, opt = {}) {
     });
     m.tri(t[0], v[0], v[1], v[2]);
   }
+  return m;
+}
+
+// A round finish hoop, chequered like the stock finish banner: a square tube bent into a circle n blocks across.
+// standing: the ring is cut where it meets the ground, its feet at the edges of the n blocks, centred on x = 0.
+// floating: the whole ring, its bottom on the part's floor, for hoops in the air.
+function hoopRing(m, n, standing) {
+  const R = 10 * n - 0.5,
+    tw = 0.7 + 0.2 * n, // tube width, across the ring
+    d = 0.45, // tube depth, along the road
+    feet = 10 * n - 1.5,
+    yc = standing ? DECK + Math.sqrt(R * R - feet * feet) : DECK + R + tw / 2,
+    a0 = standing ? -Math.asin(yc / (R + tw / 2)) : 0, // the outer edge meets the ground, nothing pokes below it
+    a1 = standing ? Math.PI - a0 : 2 * Math.PI,
+    segs = Math.max(24, Math.round(((a1 - a0) * R) / 1.1)),
+    P = (a, r, z) => [Math.cos(a) * r, yc + Math.sin(a) * r, z];
+  for (let i = 0; i < segs; i++) {
+    const a = a0 + ((a1 - a0) * i) / segs,
+      b = a0 + ((a1 - a0) * (i + 1)) / segs,
+      ro = R + tw / 2,
+      ri = R - tw / 2,
+      mat = (k) => ((i + k) % 2 ? 'FinishWhite' : 'FinishBlack'),
+      mid = (a + b) / 2,
+      out = [Math.cos(mid), Math.sin(mid), 0];
+    m.quadFacing(mat(0), P(a, ro, -d), P(b, ro, -d), P(b, ro, d), P(a, ro, d), out);
+    m.quadFacing(mat(1), P(a, ri, -d), P(b, ri, -d), P(b, ri, d), P(a, ri, d), mul(out, -1));
+    // The faces seen through the hoop: two chequer rows, inner and outer half of the tube.
+    for (const [r0, r1, k] of [[ri, R, 0], [R, ro, 1]]) {
+      m.quadFacing(mat(k), P(a, r0, d), P(b, r0, d), P(b, r1, d), P(a, r1, d), [0, 0, 1]);
+      m.quadFacing(mat(k + 1), P(a, r0, -d), P(b, r0, -d), P(b, r1, -d), P(a, r1, -d), [0, 0, -1]);
+    }
+  }
+  if (standing)
+    for (const a of [a0, a1]) {
+      // Flat feet where the ring meets the ground.
+      const q = [P(a, R - tw / 2, -d), P(a, R + tw / 2, -d), P(a, R + tw / 2, d), P(a, R - tw / 2, d)];
+      m.quadFacing('FinishBlack', ...q, [0, -1, 0]);
+    }
+  return { R, yc, feet };
+}
+
+// Finish hoops standing on a road, open road or platform, n blocks across (an expandable finish: pick the size).
+function hoopGate(st, key, n) {
+  const m = stockGate(st, 'Finish', key, { arch: false });
+  hoopRing(m, n, true);
   return m;
 }
 
@@ -764,6 +809,9 @@ function buildSurface(surface) {
     }
     // A checkpoint on a wall, climbing straight up: the stock platform gate stood on its end.
     put('CheckpointWall', 'Checkpoint on a wall', T, 'Checkpoint on wall', stockGate(st, 'Checkpoint', 'Wall'), { detector: { type: 0, center: [0, 10, -7.6], size: [18.25, 1, 3.8] } });
+    // Finish hoops, 1 to 4 blocks across, on each road width. The trigger is the stock finish line's.
+    for (const W of widths)
+      for (let n = 1; n <= 4; n++) put('FinishHoop' + W.key + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ' + W.fam, T, 'Finish hoop', hoopGate(st, W.key, n), detector('Finish', W.det));
   }
 
   // ---- gameplay plates: effects run in the physics worker (see tm_runtime.js) -------------------------------------
@@ -1122,4 +1170,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet, stockGate };
+module.exports = { hoopRing, hoopGate, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet, stockGate };

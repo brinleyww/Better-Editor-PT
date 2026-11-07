@@ -423,6 +423,37 @@ if (section == 'verify') {
     report('Verifier accepts one exact frame, twice (realtime finish ' + fin + ', first moved ' + moved + ')', JSON.parse(found));
   }}
 
+// Water: speed through deep water at road level, bounces when dropping onto water from one layer up, and shallow water.
+// Prints speed (km/h) and height every half second from the moment the car reaches the water, and each bounce.
+if (section == 'water') {
+  const runup = ['WoodStartRoad', ...Array(4).fill('WoodRoadStraight'), 'WoodFxTurboRoad', ...Array(14).fill('WoodRoadStraight')],
+    up = runup.map((n) => ({ n, y: 1 }));
+  const show = (name, l, z0) => {
+    const i = l.findIndex((s) => s.z < z0);
+    if (i < 0) return report(name, 'never reached the water');
+    const f0 = l[i].f,
+      row = [];
+    for (let t = 0; t <= 5000; t += 500) {
+      const s = at(l, f0 + t);
+      row.push(t / 1000 + 's ' + s.v.toFixed(0) + ' y' + s.y.toFixed(1));
+    }
+    let bounces = 0;
+    for (let j = i + 2; j < l.length; j++) if (l[j - 1].y - l[j - 2].y < 0 && l[j].y - l[j - 1].y > 0 && l[j].y > 2.5 && l[j].y < 4.5) bounces++;
+    report(name, { enter: l[i].v.toFixed(0), bounces, row });
+    if (process.argv[3] == 'trace') console.log(l.slice(i, i + 300).filter((_, j) => j % 4 == 0).map((s) => s.f - f0 + ':' + s.v.toFixed(0) + '/' + s.y.toFixed(2)).join(' '));
+  };
+  const z0 = -20 * runup.length + 10; // world z where the water starts
+  const pool = (n) => Array(n).fill('StadiumWater');
+  show('Deep, from road level', await drive(lane([...runup, ...pool(20)]), 16000), z0);
+  show('Deep, dropping from one layer up', await drive(lane([...up, ...pool(30)]), 16000), z0);
+  {
+    // From a standstill straight into a long pool: the car still gets going, just more slowly than on road.
+    const fromRest = async (piece) => { const l = await drive(lane(['WoodStartRoad', ...Array(60).fill(piece)]), 20000); return [3000, 6000, 10000, 15000].map((t) => +at(l, t).v.toFixed(0)); };
+    report('From rest, km/h at 3/6/10/15 s', { road: await fromRest('WoodRoadStraight'), deep: await fromRest('StadiumWater'), shallow: await fromRest('StadiumShallowWater') });
+  }
+  show('Shallow', await drive(lane([...runup, ...Array(20).fill('StadiumShallowWater')]), 16000), z0);
+}
+
 console.log(c.logs.filter((l) => !/Failed to connect|NETFAIL/.test(l)).slice(0, 10));
 await c.close();
 process.exit(0);

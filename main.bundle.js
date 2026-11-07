@@ -781,7 +781,7 @@
                   this.setCarState(e, !1);
                 },
               );
-              ((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"));
+              ((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"), self.TM.water.track(this, h));
             } else
               (0, l.GG)(
                 this,
@@ -898,7 +898,8 @@
               (0, l.gn)(this, D, "m", Ge).call(this),
               (0, l.gn)(this, ge, "f").scene.remove((0, l.gn)(this, Q, "f").camera),
               (0, l.gn)(this, ge, "f").scene.remove((0, l.gn)(this, J, "f").camera),
-              (0, l.gn)(this, Ne, "f")?.dispose());
+              (0, l.gn)(this, Ne, "f")?.dispose(),
+              self.TM.water.dispose(this));
             for (const e of (0, l.gn)(this, Pe, "f")) e.dispose();
             (((0, l.gn)(this, Pe, "f").length = 0),
               null != (0, l.gn)(this, ve, "f") &&
@@ -1134,6 +1135,7 @@
             if (
               ((0, l.gn)(this, D, "m", Qe).call(this),
               (0, l.gn)(this, Ne, "f")?.update(e),
+              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),
               null != (0, l.gn)(this, ve, "f"))
             ) {
               const e = this.getPosition(),
@@ -59659,13 +59661,16 @@
           const have = super.get(id);
           if (null != have || !super.has(id)) return have;
           const slot = this.cfg.colors.find((e) => e.id == id),
-            { pos: e, col: t } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
+            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
               const t = new M.Q1f(e);
               return [t.r, t.g, t.b];
             }),
             n = new M.LoY();
           (n.setAttribute("position", new M.THS(e, 3)), n.setAttribute("color", new M.THS(t, 3)), n.computeVertexNormals());
-          const i = new M.eaF(nu.ec(n), this.material);
+          // Water gets its own see-through material (tm_water.js); merging keeps the vertex order, so the ranges still hold.
+          const q = nu.ec(n);
+          if (g) for (const [s, c, k] of g) q.addGroup(s, c, k);
+          const i = new M.eaF(q, g ? [this.material, self.TM.water.material(M)] : this.material);
           return (super.set(id, i), i);
         }
       }

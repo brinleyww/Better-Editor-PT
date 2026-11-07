@@ -22,7 +22,7 @@ function apply(file, edits) {
 const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
@@ -30,6 +30,10 @@ apply('main.bundle.js', [
   // nsws_bridge.js starts the editor without the menu.
   ['no first-launch race when embedded', '              : this.isFirstSession()\n                ? { type: "tutorial" }', '              : this.isFirstSession() && window.parent === window\n                ? { type: "tutorial" }'],
   ['editor starter', '            J = (t, i, a, c, h) => {', '            beStart = (self.__beStartEditor = Q),\n            J = (t, i, a, c, h) => {'],
+  // tm_water.js: splashes and spray where a car meets water.
+  ['water splashes know the track', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"));', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"), self.TM.water.track(this, h));'],
+  ['water splashes each frame', '(0, l.gn)(this, Ne, "f")?.update(e),', '(0, l.gn)(this, Ne, "f")?.update(e),\n              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),'],
+  ['water splashes end with the car', '(0, l.gn)(this, Ne, "f")?.dispose());', '(0, l.gn)(this, Ne, "f")?.dispose(),\n              self.TM.water.dispose(this));'],
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
@@ -99,13 +103,16 @@ apply('main.bundle.js', [
           const have = super.get(id);
           if (null != have || !super.has(id)) return have;
           const slot = this.cfg.colors.find((e) => e.id == id),
-            { pos: e, col: t } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
+            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
               const t = new M.Q1f(e);
               return [t.r, t.g, t.b];
             }),
             n = new M.LoY();
           (n.setAttribute("position", new M.THS(e, 3)), n.setAttribute("color", new M.THS(t, 3)), n.computeVertexNormals());
-          const i = new M.eaF(nu.ec(n), this.material);
+          // Water gets its own see-through material (tm_water.js); merging keeps the vertex order, so the ranges still hold.
+          const q = nu.ec(n);
+          if (g) for (const [s, c, k] of g) q.addGroup(s, c, k);
+          const i = new M.eaF(q, g ? [this.material, self.TM.water.material(M)] : this.material);
           return (super.set(id, i), i);
         }
       }

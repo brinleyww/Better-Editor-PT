@@ -3,7 +3,7 @@
 const G = require('./geom');
 const { Mesh, hPath, roadRings, sweep, patch, prism, add, mul, norm, TAU } = G;
 const C = require('./catalog');
-const { DECK, DEG, smooth, deckPoly, grassStrips, grassPatch, roadPart, cyl, arcStepFor, FX } = C;
+const { DECK, DEG, smooth, deckPoly, grassStrips, grassPatch, roadPart, cyl, arcStepFor, FX, hoopRing, hoopGate } = C;
 
 // Concrete stands in for the stock grey; penalty grass mows in 5-unit stripes.
 const ST = {
@@ -136,6 +136,19 @@ function buildShared() {
         const extra = K.det == null ? { startOffset: [0, 0.35, 1.35] } : { detector: { type: K.det, center: [0, 2.5, 0], size: [20, 5, K.det == 1 ? 2 : 1] } };
         put('Box' + K.kind + key, label, T, K.label + ': ' + sub, m, extra);
       }
+  }
+
+  // ---- finish hoops: round finish gates, 1 to 4 blocks across --------------------------------------------------------------
+  {
+    const T = 'Box gates';
+    for (let n = 1; n <= 4; n++) {
+      const w = n + ' block' + (n > 1 ? 's' : '') + ' wide';
+      put('FinishHoopPlat' + n, 'Finish hoop, ' + w + ', platform', T, 'Finish hoop', hoopGate(ST, 'Plat', n), { detector: { type: 1, center: [0, 2.2, 0], size: [18.25, 3.8, 2] } });
+      // A whole ring with nothing under it, for finishing in the air. Its trigger fills the middle of the ring.
+      const m = new Mesh(),
+        { R, yc } = hoopRing(m, n, false);
+      put('FinishHoopAir' + n, 'Finish hoop in the air, ' + w, T, 'Finish hoop in the air', m, { detector: { type: 1, center: [0, yc, 0], size: [R * 1.4, R * 1.4, 2] } });
+    }
   }
 
   // ---- special gates: an arch that applies an effect, on any surface ------------------------------------------------------
@@ -333,14 +346,33 @@ function buildShared() {
   }
 
   // ---- water: the surface does not hold the car up, it sinks and slows down -------------------------------------------------
+  // Water is drawn with its own see-through material (tm_water.js): Water for the surface, WaterSide for the faces you see
+  // from the side. Neither is ever collided with (NO_PHYSICS in build.js). Sides stop where a wall stands instead.
   {
     const T = 'Water';
+    const SURF = 3; // pool water level above the block's floor
+    // One water box: surface at `top` over a floor at `bot`. floorAt(z) is a ramp floor under part of it, or null.
+    const waterBox = (m, x0, x1, z0, z1, bot, top, open, floorAt) => {
+      if (!floorAt) {
+        m.quadFacing('Water', [x0, top, z0], [x1, top, z0], [x1, top, z1], [x0, top, z1], [0, 1, 0]);
+        if (open.includes('N')) m.quadFacing('WaterSide', [x0, bot, z0], [x1, bot, z0], [x1, top, z0], [x0, top, z0], [0, 0, -1]);
+        if (open.includes('S')) m.quadFacing('WaterSide', [x0, bot, z1], [x1, bot, z1], [x1, top, z1], [x0, top, z1], [0, 0, 1]);
+        if (open.includes('W')) m.quadFacing('WaterSide', [x0, bot, z0], [x0, bot, z1], [x0, top, z1], [x0, top, z0], [-1, 0, 0]);
+        if (open.includes('E')) m.quadFacing('WaterSide', [x1, bot, z0], [x1, bot, z1], [x1, top, z1], [x1, top, z0], [1, 0, 0]);
+        return;
+      }
+      // Over a ramp the water ends where the ramp comes out of it (zc), and the side faces follow the ramp.
+      const zc = floorAt.zAt(top);
+      m.quadFacing('Water', [x0, top, zc], [x1, top, zc], [x1, top, z1], [x0, top, z1], [0, 1, 0]);
+      if (open.includes('S')) m.quadFacing('WaterSide', [x0, bot, z1], [x1, bot, z1], [x1, top, z1], [x0, top, z1], [0, 0, 1]);
+      for (const [x, dir] of [[x0, -1], [x1, 1]]) {
+        if (!open.includes(dir < 0 ? 'W' : 'E')) continue;
+        m.triFacing('WaterSide', [x, top, zc], [x, top, z1], [x, bot, z1], [dir, 0, 0]);
+      }
+    };
     const pool = (walls, ramp) => {
       const m = new Mesh();
       m.box('WaterFloor', [-10, 0, -10], [10, 0.21, 10], 'ConcreteUnder');
-      // The water plane: drawn, never collided with (see SKIP_PHYSICS in build.js).
-      m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, 1, 0]);
-      m.quadFacing('Water', [-10, 3, -10], [10, 3, -10], [10, 3, 10], [-10, 3, 10], [0, -1, 0]);
       for (const w of walls) {
         // Walls stand on the pool floor rather than sharing its edge faces.
         if (w == 'N') m.box('Concrete', [-10, 0.21, -10], [10, 4, -9], 'ConcreteDark');
@@ -350,19 +382,49 @@ function buildShared() {
         if (w == 'W') m.box('Concrete', [-10, 0.21, z0], [-9, 4, 10], 'ConcreteDark');
         if (w == 'E') m.box('Concrete', [9, 0.21, z0], [10, 4, 10], 'ConcreteDark');
       }
+      // The water fills the pool inside its walls.
+      const x0 = walls.includes('W') ? -9 : -10,
+        x1 = walls.includes('E') ? 9 : 10,
+        z0 = walls.includes('N') ? -9 : -10,
+        z1 = walls.includes('S') ? 9 : 10,
+        open = ['N', 'S', 'W', 'E'].filter((w) => !walls.includes(w));
+      let floorAt = null;
       if (ramp) {
         m.quadFacing('WaterFloor', [-10, 0.21, 10], [10, 0.21, 10], [10, 5.21, -10], [-10, 5.21, -10], [0, 1, 0.25]);
         m.triFacing('ConcreteDark', [-10, 0.21, 10], [-10, 5.21, -10], [-10, 0.21, -10], [-1, 0, 0]);
         m.triFacing('ConcreteDark', [10, 0.21, 10], [10, 5.21, -10], [10, 0.21, -10], [1, 0, 0]);
+        floorAt = { zAt: (y) => 10 - ((y - 0.21) / 5) * 20 };
       }
+      waterBox(m, x0, x1, z0, z1, 0.21, SURF, open, floorAt);
       return m;
     };
-    const fx = { fx: { type: 'Water', center: [0, 1.5, 0], size: [20, 3, 20] } };
+    const fx = { fx: { type: 'Water', center: [0, 1.5, 0], size: [20, 3, 20], surface: SURF } };
     put('Water', 'Water', T, 'Pools', pool([]), fx);
     put('WaterWall', 'Water, wall on one side', T, 'Pools', pool(['N']), fx);
     put('WaterCorner', 'Water, corner walls', T, 'Pools', pool(['N', 'W']), fx);
     put('WaterChannel', 'Water channel', T, 'Pools', pool(['W', 'E']), fx);
     put('WaterRamp', 'Ramp out of the water', T, 'Pools', pool([], true), fx);
+
+    // Shallow water: a thin layer over a concrete floor the car drives on, like TM's wet platforms. The wheels stay on
+    // the floor; the water only drags a little and throws up spray (Shallow in tm_runtime.js).
+    const SH = 0.45; // water depth over the floor
+    const shallow = (len, rim) => {
+      const m = new Mesh(),
+        z0 = 10 - len;
+      m.box('Concrete', [-10, 0, z0], [10, DECK, 10], 'ConcreteUnder');
+      // A low kerb keeps the water in on the sides that have one.
+      for (const [w, a, b] of [['W', [-10, DECK, z0], [-9.6, DECK + SH + 0.1, 10]], ['E', [9.6, DECK, z0], [10, DECK + SH + 0.1, 10]]])
+        if (rim.includes(w)) m.box('ConcreteDark', a, b, 'Metal');
+      const x0 = rim.includes('W') ? -9.6 : -10,
+        x1 = rim.includes('E') ? 9.6 : 10;
+      waterBox(m, x0, x1, z0, 10, DECK, DECK + SH, ['N', 'S', 'W', 'E'].filter((w) => !rim.includes(w)), null);
+      return m;
+    };
+    const sfx = (len) => ({ fx: { type: 'Shallow', center: [0, 1.5, 10 - len / 2], size: [20, 3, len], surface: DECK + SH } });
+    put('ShallowWater', 'Shallow water', T, 'Shallow water', shallow(20, []), sfx(20));
+    put('ShallowWaterHalf', 'Shallow water, half', T, 'Shallow water', shallow(10, []), sfx(10));
+    put('ShallowWaterKerb', 'Shallow water, kerb on one side', T, 'Shallow water', shallow(20, ['W']), sfx(20));
+    put('ShallowWaterKerbs', 'Shallow water, kerbs on both sides', T, 'Shallow water', shallow(20, ['W', 'E']), sfx(20));
   }
 
   // ---- deco walls and deco platforms -------------------------------------------------------------------------------------

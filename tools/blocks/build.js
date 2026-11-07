@@ -99,7 +99,8 @@ const MATERIALS = litAll({
   Canopy: '#e8e8ea',
   Screen: '#152033',
   ScreenFrame: '#262a33',
-  Water: '#2d7fd0',
+  Water: '#2a8fde',
+  WaterSide: '#1b6cbf',
   WaterFloor: '#1d4f7a',
   DecoWall: '#b9bcc2',
   DecoWallB: '#8c9097',
@@ -120,7 +121,7 @@ const MATERIALS = litAll({
 }, STOCK_MATS);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
-const NO_PHYSICS = ['Water', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
+const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
 const GRASS_MATS = ['Grass', 'GrassB'];
 
 // Stock colour slots: env variants plus Custom0-8. Same slots as stock Block parts.
