@@ -17,7 +17,8 @@ self.TM = (() => {
 
   // ---- geometry --------------------------------------------------------------------------------------------------
   let bin = null;
-  const binUrl = 'models/tm_blocks.bin';
+  // TM_BASE: where another site (Not So Weekly Shorts) loads this from; unset here.
+  const binUrl = () => (self.TM_BASE || '') + 'models/tm_blocks.bin';
   const accept = (buffer) => {
     if (buffer.byteLength != D.binBytes) throw new Error('models/tm_blocks.bin does not match tm_parts.js');
     bin = buffer;
@@ -25,18 +26,22 @@ self.TM = (() => {
   let loading = null;
   const load = () => {
     if (bin) return Promise.resolve();
-    return (loading ??= fetch(binUrl)
+    return (loading ??= fetch(binUrl())
       .then((r) => {
-        if (!r.ok) throw new Error('Failed to load ' + binUrl + ': ' + r.status);
+        if (!r.ok) throw new Error('Failed to load ' + binUrl() + ': ' + r.status);
         return r.arrayBuffer();
       })
-      .then(accept));
+      .then(accept)
+      .catch((e) => {
+        loading = null;
+        throw e;
+      }));
   };
   // Workers have no await point before their first message, so they read the file synchronously when needed.
   const loadSync = () => {
     if (bin) return;
     const x = new XMLHttpRequest();
-    x.open('GET', binUrl, false);
+    x.open('GET', binUrl(), false);
     x.responseType = 'arraybuffer';
     x.send(null);
     accept(x.response);
