@@ -55304,7 +55304,7 @@
         }
       };
       try {
-        if (void 0 !== window.BroadcastChannel) {
+        if (void 0 !== window.BroadcastChannel && window.parent === window) {
           const e = new window.BroadcastChannel("polytrack-single-instance");
           (e.addEventListener("message", (t) => {
             ("new-instance" == t.data && Sl && e.postMessage("conflict"), "conflict" == t.data && (Sl = !1));
