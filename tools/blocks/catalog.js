@@ -92,25 +92,97 @@ function styleFor(surface) {
 
 // ---- cross sections (all counter-clockwise, x to the right of travel, y up from the slab bottom) -------------
 
-function deckPoly(st, w, y, line, paint) {
+// decal (see stockDecal): floor markings painted onto the deck, which is cut along their edges.
+function deckPoly(st, w, y, line, paint, decal) {
   const inner = w - line,
     P = st.pattern;
   // The deck top is cut where the surface pattern needs it, right to left.
-  const cuts = P ? P.lateral(inner).filter((x) => x > -inner + 0.05 && x < inner - 0.05).sort((a, b) => b - a) : [];
+  const cut = [...(P ? P.lateral(inner) : []), ...(decal ? decal.xs : [])].filter((x) => x > -inner + 0.05 && x < inner - 0.05).sort((a, b) => b - a);
+  const cuts = cut.filter((x, i) => i == 0 || cut[i - 1] - x > 1e-3);
   const pts = [[-w, 0], [w, 0], [w, y], [inner, y], ...cuts.map((x) => [x, y]), [-inner, y], [-w, y]],
     n = pts.length;
+  const mark = (e, ring) => decal?.at((pts[e][0] + pts[e + 1][0]) / 2, (ring.s + ring.next) / 2) ?? null;
   return {
     pts,
     cap: st.under,
     mats: (e, ring) => {
       if (e == 0) return st.under;
       if (e == 1 || e == n - 1) return st.side ?? st.under;
-      if (e == 2 || e == n - 2) return paint?.(ring, true) ?? st.line(ring);
+      if (e == 2 || e == n - 2) return mark(e, ring) ?? paint?.(ring, true) ?? st.line(ring);
       const x0 = pts[e][0],
         x1 = pts[e + 1][0];
-      return paint?.(ring) ?? (P ? P.mat(ring, (x0 + x1) / 2, x0 - x1, inner) : st.deck(ring));
+      return mark(e, ring) ?? paint?.(ring) ?? (P ? P.mat(ring, (x0 + x1) / 2, x0 - x1, inner) : st.deck(ring));
     },
   };
+}
+
+// ---- stock gates ---------------------------------------------------------------------------------------------
+// Start, checkpoint and finish copy the stock gates (stock/gates.json, from the game's own models): the posts,
+// banners and floor markings are stock, only the deck under them is this surface. Road gates get stock barriers.
+const STOCK = require('./stock/gates.json');
+const inTri = (x, s, t) => {
+  const d = (ax, as, bx, bs) => (x - bx) * (as - bs) - (ax - bx) * (s - bs),
+    a = d(t[1], t[2], t[3], t[4]),
+    b = d(t[3], t[4], t[5], t[6]),
+    c = d(t[5], t[6], t[1], t[2]);
+  return !((a < -1e-9 || b < -1e-9 || c < -1e-9) && (a > 1e-9 || b > 1e-9 || c > 1e-9));
+};
+// The floor markings of a stock gate: their edges (xs across, ss along) and the material at (x, s), or null.
+// dx and ds move them, for gates swept somewhere other than the stock gate's own frame.
+function stockDecal(fam, kind, dx = 0, ds = 0) {
+  const tris = STOCK[fam][kind].decals,
+    xs = new Set(),
+    ss = new Set();
+  for (const t of tris)
+    for (let k = 0; k < 3; k++) {
+      xs.add(+(t[1 + 2 * k] + dx).toFixed(4));
+      ss.add(+(t[2 + 2 * k] + ds).toFixed(4));
+    }
+  return {
+    xs: [...xs],
+    ss: [...ss],
+    at: (x, s) => {
+      for (const t of tris) if (inTri(x - dx, s - ds, t)) return t[0];
+      return null;
+    },
+  };
+}
+// kind: Start, Checkpoint or Finish. key: Road, Open, Plat, PlatWide or Wall.
+// opt: y, roll, segs, start, step and ds for the road it stands on, and place(p) to move the stock posts onto it.
+function stockGate(st, kind, key, opt = {}) {
+  const fam = key == 'Road' || key == 'Open' ? 'Road' : key == 'PlatWide' ? 'PlaneWide' : 'Plane',
+    wide = key == 'PlatWide',
+    decal = stockDecal(fam, kind, wide ? -10 : 0, opt.ds ?? 0),
+    barrier = { ...st, rail: () => 'RoadBarrier', railTop: () => 'RoadBarrier' };
+  const profile =
+    key == 'Road'
+      ? () => {
+          const r = [railPoly(barrier, -1, RAIL_TOP), railPoly(barrier, 1, RAIL_TOP)];
+          r[0].cap = r[1].cap = 'RoadBarrier';
+          return [deckPoly(st, HALF_ROAD, DECK, 1.3867, null, decal), ...r];
+        }
+      : key == 'Open'
+        ? () => [deckPoly(st, HALF_ROAD, DECK, 0.5, null, decal)]
+        : () => [deckPoly(st, wide ? 20 : 10, DECK, 0.5, null, decal)];
+  let m;
+  if (key == 'Wall') {
+    // Rings straight up the wall, cut where the markings start and stop.
+    const hs = [...new Set([0, 5, 10, 15, 20, ...decal.ss])].sort((a, b) => a - b);
+    m = swept(hs.map((h, i) => ({ p: [0, h, -10], R: [1, 0, 0], U: [0, 0, 1], T: [0, 1, 0], s: h, u: h / 20, i })), profile);
+  } else m = roadPart(st, profile, opt.segs ?? [{ line: 20 }], { step: opt.step ?? 2.5, start: wide ? [10, 10, 0] : opt.start, y: opt.y, roll: opt.roll, marks: decal.ss });
+  if (wide) m.byMat = shiftMesh(m, 10).byMat;
+  // Stock: travel is -z with the gate at z = 0. On a wall the road climbs +y and the deck faces +z.
+  const place = key == 'Wall' ? ([x, y, z]) => [x, 10 - z, -10 + y] : (opt.place ?? ((p) => p));
+  for (const t of STOCK[fam][kind].arch) {
+    const v = [0, 1, 2].map((k) => {
+      const p = t.slice(1 + 3 * k, 4 + 3 * k);
+      // Road posts start inside the barrier; with no barrier they stand on the deck.
+      if (key == 'Open' && p[1] < 1) p[1] = DECK;
+      return place(p);
+    });
+    m.tri(t[0], v[0], v[1], v[2]);
+  }
+  return m;
 }
 
 function railPoly(st, side, top) {
@@ -212,7 +284,7 @@ function roadPart(st, profile, segs, opt = {}) {
     marks = [];
   if (P) for (let s = 0; s <= path.length; s += P.period) marks.push(s, s + P.band);
   if (st.posts && profile.rails) for (let s = 2.5; s < path.length; s += 5) marks.push(s);
-  const rings = roadRings(path, { step: opt.step ?? ringStep(st), arcStep: opt.arcStep ?? (st.plastic ? 5 : 3.75), y: opt.y, roll: opt.roll, marks: P ? marks : [] });
+  const rings = roadRings(path, { step: opt.step ?? ringStep(st), arcStep: opt.arcStep ?? (st.plastic ? 5 : 3.75), y: opt.y, roll: opt.roll, marks: [...(P ? marks : []), ...(opt.marks ?? [])] });
   const m = swept(rings, profile);
   // Wooden rails get a post every 5 units, halfway between joints so no post sits on a block edge (it would
   // claim the next tile). Drawn only: the plain collision build has no pattern, so posts never catch the car.
@@ -654,61 +726,44 @@ function buildSurface(surface) {
       { kind: 'Finish', label: 'Finish', band: 'Finish' },
     ];
     const widths = [
-      { key: 'Road', fam: 'road', make: (paint) => roadProfile(st, paint), w: 6.07, det: 10.5 },
-      { key: 'Open', fam: 'open road', make: (paint) => openProfile(st, paint), w: 6.2, det: 12.5 },
-      { key: 'Plat', fam: 'platform', make: (paint) => platProfile(st, paint), w: 9.6, det: 18.25 },
+      { key: 'Road', fam: 'road', det: 10.5 },
+      { key: 'Open', fam: 'open road', det: 12.5 },
+      { key: 'Plat', fam: 'platform', det: 18.25 },
     ];
     const detector = (kind, size, cy = 2.2, cz = 0, cx = 0, h = 3.8) =>
       kind == 'Start' ? {} : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [cx, cy, cz], size: [size, h, kind == 'Finish' ? 2 : 1] } };
-    for (const { kind, label, band } of kinds)
-      for (const W of widths) {
-        const m = roadPart(st, W.make(paintBand(st, 9, 11, band)), [{ line: 20 }], { step: 2.5 });
-        gateArch(m, W.w, st, kind);
-        put(kind + W.key, label + ', ' + W.fam, T, label, m, { ...detector(kind, W.det), ...(kind == 'Start' ? { startOffset: [0, 0.35, 1.35] } : {}) });
-      }
-    // Checkpoints in the middle of slopes, banks and diagonals. The trigger box is taller so it still catches the car.
+    for (const { kind, label } of kinds)
+      for (const W of widths) put(kind + W.key, label + ', ' + W.fam, T, label, stockGate(st, kind, W.key), { ...detector(kind, W.det), ...(kind == 'Start' ? { startOffset: [0, 0.35, 1.35] } : {}) });
+    // Checkpoints in the middle of slopes, banks and diagonals: the stock gate leans with the road the way stock
+    // slopes do, cross-sections kept vertical. The trigger box is taller so it still catches the car.
     for (const W of widths)
       for (const { g, n } of [{ g: 0.25, n: 'gentle' }, { g: 0.5, n: 'medium' }, { g: 1, n: 'steep' }]) {
-        const m = roadPart(st, W.make(paintBand(st, 9, 11, 'Checkpoint')), [{ line: 20 }], { step: 2.5, y: (s) => g * s });
-        gateArch(m, W.w, st, 'Checkpoint', g * 10);
+        const m = stockGate(st, 'Checkpoint', W.key, { y: (s) => g * s, place: ([x, y, z]) => [x, y + g * (10 - z), z] });
         put('Checkpoint' + W.key + n, 'Checkpoint, ' + n + ' slope, ' + W.fam, T, 'Checkpoint on slope', m, { detector: { type: 0, center: [0, g * 10 + 2.2, 0], size: [W.det, 3.8 + g * 2, 1] } });
       }
     for (const W of widths.slice(0, 2))
       for (const dir of [1, -1]) {
-        const roll = dir * TILT;
-        const m = roadPart(st, W.make(paintBand(st, 9, 11, 'Checkpoint')), [{ line: 20 }], { step: 2.5, y: () => 5, roll: () => roll });
-        gateArch(m, W.w, st, 'Checkpoint', 5, roll);
+        const roll = dir * TILT,
+          c = Math.cos(roll),
+          sn = Math.sin(roll);
+        const m = stockGate(st, 'Checkpoint', W.key, { y: () => 5, roll: () => roll, place: ([x, y, z]) => [x * c + y * sn, 5 + y * c - x * sn, z] });
         put('Checkpoint' + W.key + 'Tilt' + (dir > 0 ? 'L' : 'R'), 'Checkpoint, banked ' + (dir > 0 ? 'left high' : 'right high') + ', ' + W.fam, T, 'Checkpoint on bank', m, { detector: { type: 0, center: [0, 6.2, 0], size: [W.det, 9, 1] } });
       }
     for (const W of widths.slice(0, 2)) {
-      const m = roadPart(st, W.make(paintBand(st, 12.14, 16.14, 'Checkpoint')), [{ line: 20 * Math.SQRT2 }], { start: [-10, 10, 45 * DEG], step: 2.02 });
-      const c = Math.SQRT1_2,
-        w = W.w;
-      m.beam(st.solidB, [-w * c, 0.1, -w * c], [-w * c, 4.6, -w * c], 0.3);
-      m.beam(st.solidB, [w * c, 0.1, w * c], [w * c, 4.6, w * c], 0.3);
-      m.beam('Checkpoint', [-w * c, 4.4, -w * c], [w * c, 4.4, w * c], 0.36);
+      // The diagonal runs from (-10, 10) at 45 degrees; its middle is 10 x sqrt 2 along it.
+      const mid = 10 * Math.SQRT2,
+        k = Math.SQRT1_2;
+      const m = stockGate(st, 'Checkpoint', W.key, { segs: [{ line: 20 * Math.SQRT2 }], start: [-10, 10, 45 * DEG], step: 2.02, ds: mid - 10, place: ([x, y, z]) => [(mid - z) * k + x * k - 10, y, 10 - (mid - z) * k + x * k] });
       // spawnDir: the road's direction through the gate, so respawning there faces along the diagonal.
       put('Checkpoint' + W.key + 'Diag', 'Checkpoint, diagonal, ' + W.fam, T, 'Checkpoint on diagonal', m, { detector: { type: 0, center: [0, 2.2, 0], size: [7.5, 3.8, 7.5] }, spawnDir: [Math.SQRT1_2, 0, -Math.SQRT1_2] });
     }
-    // Wide gates span two blocks of platform.
-    for (const { kind, label, band } of kinds) {
-      const m = new Mesh();
-      sweep(m, roadRings(hPath([{ line: 20 }], [10, 10, 0]), { step: 2.5 }), () => {
-        const p = deckPoly(st, 20, DECK, 0.5, paintBand(st, 9, 11, band));
-        return [p];
-      });
-      gateArch(m, 19.6, st, kind);
-      m.byMat = shiftMesh(m, 10).byMat;
+    // Wide gates span two blocks of platform, like the stock wide plane gates.
+    for (const { kind, label } of kinds) {
+      const m = stockGate(st, kind, 'PlatWide');
       put(kind + 'PlatWide', label + ', wide platform', T, label, m, { ...(kind == 'Start' ? { startOffset: [-10, 0.35, 1.35] } : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [10, 2.2, 0], size: [38.25, 3.8, kind == 'Finish' ? 2 : 1] } }) });
     }
-    // A checkpoint on a wall, climbing straight up.
-    {
-      const m = swept(wallRings(20), platProfile(st, paintBand(st, 9, 11, 'Checkpoint')));
-      m.beam(st.solidB, [-9.7, 10, -9.8], [-9.7, 10, -5.4], 0.3);
-      m.beam(st.solidB, [9.7, 10, -9.8], [9.7, 10, -5.4], 0.3);
-      m.beam('Checkpoint', [-9.7, 10, -5.6], [9.7, 10, -5.6], 0.36);
-      put('CheckpointWall', 'Checkpoint on a wall', T, 'Checkpoint on wall', m, { detector: { type: 0, center: [0, 10, -7.6], size: [18.25, 1, 3.8] } });
-    }
+    // A checkpoint on a wall, climbing straight up: the stock platform gate stood on its end.
+    put('CheckpointWall', 'Checkpoint on a wall', T, 'Checkpoint on wall', stockGate(st, 'Checkpoint', 'Wall'), { detector: { type: 0, center: [0, 10, -7.6], size: [18.25, 1, 3.8] } });
   }
 
   // ---- gameplay plates: effects run in the physics worker (see tm_runtime.js) -------------------------------------
@@ -1067,4 +1122,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet };
+module.exports = { PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet, stockGate };

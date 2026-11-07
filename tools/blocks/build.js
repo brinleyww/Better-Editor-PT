@@ -30,6 +30,10 @@ const lit = (hex, k = 0.42) => {
 };
 const litAll = (o, keep = []) => Object.fromEntries(Object.entries(o).map(([m, h]) => [m, keep.includes(m) ? h : lit(h)]));
 
+// Stock gate colours, straight from road.glb. The game hands a glb colour factor and a hex colour's raw bytes to the
+// renderer the same way, so the factor x 255 as hex, unlit, looks exactly like the stock gate.
+const stockHex = (...f) => '#' + f.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
+const STOCK_MATS = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack', 'RoadBarrier'];
 const MATERIALS = litAll({
   PlasticDeck: '#f2c230',
   PlasticDeckB: '#e4b222',
@@ -47,11 +51,13 @@ const MATERIALS = litAll({
   WoodBeam: '#5e3c20',
   WoodBeamB: '#6e4726',
   WoodUnder: '#3f2916',
-  StartLine: '#e8a43a',
-  Checkpoint: '#e7c64b',
-  Finish: '#d13a2c',
+  // Gate colours are the stock gates' own (road.glb), so generated gates look exactly like stock ones.
+  StartLine: stockHex(0.8, 0.3774, 0.0162),
+  Checkpoint: stockHex(0.8, 0.5971, 0),
+  Finish: stockHex(0.8, 0.0323, 0.0127),
   FinishWhite: '#ffffff',
-  FinishBlack: '#1a1a1a',
+  FinishBlack: stockHex(0.0147, 0.0147, 0.0147),
+  RoadBarrier: stockHex(0.075, 0.075, 0.075),
   FxTurbo: '#ef8a1e',
   FxTurboB: '#ffe28a',
   FxSuper: '#d6262a',
@@ -111,7 +117,7 @@ const MATERIALS = litAll({
   IceUnder: '#5f7487',
   Pillar: '#7a7d84',
   PillarEdge: '#3f4249',
-}, ['FinishWhite', 'FinishBlack']);
+}, STOCK_MATS);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
 const NO_PHYSICS = ['Water', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
@@ -128,18 +134,20 @@ const lighten = (hex, k) => {
   return '#' + [16, 8, 0].map((sh) => c(sh).toString(16).padStart(2, '0')).join('');
 };
 const plasticSet = (a) => ({ PlasticDeck: a, PlasticDeckB: shade(a, 0.93), PlasticSeam: lighten(a, 0.45) });
-const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors) }));
+const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors, STOCK_MATS) }));
+// Stock barriers recolour with the season the way stock roads do (main.bundle.js environment colours).
+const BARRIER = { 2: { RoadBarrier: '#898989' }, 3: { RoadBarrier: '#211001' } };
 const PALETTES = {
   Plastic: litSlots([
     { id: 1, colors: {} },
-    { id: 2, colors: { ...plasticSet('#8fc3ee'), PlasticRail: '#ffffff', PlasticKerb: '#2f6fd0', PlasticLine: '#21508a' } },
-    { id: 3, colors: { ...plasticSet('#e8953a'), PlasticRail: '#8a2f1f', PlasticLine: '#ffe7b0' } },
+    { id: 2, colors: { ...BARRIER[2], ...plasticSet('#8fc3ee'), PlasticRail: '#ffffff', PlasticKerb: '#2f6fd0', PlasticLine: '#21508a' } },
+    { id: 3, colors: { ...BARRIER[3], ...plasticSet('#e8953a'), PlasticRail: '#8a2f1f', PlasticLine: '#ffe7b0' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: plasticSet(PLASTIC_CUSTOM[i]) })),
   ]),
   Wood: litSlots([
     { id: 1, colors: {} },
-    { id: 2, colors: { ...woodSet('#b7a48e'), WoodBeam: '#6f655c', WoodBeamB: '#7f746a' } },
-    { id: 3, colors: { ...woodSet('#cda76f'), WoodBeam: '#7d5a33', WoodBeamB: '#8d6a3f' } },
+    { id: 2, colors: { ...BARRIER[2], ...woodSet('#b7a48e'), WoodBeam: '#6f655c', WoodBeamB: '#7f746a' } },
+    { id: 3, colors: { ...BARRIER[3], ...woodSet('#cda76f'), WoodBeam: '#7d5a33', WoodBeamB: '#8d6a3f' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: woodSet(WOOD_CUSTOM[i]) })),
   ]),
   // Stadium: concrete and deco recolour with the custom slots; grass follows the season.
@@ -152,8 +160,8 @@ const PALETTES = {
   // Ice: the rim takes the custom colours, the ice itself stays ice.
   Ice: litSlots([
     { id: 1, colors: {} },
-    { id: 2, colors: { IceRim: '#ffffff', IceWall: '#dfe6ee' } },
-    { id: 3, colors: { IceRim: '#d13a2c' } },
+    { id: 2, colors: { ...BARRIER[2], IceRim: '#ffffff', IceWall: '#dfe6ee' } },
+    { id: 3, colors: { ...BARRIER[3], IceRim: '#d13a2c' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: { IceRim: PLASTIC_CUSTOM[i] } })),
   ]),
 };

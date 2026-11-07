@@ -1,4 +1,4 @@
-﻿// Drives real cars in the game's physics worker. No rendering, no UI.
+// Drives real cars in the game's physics worker. No rendering, no UI.
 // node tools/test/physics.mjs surfaces   handling numbers for stock, plastic and wood
 // node tools/test/physics.mjs regress    gates, turbo, climbs, loops, verifier
 import { openEditor } from './lib.mjs';
@@ -367,6 +367,23 @@ if (section == 'wiggle') {
     }
   }
 }
+
+if (section == 'verify') {
+  // Determinism through the game's own verifier: it accepts a run only if the car finishes on exactly that frame.
+  {
+    const parts = lane(['WoodStartRoad', ...Array(5).fill('WoodRoadStraight'), 'PlasticFxTurboRoad', ...Array(10).fill('PlasticRoadStraight'), 'WoodCheckpointRoad', ...Array(10).fill('PlasticRoadStraight'), 'PlasticFinishRoad', ...Array(6).fill('PlasticRoadStraight')]);
+    const l = await drive(parts, 9000), est = l.find((s) => s.fin != null)?.fin;
+    const found = await c.evaluate(`(async()=>{
+      const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
+      const scan=()=>new Promise(res=>{const w=new Worker('simulation_worker.bundle.js'),hits=[];let pend=0;const lo=${est}-150,hi=${est}+150;
+        w.addEventListener('message',e=>{if(e.data.messageType!=8)return;if(e.data.result)hits.push(e.data.carId+lo);if(--pend==0){w.terminate();res(hits);}});
+        setTimeout(()=>{w.postMessage({...window.__init,isRealtime:false});
+          for(let f=lo;f<=hi;f++){pend++;w.postMessage({messageType:1,mountainVertices:M.vertices,mountainOffset:{x:M.offset.x,y:M.offset.y,z:M.offset.z},trackData:t.toSaveString(),carId:f-lo,carRecording:rec,targetFrames:f});}
+        },1500);});
+      return JSON.stringify({a:await scan(),b:await scan()});
+    })()`);
+    report('Verifier accepts one exact frame, twice', JSON.parse(found));
+  }}
 
 console.log(c.logs.filter((l) => !/Failed to connect|NETFAIL/.test(l)).slice(0, 10));
 await c.close();
