@@ -229,6 +229,27 @@ if (section == 'slides') {
   }
 }
 
+// Slide trace on plastic: hard right at 140 km/h, then countersteer after `after` ms (argument, default none).
+// Prints slip (degrees, signed, full circle) and yaw rate (deg/s) so a jump at some angle shows up.
+if (section == 'slidetrace') {
+  const P = [{ n: 'PlasticStartPlat', x: 0, y: 0, z: 0 }];
+  for (let i = -22; i <= 22; i++) for (let j = -22; j <= 22; j++) if (i || j) P.push({ n: 'PlasticPlatBase', x: i * 4, y: 0, z: j * 4 });
+  const after = +(process.argv[3] || 0), hold = process.argv[4] || 'left';
+  const plan = [{ kmh: 140, ctl: { up: true, right: true } }];
+  if (after) plan.push({ after, ctl: { up: true, [hold]: true } });
+  const l = await drive(P, 6500, { up: true }, plan);
+  const t = await c.evaluate('window.__trigger');
+  const head = (q) => Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1]));
+  for (let i = 1; i < l.length; i++) {
+    const a = l[i - 1], b = l[i];
+    if (b.f < t - 50 || b.f > t + 3500) continue;
+    const dt = (b.f - a.f) / 1000, vx = (b.x - a.x) / dt, vz = (b.z - a.z) / dt, h = head(b.q);
+    let slip = ((Math.atan2(vx, vz) - h) * 180) / Math.PI, yaw = ((h - head(a.q)) * 180) / Math.PI;
+    while (slip > 180) slip -= 360; while (slip < -180) slip += 360; while (yaw > 180) yaw -= 360; while (yaw < -180) yaw += 360;
+    console.log(b.f - t, 'slip', slip.toFixed(1), 'yaw', (yaw / dt).toFixed(0), 'kmh', b.v.toFixed(0), 'skid', b.sk.toFixed(2));
+  }
+}
+
 // Bugslide: slide off a raised plastic floor and land on road below while still sliding. A bugslide keeps the speed
 // through the landing slide; without one the slide scrubs it off. The edge goes where a flat-floor run slides most.
 if (section == 'bugslide') {

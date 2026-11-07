@@ -221,8 +221,10 @@ self.TM = (() => {
   const BOUNCE = { hit: 0.5, window: 30, minInto: 4, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
   // Countersteering on plastic, once the car slides more than `from` (radians) above minSpeed (units per second):
-  // frontGrip multiplies the front tyres' grip, and the yaw rate is pulled by `pull` per frame towards catchRate x slip.
-  const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, pull: 0.012, hold: 300 };
+  // frontGrip multiplies the front tyres' grip, and the yaw rate is pulled by `pull` per frame towards catchRate x slip,
+  // eased off to at most maxRate (rad/s). Both build up over rampIn frames of countersteer and fade over `hold` frames
+  // after it, so catching a big slide swings the car round over about half a second instead of snapping it.
+  const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
   // Bugslides: start above minSpeed (units per second) and minSlip (radians) on a landing after `air` frames off the
   // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
   // speed kept at keep per frame (about 2% a second lost); over below endSlip.
@@ -334,7 +336,7 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchLeft: 0, wigT: 0, wigAt: -1e9, wigDir: 0, wigLeft: 0, wigV: 0 });
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, wigT: 0, wigAt: -1e9, wigDir: 0, wigLeft: 0, wigV: 0 });
   }
   const clear = (c) => {
     c.boostLeft = 0;
@@ -353,7 +355,7 @@ self.TM = (() => {
     }
     if (out.reset) {
       clear(c);
-      c.bug = c.wigLeft = 0;
+      c.bug = c.wigLeft = c.catchRamp = 0;
       c.justReset = true;
     }
     if (c.noEngine) out.up = false;
@@ -540,6 +542,9 @@ self.TM = (() => {
       steer = c.ctl ? (c.ctl.left ? 1 : 0) - (c.ctl.right ? 1 : 0) : 0,
       // Countersteering: steering towards the side the car is sliding to.
       counter = Math.hypot(lat, fwd) > SLIDE.minSpeed && steer != 0 && Math.sign(steer) == Math.sign(lat) && Math.abs(slip) > SLIDE.from;
+    // How far into the catch the car is, 0 to 1 (see SLIDE).
+    c.catchRamp = counter ? Math.min(1, c.catchRamp + 1 / SLIDE.rampIn) : Math.max(0, c.catchRamp - 1 / SLIDE.hold);
+    const ease = c.catchRamp * c.catchRamp * (3 - 2 * c.catchRamp);
 
     // Tyres: each wheel gets the grip of the surface under it for the next frame.
     // Wheels are btWheelInfo structs: normal at +0, contact point at +16, in contact at +84, friction slip at +228.
@@ -576,7 +581,7 @@ self.TM = (() => {
       }
       if (surface && surface.bounce) {
         plasticWheels++;
-        if (counter && w < 2) grip *= SLIDE.frontGrip;
+        if (w < 2) grip *= 1 + (SLIDE.frontGrip - 1) * ease;
       }
       if (c.bug > 0) grip *= BUG.grip;
       normals.push(F[g], F[g + 1], F[g + 2]);
@@ -602,12 +607,10 @@ self.TM = (() => {
 
     // Countersteering on plastic: the front tyres bite harder and the car's spin is pulled towards the way it is going,
     // so a slide can be caught instead of spinning out.
-    // The pull lasts `hold` frames past the countersteer, so catching a slide does not whip the car round the other way.
-    if (counter) c.catchLeft = SLIDE.hold;
-    else if (c.catchLeft > 0) c.catchLeft--;
-    if (c.catchLeft > 0 && plasticWheels >= 2) {
+    // The pull fades over `hold` frames past the countersteer, so catching a slide does not whip the car round the other way.
+    if (ease > 0 && plasticWheels >= 2) {
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
-        d = (SLIDE.catchRate * slip - yaw) * SLIDE.pull;
+        d = (SLIDE.maxRate * Math.tanh((SLIDE.catchRate * slip) / SLIDE.maxRate) - yaw) * SLIDE.pull * ease;
       F[av] += upx * d;
       F[av + 1] += upy * d;
       F[av + 2] += upz * d;
@@ -748,9 +751,10 @@ self.TM = (() => {
       }
     }
 
-    // Plastic launch: strongest from a standstill, gone by launchUntil (units per second).
+    // Plastic launch: strongest from a standstill, gone by launchUntil (units per second). Measured on the real speed:
+    // the game's own speed turns negative once a slide passes 90 degrees, which would switch the push on full.
     if (c.gas && launchWheels > 0) {
-      const now = speed / 3.6,
+      const now = spd,
         fade = 1 - now / launchUntil;
       if (fade > 0) {
         const dv = launch * fade * (launchWheels / 4) * 0.001;
