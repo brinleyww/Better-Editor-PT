@@ -23,10 +23,13 @@ const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 
 apply('index.html', [
   ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
 apply('main.bundle.js', [
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
+  // nsws_bridge.js imports tracks through the saved-track store and the track codec.
+  ['track store hook', '(Bd.add(this),', '(Bd.add(this),\n            (self.__beTrackStore = this),\n            (self.__beTrackData = Ml.A),'],
   ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"),\n              (e[(e.Ice = 12)] = "Ice"));'],
   [
     'part class',

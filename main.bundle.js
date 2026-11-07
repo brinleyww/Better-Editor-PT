@@ -58670,6 +58670,8 @@
         constructor(e, t, n) {
           if (
             (Bd.add(this),
+            (self.__beTrackStore = this),
+            (self.__beTrackData = Ml.A),
             Gd.set(this, []),
             Fd.set(this, []),
             Od.set(this, []),
