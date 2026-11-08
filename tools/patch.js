@@ -25,11 +25,14 @@ const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 const FAMILIES = '(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])';
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
 apply('main.bundle.js', [
+  // A No engine plate: the throttle doesn't rev the engine or spin the wheels in the air (tm_hud.js knows the effects).
+  ["no engine: no air wheel spin", "const { up: t, down: n } = this.getControls(),\n                    r = 2 == i || 3 == i;", "const noEngine = !!self.TM.hud?.of(this)?.noEngine,\n                    { up: t0, down: n0 } = this.getControls(),\n                    t = t0 && !noEngine,\n                    n = n0 && !(noEngine && !(0, l.gn)(this, te, \"f\").brakeLightEnabled),\n                    r = 2 == i || 3 == i;"],
+  ["no engine: no engine sound", "{ up: i, down: r } = this.getControls(),\n                a =\n                  this.hasStarted() &&", "{ up: i, down: r } = this.getControls(),\n                a =\n                  !self.TM.hud?.of(this)?.noEngine &&\n                  this.hasStarted() &&"],
   // nsws_bridge.js starts the editor without the menu.
   ['no first-launch race when embedded', '              : this.isFirstSession()\n                ? { type: "tutorial" }', '              : this.isFirstSession() && window.parent === window\n                ? { type: "tutorial" }'],
   ['editor starter', '            J = (t, i, a, c, h) => {', '            beStart = (self.__beStartEditor = Q),\n            J = (t, i, a, c, h) => {'],

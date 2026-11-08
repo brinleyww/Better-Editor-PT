@@ -1167,7 +1167,10 @@
               if (this.hasStarted()) {
                 if (r) (((0, l.gn)(this, ue, "f")[i] = 1e3 * a), ((0, l.gn)(this, fe, "f")[i] = 1e3 * a));
                 else {
-                  const { up: t, down: n } = this.getControls(),
+                  const noEngine = !!self.TM.hud?.of(this)?.noEngine,
+                    { up: t0, down: n0 } = this.getControls(),
+                    t = t0 && !noEngine,
+                    n = n0 && !(noEngine && !(0, l.gn)(this, te, "f").brakeLightEnabled),
                     r = 2 == i || 3 == i;
                   (n
                     ? (0, l.gn)(this, te, "f").brakeLightEnabled
@@ -1637,6 +1640,7 @@
                   null != (0, l.gn)(this, te, "f").wheelContact[3],
                 { up: i, down: r } = this.getControls(),
                 a =
+                  !self.TM.hud?.of(this)?.noEngine &&
                   this.hasStarted() &&
                   !this.hasFinished() &&
                   ((i && !(r && (0, l.gn)(this, te, "f").brakeLightEnabled)) ||

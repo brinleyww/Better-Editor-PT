@@ -72,6 +72,58 @@
         return true;
     };
 
+    // A Test that reaches the finish is a run on the open track in NSWS (saved there as the player's).
+    let testCode = null;
+    let physics = null;
+    fetch("physics.json", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => (physics = Number.isSafeInteger(j?.version) && j.version > 0 ? j.version : 1))
+        .catch(() => {});
+    function hookTests() {
+        const tools = self.TM?.tools;
+        const hud = self.TM?.hud;
+        if (!tools?.testStart || !hud?.state || hud.nswsRuns) return;
+        hud.nswsRuns = true;
+        const { testStart, testEnd } = tools;
+        const { state, focus } = hud;
+        let player = null;
+        const finished = new WeakMap();
+        tools.testStart = function () {
+            testCode = currentTrack()?.code || null;
+            return testStart.apply(this, arguments);
+        };
+        tools.testEnd = function () {
+            testCode = null;
+            return testEnd.apply(this, arguments);
+        };
+        hud.focus = function (car) {
+            player = car;
+            return focus.apply(this, arguments);
+        };
+        hud.state = function (car, s) {
+            const out = state.apply(this, arguments);
+            const done = s?.finishFrames != null;
+            if (done && !finished.get(car) && car === player && testCode && parentOrigin) {
+                const code = testCode;
+                // After this frame's finish callbacks, so the recording is the whole run.
+                setTimeout(() => sendRun(car, code, s.finishFrames), 0);
+            }
+            finished.set(car, done);
+            return out;
+        };
+    }
+    function sendRun(car, code, frames) {
+        try {
+            const rec = car.getRecording?.();
+            const parsed = self.__beTrackData?.fromExportString(code);
+            if (!rec || !parsed) return;
+            post({ type: "run", trackId: parsed.trackData.getId(), be: code.startsWith("PolyTrackBE"), frames, recording: rec.serialize(), physics });
+        } catch (e) {
+            console.warn(e);
+        }
+    }
+    hookTests();
+
     function post(msg) {
         if (!parentOrigin) return;
         try {
