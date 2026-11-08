@@ -2399,5 +2399,17 @@
  "GrassFxReactorOrientedOpen": 3397,
  "GrassFxReactorOrientedPlat": 3398,
  "GrassFxReactor2OrientedOpen": 3399,
- "GrassFxReactor2OrientedPlat": 3400
+ "GrassFxReactor2OrientedPlat": 3400,
+ "PlasticFinishBox": 3401,
+ "PlasticFinishBoxHalf": 3402,
+ "WoodFinishBox": 3403,
+ "WoodFinishBoxHalf": 3404,
+ "StadiumFinishBox": 3405,
+ "StadiumFinishBoxHalf": 3406,
+ "IceFinishBox": 3407,
+ "IceFinishBoxHalf": 3408,
+ "DirtFinishBox": 3409,
+ "DirtFinishBoxHalf": 3410,
+ "GrassFinishBox": 3411,
+ "GrassFinishBoxHalf": 3412
 }

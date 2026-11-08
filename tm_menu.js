@@ -326,6 +326,7 @@
     },
     stockPart,
     add(panel, button, image, part) {
+      if (part.h) return; // hidden: kept for old tracks (the finish hoops), not offered
       const state = panels.get(panel) ?? build(panel, part.f);
       if (!state.title.textContent) state.title.textContent = SURFACE_NAMES[part.f] + ' blocks';
       const s = group(state, part.t, part.s);

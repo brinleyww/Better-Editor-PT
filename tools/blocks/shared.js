@@ -3,7 +3,7 @@
 const G = require('./geom');
 const { Mesh, hPath, roadRings, sweep, patch, prism, add, mul, norm, TAU } = G;
 const C = require('./catalog');
-const { DECK, DECAL, DEG, HALF_ROAD, smooth, every, deckPoly, grassStrips, grassPatch, DIRT_VERGE, roadPart, gateArch, cyl, arcStepFor, FX, VEHICLES, vehicleArch, hoopRing, hoopGate } = C;
+const { DECK, DECAL, DEG, HALF_ROAD, smooth, every, deckPoly, grassStrips, grassPatch, DIRT_VERGE, roadPart, gateArch, cyl, arcStepFor, FX, VEHICLES, vehicleArch, hoopRing, hoopGate, putFinishBoxes } = C;
 
 // Concrete stands in for the stock grey; penalty grass mows in 5-unit stripes.
 const ST = {
@@ -196,17 +196,18 @@ function buildShared() {
       }
   }
 
-  // ---- finish hoops: round finish gates, 1 to 4 blocks across --------------------------------------------------------------
+  // ---- finish hoops: round finish gates, 1 to 4 blocks across. Hidden: finish boxes replace them in the menu --------------
   {
     const T = 'Box gates';
     for (let n = 1; n <= 4; n++) {
       const w = n + ' block' + (n > 1 ? 's' : '') + ' wide';
-      put('FinishHoopPlat' + n, 'Finish hoop, ' + w + ', platform', T, 'Finish hoop', hoopGate(ST, 'Plat', n), { detector: { type: 1, center: [0, 2.2, 0], size: [18.25, 3.8, 2] } });
+      put('FinishHoopPlat' + n, 'Finish hoop, ' + w + ', platform', T, 'Finish hoop', hoopGate(ST, 'Plat', n), { detector: { type: 1, center: [0, 2.2, 0], size: [18.25, 3.8, 2] }, hidden: true });
       // A whole ring with nothing under it, for finishing in the air. Its trigger fills the middle of the ring.
       const m = new Mesh(),
         { R, yc } = hoopRing(m, n, false);
-      put('FinishHoopAir' + n, 'Finish hoop in the air, ' + w, T, 'Finish hoop in the air', m, { detector: { type: 1, center: [0, yc, 0], size: [R * 1.4, R * 1.4, 2] } });
+      put('FinishHoopAir' + n, 'Finish hoop in the air, ' + w, T, 'Finish hoop in the air', m, { detector: { type: 1, center: [0, yc, 0], size: [R * 1.4, R * 1.4, 2] }, hidden: true });
     }
+    putFinishBoxes(put, T);
   }
 
   // ---- special gates: an arch that applies an effect, on any surface ------------------------------------------------------
