@@ -312,30 +312,80 @@ self.TM = (() => {
   // All of this runs per physics frame (1 ms) around updateCarModel, so ghosts and verification see the same thing.
   // Turbos push hardest the moment you cross them and fade to nothing. accel is the average over `frames`.
   const TURBO = { Turbo: { accel: 28, frames: 1000 }, Super: { accel: 42, frames: 1400 }, Ultra: { accel: 52, frames: 1800 } };
-  // Reactor boosts, after TM2020's ReactorBoost(2)_Legacy and _Oriented: every wheel turns into a jet that thrusts only
-  // while the gas is held (let go and it stops, so drivers feather the gas to hold a height), with the same push the whole
-  // time, for `frames` from the plate whether it is used or not. A later reactor plate replaces it with a fresh timer.
-  // frame 'world' (legacy up and down): along world up (dir 1) or world down (dir -1) whatever the car's angle; 'car'
-  // (oriented): along the car's own up, so it follows walls and loops. thrust: units/s^2, as a multiple of the game's
-  // gravity G (tools/test/tmphys.mjs reactor: in free fall the car gains 15.5 units/s^2 at 2 units/s, less the faster it
-  // falls, as the game damps all velocity by about 0.17 per second: 16 at rest, not 9.81). level: 1 reactor, 2 super.
-  // TM2020's numbers sit in encrypted packs; 1.3 g and 2.2 g are this project's estimates: a reactor climbs gently, a
-  // super one clearly faster (the damping caps the climb near 28 and 110 units/s), and down boosts press the car
-  // down, or drop it, as hard.
+  // Reactor boosts, after TM2020's oriented ReactorBoost(2): two plates, the reactor boost and the super one. Which way it
+  // boosts depends on the way you cross the plate: along its arrow it is an UP boost, against it a DOWN boost. It lasts
+  // `frames` from the plate whether it is used or not; a later reactor plate replaces it with a fresh timer.
+  // UP (TM2020's IsReactorGroundMode on the ground): over flat ground the car hovers just above it on its jets
+  // (REACTOR_HOVER), gas or not, and drives on; on a ramp or a wall it drives as normal, so ramps still launch it; in the
+  // air, only while the gas is held, the jets push it up along world up: G x (base + extra x (1 - vy / vcap)), the extra
+  // part no lower than -under, so the car settles into a slow climb of about vcap units/s instead of flying off (a
+  // reactor floats, a super one climbs clearly faster). DOWN: only while the gas is held, on the ground it presses the
+  // car into the ground (along the wheels' mean contact normal, so it sticks to walls and over crests), in the air it
+  // pushes it down along world down; press: units/s^2. level: 1 reactor, 2 super. G: the game's gravity
+  // (tools/test/tmphys.mjs reactor: in free fall the car gains 15.5 units/s^2 at 2 units/s, less the faster it falls, as
+  // the game damps all velocity by about 0.17 per second: 16 at rest, not 9.81). TM2020's numbers sit in encrypted
+  // packs; these are this project's estimates.
+  // frames: how long a boost lasts; fade: over its last `fade` frames the push, the press and the hover lift die away
+  // to nothing, exactly as the wheel jets do (tm_vehicles.js reads both from here), so the jets and the boost end on the
+  // same physics frame. end: frames over which an up boost that has just ended takes out the car's upward speed in the
+  // air (see REACTOR_HOVER), so it peaks and falls at once instead of coasting up on the speed it built.
   const G = 16;
+  const REACTOR_TIME = { frames: 6000, fade: 500, end: 150 };
   const REACTOR = {
-    ReactorUp: { level: 1, frame: 'world', dir: 1, thrust: 1.3 * G, frames: 6000 },
-    ReactorDown: { level: 1, frame: 'world', dir: -1, thrust: 1.3 * G, frames: 6000 },
-    Reactor2Up: { level: 2, frame: 'world', dir: 1, thrust: 2.2 * G, frames: 6000 },
-    Reactor2Down: { level: 2, frame: 'world', dir: -1, thrust: 2.2 * G, frames: 6000 },
-    ReactorOriented: { level: 1, frame: 'car', dir: 1, thrust: 1.3 * G, frames: 6000 },
-    Reactor2Oriented: { level: 2, frame: 'car', dir: 1, thrust: 2.2 * G, frames: 6000 },
+    ReactorUp: { level: 1, dir: 1, ...REACTOR_TIME, push: { base: 1, extra: 0.2, vcap: 2, under: 2.5 } },
+    ReactorDown: { level: 1, dir: -1, ...REACTOR_TIME, press: 1.3 * G },
+    Reactor2Up: { level: 2, dir: 1, ...REACTOR_TIME, push: { base: 1, extra: 0.4, vcap: 5, under: 1.25 } },
+    Reactor2Down: { level: 2, dir: -1, ...REACTOR_TIME, press: 2.2 * G },
   };
+  // The plates (part.x types) and the effect they give. arrow 1: the arrow on the plate points the way the road runs at
+  // rotation 0 (the part's -z); -1 the other way: the old down plates, which no longer show in the menu but still load.
+  // The old up plates are the two plates the menu offers; the old oriented ones (hidden too) work like them.
+  const REACTOR_PLATES = {
+    ReactorUp: { level: 1, arrow: 1 },
+    ReactorDown: { level: 1, arrow: -1 },
+    Reactor2Up: { level: 2, arrow: 1 },
+    Reactor2Down: { level: 2, arrow: -1 },
+    ReactorOriented: { level: 1, arrow: 1 },
+    Reactor2Oriented: { level: 2, arrow: 1 },
+  };
+  // Which boost a reactor plate q gives a car that has moved (dx, dy, dz) since the last physics frame and whose
+  // quaternion is (qx, qy, qz, qw): up along the arrow, down against it. A car crossing nearly sideways (its move less
+  // than `band` of its length along the arrow), or standing still, goes by its nose instead. The page (tm_hud.js,
+  // tm_vehicles.js) calls this same function with the same car states, so it shows the same boost.
+  const REACTOR_PICK = { band: 0.2 };
+  function reactorPick(q, dx, dy, dz, qx, qy, qz, qw) {
+    const P = REACTOR_PLATES[q.type];
+    if (!P) return null;
+    const a = -P.arrow,
+      ax = q.fwd[0] * a,
+      ay = q.fwd[1] * a,
+      az = q.fwd[2] * a,
+      s = Math.hypot(dx, dy, dz),
+      d = dx * ax + dy * ay + dz * az,
+      along = s > 1e-6 && Math.abs(d) >= REACTOR_PICK.band * s ? d : 2 * (qx * qz + qw * qy) * ax + 2 * (qy * qz - qw * qx) * ay + (1 - 2 * (qx * qx + qy * qy)) * az;
+    return (P.level == 2 ? 'Reactor2' : 'Reactor') + (along >= 0 ? 'Up' : 'Down');
+  }
+  // Hovering (UP boost over flat ground): every wheel's suspension rest length grows by `lift` units, so the car rides
+  // that much higher on the same springs (the jets hold it; the page draws the wheels that far off the ground) and the
+  // tyres keep driving it as on the ground: same engine and steering, grip x `grip` (a little floaty, not ice),
+  // damping x `damp`. Full hover while the ground under the wheels (the steepest of their contact normals) is within
+  // flat[0] degrees of level, none past flat[1], so from the first wheel on the foot of a ramp the car is back on its
+  // own legs and the ramp launches it as normal. The lift eases towards its target (ease, easeDown: share of the gap per
+  // physics frame) at no more than `rise` units/s up and `drop` down, and dies away with the boost's last stretch
+  // (REACTOR fade); off the ground its target is the full lift, so the car lands back into a hover. On the ground the
+  // body is moved with the lift (see fxStep), so it changes without a bounce. Longer legs pitch and roll the car much
+  // more (the tyres push at the ground further under the body: braking stood it on its nose), so, as TM2020's car does
+  // while it hovers, the jets hold it square to the ground: its pitch and roll spin is pulled (hold per frame) towards
+  // level x its tilt from the ground (rad/s per rad) and its speed away from the ground is damped by `heave` per
+  // second, by how far up it is and only over level ground (holdFlat). Held level it brakes less hard (tools/test/
+  // tmphys.mjs reactor hover: 323 to 20 km/h in 1.39 s against the stock car's 1.04 s), so the brake takes off another
+  // `brake` units/s^2 while it hovers (1.08 s). The air push comes in between airFrom and airFull physics frames off the
+  // ground, so a seam or a kerb never starts a climb.
+  const REACTOR_HOVER = { lift: 0.45, flat: [1, 3], holdFlat: [1, 3], ease: 0.012, easeDown: 0.06, rise: 1.5, drop: 12, grip: 0.95, damp: 1.6, hold: 0.05, level: 10, heave: 8, brake: 18, airFrom: 60, airFull: 250 };
+  if (TEST && TEST.hoverSet) Object.assign(REACTOR_HOVER, TEST.hoverSet);
   // ReactorAirControl: with all four wheels off the ground while a reactor is on, steering yaws the car about its own up
   // (towards yaw rad/s, pull: share of the gap per frame) and the car is held steady instead of tumbling: its pitch and
-  // roll spin is pulled (calm per frame) towards level x its tilt (rad/s per rad, towards world-flat) on a legacy boost,
-  // or towards none on an oriented one, which keeps its attitude. On the ground (TM2020's IsReactorGroundMode) the car
-  // drives as always and only the thrust is added.
+  // roll spin is pulled (calm per frame) towards level x its tilt (rad/s per rad, towards world-flat).
   const REACTOR_AIR = { yaw: 2, pull: 0.02, calm: 0.01, level: 3 };
   // Water, after Trackmania 2020. How deep the car is decides how much it counts (k, 0 to 1: deep water counts fully once
   // the car's underside is `depth` units under). Drag grows with speed, lin x v + quad x v^2 (units/s^2), so it bleeds
@@ -723,7 +773,7 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
@@ -731,6 +781,7 @@ self.TM = (() => {
   const clear = (c) => {
     c.boostLeft = 0;
     c.boost = null;
+    if (c.reactorLeft > 0 && c.reactor.dir > 0) c.reactorEnd = c.reactor.end; // an up boost cut short ends as one run out
     c.reactorLeft = 0;
     c.reactor = null;
     c.slow = false;
@@ -820,9 +871,10 @@ self.TM = (() => {
   // length L, a rest length of R - (1 - stiff) x (R - L) gives exactly stiff x the spring force. Travel is left alone:
   // the stock car's is 10 units, which never limits it. Stock values are read on the car's first frame and written
   // back when it turns into the Stadium car again.
+  // While a reactor boost hovers the car (REACTOR_HOVER) every rest length is c.hover longer and the damping stronger.
   function suspension(c, heap, carId) {
     const V = VEHICLES[c.vehicle];
-    if (!V.susp && !c.suspSet) return;
+    if (!V.susp && !c.suspSet && !c.hover) return;
     const U = new Uint32Array(heap.buffer),
       F = new Float32Array(heap.buffer),
       car = carPointer(U, carId);
@@ -839,21 +891,22 @@ self.TM = (() => {
       const a = wheels + w * 284,
         g = a >> 2,
         s0 = c.susp0[w];
+      const hd = c.hover ? 1 + ((REACTOR_HOVER.damp - 1) * c.hover) / REACTOR_HOVER.lift : 1;
       if (!V.susp) {
-        F[g + 51] = s0[0];
-        F[g + 55] = s0[1];
-        F[g + 56] = s0[2];
+        F[g + 51] = s0[0] + c.hover;
+        F[g + 55] = s0[1] * hd;
+        F[g + 56] = s0[2] * hd;
         F[g + 61] = s0[3];
         continue;
       }
       const S = V.susp,
-        rest = s0[0] + S.rest;
+        rest = s0[0] + S.rest + c.hover;
       F[g + 51] = heap[a + 84] && F[g + 8] < rest ? rest - (1 - S.stiff) * (rest - F[g + 8]) : rest;
-      F[g + 55] = s0[1] * (S.dampIn ?? S.damp);
-      F[g + 56] = s0[2] * S.damp;
+      F[g + 55] = s0[1] * (S.dampIn ?? S.damp) * hd;
+      F[g + 56] = s0[2] * S.damp * hd;
       F[g + 61] = s0[3] * S.roll;
     }
-    c.suspSet = !!V.susp;
+    c.suspSet = !!V.susp || c.hover > 0;
   }
   // A car's effect, tyre and vehicle state, for code that rewinds the wasm heap (Not So Weekly Shorts' Cuppa bots save
   // and restore the heap only): fxSave copies it, fxLoad puts a copy back. The track's tables are shared, not copied.
@@ -958,6 +1011,8 @@ self.TM = (() => {
     if ((c.last && Math.abs(x - c.last.x) + Math.abs(y - c.last.y) + Math.abs(z - c.last.z) > 5) || (c.justReset && c.lastCp > 0)) {
       clear(c);
       c.vehicle = c.cpVehicle;
+      c.hover = 0; // a hover lift ends at once: the car comes back on its own wheels
+      c.reactorEnd = 0;
       for (const t of c.tyres) t.wet = t.ice = t.mud = 0;
     }
     const cp = s.getUint16(pos - 2, true);
@@ -1032,10 +1087,15 @@ self.TM = (() => {
         case 'Reactor2Up':
         case 'Reactor2Down':
         case 'ReactorOriented':
-        case 'Reactor2Oriented':
-          c.reactor = REACTOR[q.type];
+        case 'Reactor2Oriented': {
+          // Up or down by the way the car crosses it (reactorPick): its move since the last frame, or its nose.
+          const L = c.last,
+            moved = L && Math.abs(x - L.x) + Math.abs(y - L.y) + Math.abs(z - L.z) < 5;
+          c.reactor = REACTOR[reactorPick(q, moved ? x - L.x : 0, moved ? y - L.y : 0, moved ? z - L.z : 0, s.getFloat32(pos + 12, true), s.getFloat32(pos + 16, true), s.getFloat32(pos + 20, true), s.getFloat32(pos + 24, true))];
           c.reactorLeft = c.reactor.frames;
+          c.reactorEnd = 0;
           break;
+        }
         case 'Slow':
           c.slow = true;
           break;
@@ -1194,6 +1254,8 @@ self.TM = (() => {
       // Wet, iced and muddy tyres (TYRES): from the state they came in with, so it counts from the next frame.
       const tk = TYRES.factor(f, t);
       if (tk != 1) grip *= tk;
+      // Hovering on a reactor boost: a little floaty (REACTOR_HOVER grip), by how far up the car is.
+      if (c.hover > 0) grip *= 1 - ((1 - REACTOR_HOVER.grip) * c.hover) / REACTOR_HOVER.lift;
       if (f != null) tyreOn[f] += tk;
       if (t.wet > 0 && TYRES.row(f).wetRoll) wetRoll += TYRES.row(f).wetRoll * t.wet;
       if (t.wet > 0 && TYRES.row(f).slides != null) (slideWheels += t.wet), (slideIce = SURFACES[TYRES.row(f).slides].ice);
@@ -1596,17 +1658,87 @@ self.TM = (() => {
       }
     }
 
-    // Reactor boost (REACTOR): thrust only while the gas is held, and air control (REACTOR_AIR) off the ground.
+    // Reactor boost (REACTOR): an up boost hovers the car over flat ground (REACTOR_HOVER, the lift goes into the
+    // suspension before the next step) and pushes it up in the air on the gas; a down boost presses it into the ground,
+    // or down through the air, on the gas. Off the ground steering turns the car and it is held level (REACTOR_AIR).
+    let hoverWant = 0;
     if (c.reactorLeft > 0) {
       c.reactorLeft--;
-      const R = c.reactor;
-      if (c.gas) {
-        const k = R.dir * R.thrust * 0.001;
-        if (R.frame == 'car') {
-          F[v] += upx * k;
-          F[v + 1] += upy * k;
-          F[v + 2] += upz * k;
-        } else F[v + 1] += k;
+      const R = c.reactor,
+        H = REACTOR_HOVER,
+        // the last stretch dies away with the jets: 0 on the boost's last frame
+        fade = Math.min(1, c.reactorLeft / R.fade);
+      if (c.reactorLeft == 0 && R.dir > 0) c.reactorEnd = R.end;
+      // the ground under the car: the wheels' mean contact normal, and how level its steepest part is (flat: 1 within
+      // flat[0] degrees of level, 0 past flat[1]), so the foot of a ramp counts from the first wheel on it
+      let nx = 0,
+        ny = 0,
+        nz = 0,
+        steep = 1;
+      for (let i = 0; i < normals.length; i += 3) {
+        nx += normals[i];
+        ny += normals[i + 1];
+        nz += normals[i + 2];
+        steep = Math.min(steep, normals[i + 1]);
+      }
+      const level = (deg) => {
+          const lo = Math.cos((deg[1] * Math.PI) / 180),
+            hi = Math.cos((deg[0] * Math.PI) / 180),
+            t = contacts > 0 ? Math.max(0, Math.min(1, (steep - lo) / (hi - lo))) : 0;
+          return t * t * (3 - 2 * t);
+        },
+        nl = Math.hypot(nx, ny, nz),
+        flat = level(H.flat);
+      if (R.dir > 0) {
+        hoverWant = (contacts > 0 ? H.lift * flat : H.lift) * fade;
+        if (contacts == 0 && c.gas && c.air > H.airFrom) {
+          const P = R.push,
+            t = Math.min(1, (c.air - H.airFrom) / (H.airFull - H.airFrom)),
+            k = P.base + P.extra * Math.max(-P.under, Math.min(1, 1 - F[v + 1] / P.vcap));
+          F[v + 1] += G * k * t * t * (3 - 2 * t) * fade * 0.001;
+        }
+      } else if (c.gas) {
+        const k = R.press * fade * 0.001;
+        if (contacts > 0 && nl > 0) {
+          F[v] -= (nx / nl) * k;
+          F[v + 1] -= (ny / nl) * k;
+          F[v + 2] -= (nz / nl) * k;
+        } else F[v + 1] -= k;
+      }
+      // Hovering: held square to the ground, and its bobbing damped (REACTOR_HOVER hold, level, heave), by how far up
+      // the car is and how flat the ground is (on the foot of a ramp the car pitches up onto it as on its wheels).
+      const square = c.hover > 0 && contacts > 0 && nl > 0 ? level(H.holdFlat) : 0;
+      if (square > 0) {
+        const k = (c.hover / H.lift) * square,
+          gx = nx / nl,
+          gy = ny / nl,
+          gz = nz / nl,
+          // about car up x ground normal, by the angle between them
+          ax = upy * gz - upz * gy,
+          ay = upz * gx - upx * gz,
+          az = upx * gy - upy * gx,
+          sn = Math.hypot(ax, ay, az),
+          a = sn > 1e-6 ? (Math.atan2(sn, upx * gx + upy * gy + upz * gz) * H.level) / sn : 0,
+          yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
+          m = H.hold * k;
+        F[av] += (ax * a - (F[av] - upx * yaw)) * m;
+        F[av + 1] += (ay * a - (F[av + 1] - upy * yaw)) * m;
+        F[av + 2] += (az * a - (F[av + 2] - upz * yaw)) * m;
+        // only off the ground: into it the springs take it, and on the foot of a ramp (where the wheels' mean normal
+        // leans back) a damper both ways lifted the car off the ramp before it could launch it
+        const vn = (F[v] * gx + F[v + 1] * gy + F[v + 2] * gz) * Math.min(1, H.heave * 0.001 * k);
+        if (vn > 0) {
+          F[v] -= gx * vn;
+          F[v + 1] -= gy * vn;
+          F[v + 2] -= gz * vn;
+        }
+        // the brake bites as hard as on the car's own legs (REACTOR_HOVER brake)
+        if (c.ctl && c.ctl.down && fwd > 1) {
+          const b = Math.min(fwd - 1, H.brake * k * 0.001);
+          F[v] -= fx * b;
+          F[v + 1] -= fy * b;
+          F[v + 2] -= fz * b;
+        }
       }
       if (contacts == 0) {
         const A = REACTOR_AIR,
@@ -1614,31 +1746,55 @@ self.TM = (() => {
           yaw = F[w] * upx + F[w + 1] * upy + F[w + 2] * upz,
           dy = (steer * A.yaw - yaw) * A.pull;
         // Pitch and roll spin: what is left of the spin once its part about the car's up is taken out.
-        let px = F[w] - upx * yaw,
+        const px = F[w] - upx * yaw,
           py = F[w + 1] - upy * yaw,
-          pz = F[w + 2] - upz * yaw,
-          tx = 0,
+          pz = F[w + 2] - upz * yaw;
+        let tx = 0,
           ty = 0,
           tz = 0;
-        if (R.frame != 'car') {
-          // Towards level: about car up x world up, as fast as level x the tilt.
-          const ax = -upz,
-            az = upx,
-            n = Math.hypot(ax, az);
-          if (n > 1e-6) {
-            const a = (Math.atan2(n, upy) * A.level) / n;
-            tx = ax * a;
-            tz = az * a;
-          }
-          // only the part square to the car's up (turning about up is the steering's)
-          const k2 = tx * upx + ty * upy + tz * upz;
-          tx -= upx * k2;
-          ty -= upy * k2;
-          tz -= upz * k2;
+        // Towards level: about car up x world up, as fast as level x the tilt.
+        const ax = -upz,
+          az = upx,
+          n = Math.hypot(ax, az);
+        if (n > 1e-6) {
+          const a = (Math.atan2(n, upy) * A.level) / n;
+          tx = ax * a;
+          tz = az * a;
         }
+        // only the part square to the car's up (turning about up is the steering's)
+        const k2 = tx * upx + ty * upy + tz * upz;
+        tx -= upx * k2;
+        ty -= upy * k2;
+        tz -= upz * k2;
         F[w] += upx * dy + (tx - px) * A.calm;
         F[w + 1] += upy * dy + (ty - py) * A.calm;
         F[w + 2] += upz * dy + (tz - pz) * A.calm;
+      }
+    }
+    // An up boost just ended (run out, a reset plate, a checkpoint): in the air its upward speed goes over `end` frames
+    // (a straight line down to none), so the car peaks and falls at once. Only upward speed: nothing is added downwards
+    // and the speed along the ground stays.
+    if (c.reactorEnd > 0) {
+      c.reactorEnd--;
+      if (contacts == 0 && F[v + 1] > 0) F[v + 1] *= c.reactorEnd / (c.reactorEnd + 1);
+    }
+    if (c.hover != hoverWant) {
+      const H = REACTOR_HOVER,
+        gap = hoverWant - c.hover,
+        was = c.hover;
+      c.hover = Math.abs(gap) < 1e-4 ? hoverWant : c.hover + Math.max(-H.drop * 0.001, Math.min(H.rise * 0.001, gap * (gap < 0 ? H.easeDown : H.ease)));
+      // On the ground the body goes up or down with the lift, along its own up, so the wheels stay exactly where they
+      // were on the ground, as squeezed as before: the lift changes with no bounce, and coming down onto the foot of a
+      // ramp the car is back on its own legs before the ramp turns up (rising on springs alone, the long legs bounced
+      // the car off a ramp's foot). Bullet keeps the body's position twice: its world transform's origin (+52) and its
+      // interpolated one's (+116).
+      if (contacts > 0) {
+        const d = c.hover - was;
+        for (const o of [(body + 52) >> 2, (body + 116) >> 2]) {
+          F[o] += upx * d;
+          F[o + 1] += upy * d;
+          F[o + 2] += upz * d;
+        }
       }
     }
 
@@ -1728,7 +1884,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, gas: c.gas, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 
@@ -1872,8 +2028,12 @@ self.TM = (() => {
     // new car (start over) is the Stadium car.
     VEHICLES,
     vehicleGates: GATES,
-    // The reactor boosts (the page's HUD and wheel jets work out the same effect from the car's states).
+    // The reactor boosts (the page's HUD and wheel jets work out the same effect from the car's states with reactorPick).
     REACTOR,
+    REACTOR_TIME,
+    REACTOR_PLATES,
+    REACTOR_HOVER,
+    reactorPick,
     WATER,
     ICING,
     TYRES,

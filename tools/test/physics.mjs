@@ -4,7 +4,7 @@
 import { openEditor } from './lib.mjs';
 const section = process.argv[2] || 'surfaces';
 const hook = `(()=>{const o=Worker.prototype.postMessage;Worker.prototype.postMessage=function(m,...r){if(m&&m.trackParts&&!window.__init)window.__init=m;return o.call(this,m,...r)}})()`;
-const c = await openEditor(9337, 800, 600, hook);
+const c = await openEditor(+(process.env.TMCDP || 9337), 800, 600, hook);
 await c.waitFor('!!window.__init');
 await c.evaluate(`(()=>{
   window.webpackChunk.push([[Symbol()],{},r=>window.__req=r]);

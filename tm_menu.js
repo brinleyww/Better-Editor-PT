@@ -326,6 +326,8 @@
     },
     stockPart,
     add(panel, button, image, part) {
+      // A hidden block (part.h) still loads on tracks and the pipette can pick it, but the menu does not offer it.
+      if (part.h) return;
       const state = panels.get(panel) ?? build(panel, part.f);
       if (!state.title.textContent) state.title.textContent = SURFACE_NAMES[part.f] + ' blocks';
       const s = group(state, part.t, part.s);

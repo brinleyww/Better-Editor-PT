@@ -13,7 +13,10 @@ self.TM.hud = (() => {
   // The runtime's own tables where it exports them (tm_runtime.js), so the page and the physics agree. TURBO is not
   // exported (yet), and an older runtime has no REACTOR: these copies are the effect lengths in physics frames (1 ms).
   const TURBO = TM.TURBO ?? { Turbo: { frames: 1000 }, Super: { frames: 1400 }, Ultra: { frames: 1800 } };
-  const REACTOR = TM.REACTOR ?? { ReactorUp: { frames: 6000 }, ReactorDown: { frames: 6000 }, Reactor2Up: { frames: 6000 }, Reactor2Down: { frames: 6000 }, ReactorOriented: { frames: 6000 }, Reactor2Oriented: { frames: 6000 } };
+  const REACTOR = TM.REACTOR ?? { ReactorUp: { frames: 6000 }, ReactorDown: { frames: 6000 }, Reactor2Up: { frames: 6000 }, Reactor2Down: { frames: 6000 } };
+  // Which boost a reactor plate gives (up along its arrow, down against it): the runtime's own pick, on the same states.
+  // An older runtime had one boost per plate type.
+  const reactorPick = typeof TM.reactorPick == 'function' ? TM.reactorPick : (q) => (q.type in REACTOR ? q.type : null);
   const GATES = TM.vehicleGates ?? { CarSnow: 'Snow', CarRally: 'Rally', CarDesert: 'Desert', CarStadium: 'Stadium' };
   const VEHICLES = TM.VEHICLES ?? {};
   const SURFACES = TM.surfaces ?? [];
@@ -49,8 +52,6 @@ self.TM.hud = (() => {
     ReactorDown: 'REACTOR BOOST DOWN',
     Reactor2Up: 'SUPER REACTOR BOOST',
     Reactor2Down: 'SUPER REACTOR BOOST DOWN',
-    ReactorOriented: 'REACTOR BOOST ORIENTED',
-    Reactor2Oriented: 'SUPER REACTOR BOOST ORIENTED',
     Bumper: 'BUMPER',
     Bumper2: 'SUPER BUMPER',
     Snow: 'SNOW CAR',
@@ -194,10 +195,17 @@ self.TM.hud = (() => {
         case 'Reactor2Up':
         case 'Reactor2Down':
         case 'ReactorOriented':
-        case 'Reactor2Oriented':
-          c.reactor = q.type;
-          c.reactorLeft = REACTOR[q.type].frames;
+        case 'Reactor2Oriented': {
+          // up or down by the car's move since the last frame (or its nose), exactly as fxStep picks it
+          const moved = c.has && Math.abs(p.x - c.x) + Math.abs(p.y - c.y) + Math.abs(p.z - c.z) < RESPAWN,
+            Q = s.quaternion,
+            r = reactorPick(q, moved ? p.x - c.x : 0, moved ? p.y - c.y : 0, moved ? p.z - c.z : 0, Q.x, Q.y, Q.z, Q.w);
+          if (r && REACTOR[r]) {
+            c.reactor = r;
+            c.reactorLeft = REACTOR[r].frames;
+          }
           break;
+        }
         case 'Slow':
           c.slow = true;
           break;
@@ -649,6 +657,7 @@ self.TM.hud = (() => {
         vehicle: c.vehicle,
         boost: c.boostLeft > 0 ? c.boost : null,
         reactor: c.reactorLeft > 0 ? c.reactor : null,
+        reactorLeft: c.reactorLeft, // physics frames left, as the runtime's (tm_vehicles.js times the wheel jets by it)
         reactorThrust: c.thrust,
         slow: c.slow,
         noEngine: c.noEngine,

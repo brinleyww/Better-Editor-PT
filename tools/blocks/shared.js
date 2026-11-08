@@ -218,7 +218,7 @@ function buildShared() {
       m.box('ConcreteDark', [9.2, 0.21, -0.6], [10, 4.4, 0.6], 'Metal');
       m.box(fx.mat, [-10, 4.4, -0.7], [10, 5.4, 0.7], 'ConcreteDark');
       for (let i = 0; i < 4; i++) m.box(fx.mat, [-9.2, 0.21 + i * 1.05, -0.3], [-8.9, 0.81 + i * 1.05, 0.3]), m.box(fx.mat, [8.9, 0.21 + i * 1.05, -0.3], [9.2, 0.81 + i * 1.05, 0.3]);
-      put('Gate' + fx.key, fx.label + ' gate', T, 'Special gates', m, { fx: { type: fx.key, center: [0, 2.6, 0], size: [18.4, 5, 3] } });
+      put('Gate' + fx.key, fx.label + ' gate', T, 'Special gates', m, { fx: { type: fx.key, center: [0, 2.6, 0], size: [18.4, 5, 3] }, hidden: fx.hidden });
     }
   }
 
@@ -272,7 +272,7 @@ function buildShared() {
         glyph = new Mesh();
       fx.glyph(glyph, DECAL);
       m.merge(onCrown(glyph));
-      put('Fx' + fx.key + 'Bump', fx.label + ', bump road', T, 'Effects', m, { ...u, fx: { type: fx.key, center: [0, 2.5, 0], size: [13.1, 5, 12] } });
+      put('Fx' + fx.key + 'Bump', fx.label + ', bump road', T, 'Effects', m, { ...u, fx: { type: fx.key, center: [0, 2.5, 0], size: [13.1, 5, 12] }, hidden: fx.hidden });
     }
   }
 

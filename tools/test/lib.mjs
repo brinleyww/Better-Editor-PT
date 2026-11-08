@@ -6,7 +6,7 @@ export const T = path.join(os.tmpdir(), 'bept-') ;
 export async function openEditor(port, width=1280, height=800, hook) {
   const c = await launch({ port, width, height });
   if (hook) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: hook });
-  await c.send('Page.navigate', { url: 'http://127.0.0.1:8123/Better-Editor-PT/' });
+  await c.send('Page.navigate', { url: 'http://127.0.0.1:' + (process.env.TMPORT || 8123) + '/Better-Editor-PT/' }); // TMPORT: another copy of the site
   c.clickText = (t) => c.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.innerText.trim()==${JSON.stringify(t)}&&b.offsetParent);if(b){b.click();return true}return false})()`);
   await c.waitFor(`[...document.querySelectorAll('button')].some(b=>b.innerText.trim()=='Exit'&&b.offsetParent)`, 90000);
   await c.sleep(1500); await c.clickText('Exit'); await c.sleep(2500);

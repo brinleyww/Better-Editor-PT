@@ -204,7 +204,7 @@ function buildIce() {
         glyph = new Mesh();
       fx.glyph(glyph, DECK + 0.04);
       m.merge(onFloor(glyph));
-      bob('Fx' + fx.key + 'Bob', fx.label + ', bobsleigh', 'Bobsleigh effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [17, 5, 12] } });
+      bob('Fx' + fx.key + 'Bob', fx.label + ', bobsleigh', 'Bobsleigh effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [17, 5, 12] }, hidden: fx.hidden });
     }
     // Vehicle gates: the gate's colour across the floor like the bobsleigh gates, the posts on the wall tops.
     for (const V of VEHICLES) {
@@ -250,7 +250,7 @@ function buildIce() {
     for (const fx of FX) {
       const m = roadPart(st, platProfile(st, (ring, isLine) => (isLine ? st.line(ring) : fx.mat)), [{ line: 20 }], { step: 5 });
       fx.glyph(m, DECK + 0.04);
-      plat('Fx' + fx.key + 'Plat', fx.label + ', ice platform', 'Ice effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [19.5, 5, 12] } });
+      plat('Fx' + fx.key + 'Plat', fx.label + ', ice platform', 'Ice effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [19.5, 5, 12] }, hidden: fx.hidden });
     }
     for (const V of VEHICLES) {
       const m = roadPart(st, platProfile(st, (ring) => (ring.s >= 9 - 1e-6 && ring.s < 11 - 1e-6 ? V.mat : null)), [{ line: 20 }], { marks: [9, 11] });

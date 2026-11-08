@@ -1113,7 +1113,7 @@ function buildSurface(surface) {
         const paint = (ring, isLine) => (isLine ? st.line(ring) : fx.mat);
         const m = roadPart(st, W.make(paint), [{ line: 20 }], { step: 5 });
         glyphOn(m, fx.glyph, W.glyph);
-        put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 12] } });
+        put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 12] }, hidden: fx.hidden });
       }
   }
 
@@ -1210,18 +1210,21 @@ function buildSurface(surface) {
   return parts;
 }
 
-// Gameplay plates. Effects run in the physics worker, see tm_runtime.js.
+// Gameplay plates. Effects run in the physics worker, see tm_runtime.js. hidden: no longer in the editor's menu, but
+// still built (same ids, same models) so tracks that have them keep loading and driving: the turbo roulette, and the old
+// reactor down and oriented plates (the two reactor plates now boost up or down by the way you cross their arrow).
 const FX = [
   { key: 'Turbo', label: 'Turbo', mat: 'FxTurbo', glyph: (m, y) => chevrons(m, 'FxTurboB', 3, y) },
   { key: 'Super', label: 'Super turbo', mat: 'FxSuper', glyph: (m, y) => chevrons(m, 'FxSuperB', 3, y) },
-  { key: 'Roulette', label: 'Turbo roulette', mat: 'FxRoulette', glyph: (m, y) => rouletteGlyph(m, y) },
+  { key: 'Roulette', label: 'Turbo roulette', mat: 'FxRoulette', glyph: (m, y) => rouletteGlyph(m, y), hidden: true },
+  // The arrow points the way the boost goes up: crossing along it gives the up boost, against it the down boost.
   { key: 'ReactorUp', label: 'Reactor boost', mat: 'FxReactor', glyph: (m, y) => arrowGlyph(m, 'FxReactorB', y, 1) },
-  { key: 'ReactorDown', label: 'Reactor boost, down', mat: 'FxReactor', glyph: (m, y) => arrowGlyph(m, 'FxReactorB', y, -1) },
+  { key: 'ReactorDown', label: 'Reactor boost, down', mat: 'FxReactor', glyph: (m, y) => arrowGlyph(m, 'FxReactorB', y, -1), hidden: true },
   { key: 'Reactor2Up', label: 'Super reactor boost', mat: 'FxReactor2', glyph: (m, y) => arrowGlyph(m, 'FxReactor2B', y, 1) },
-  { key: 'Reactor2Down', label: 'Super reactor boost, down', mat: 'FxReactor2', glyph: (m, y) => arrowGlyph(m, 'FxReactor2B', y, -1) },
-  // Oriented reactor boosts thrust along the car's own up (TM2020's ReactorBoost_Oriented): an arrow standing on a bar.
-  { key: 'ReactorOriented', label: 'Reactor boost, oriented', mat: 'FxReactor', glyph: (m, y) => orientedGlyph(m, 'FxReactorB', y) },
-  { key: 'Reactor2Oriented', label: 'Super reactor boost, oriented', mat: 'FxReactor2', glyph: (m, y) => orientedGlyph(m, 'FxReactor2B', y) },
+  { key: 'Reactor2Down', label: 'Super reactor boost, down', mat: 'FxReactor2', glyph: (m, y) => arrowGlyph(m, 'FxReactor2B', y, -1), hidden: true },
+  // The old oriented plates: an arrow standing on a bar. They boost like the two reactor plates now.
+  { key: 'ReactorOriented', label: 'Reactor boost, oriented', mat: 'FxReactor', glyph: (m, y) => orientedGlyph(m, 'FxReactorB', y), hidden: true },
+  { key: 'Reactor2Oriented', label: 'Super reactor boost, oriented', mat: 'FxReactor2', glyph: (m, y) => orientedGlyph(m, 'FxReactor2B', y), hidden: true },
   { key: 'Reset', label: 'Reset effects', mat: 'FxReset', glyph: (m, y) => ringGlyph(m, 'FxResetB', y) },
   { key: 'NoEngine', label: 'No engine', mat: 'FxNoEngine', glyph: (m, y) => crossGlyph(m, 'FxNoEngineB', y) },
   { key: 'NoBrake', label: 'No brakes', mat: 'FxNoBrake', glyph: (m, y) => barGlyph(m, 'FxNoBrakeB', y) },
