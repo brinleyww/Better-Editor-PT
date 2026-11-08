@@ -17,13 +17,16 @@ self.TM.vehicles = (() => {
   const cars = new WeakMap(); // car -> its gates, vehicle, tyre state and the parts it wears
 
   // ---- tyres --------------------------------------------------------------------------------------------------------
-  // Wet and iced tyres follow the runtime (its WATER and ICING), so the look shows the grip the car really has: the tyres
-  // soak up while the car's underside is in water, and dry on the ground but not on ice (one wetness for the car, as in the
-  // runtime); a tyre ices up on the surfaces its car ices on (VEHICLES ices) and thaws on other ground. Checkpoints keep
-  // them as they are; respawns dry and thaw them, vehicle gates thaw them.
-  // Every car gets this, the Stadium car too: TM2020's Stadium car gets wet and icy tyres as well (on ice, bobsleigh
-  // and snow, as the runtime has it). Dirt is only a look (part.u: dirt, and drivable grass a little; not the penalty grass verges,
-  // which the stock car always drove on clean), per second on the ground; water washes it off.
+  // Wet, iced and muddy tyres follow the runtime, so the look shows the grip the car really has. With its tyre model
+  // (TM.TYRES) the tyres are stepped by that very code, per wheel, with what the runtime gives it: the surface under the
+  // wheel, whether it is in water, how hard it slides (skidInfo). Checkpoints keep them as they are; respawns and vehicle
+  // gates clean them. Every car gets this, the Stadium car too: TM2020's Stadium car gets wet and icy tyres as well.
+  // Without it (an older runtime): the tyres soak up while the car's underside is in water and dry on the ground but not
+  // on ice (one wetness for the car); a tyre ices up on the surfaces its car ices on (VEHICLES ices) and thaws on other
+  // ground; respawns dry and thaw them, vehicle gates thaw them; and mud is only a look (part.u: dirt, and drivable grass
+  // a little; not the penalty grass verges, which the stock car always drove on clean), per second on the ground, washed
+  // off by water.
+  const TYRES = TM.TYRES && typeof TM.TYRES.step == 'function' ? TM.TYRES : null;
   const WET = TM.WATER ?? { soak: 0.6, dry: 0.1, under: 0.45 };
   const ICING = TM.ICING ?? { surfaces: [3, 4, 7], on: 0.8, off: 0.4 };
   const ICE_SURFACES = [3, 4]; // where wet tyres do not dry (runtime: surfaces with ice handling)
@@ -41,7 +44,7 @@ self.TM.vehicles = (() => {
 
   function tint(w, mat) {
     const b = mat.__beTyre ?? (mat.__beTyre = { r: mat.color.r, g: mat.color.g, b: mat.color.b, rough: mat.roughness });
-    const d = Math.min(1, w.dirt) * 0.85,
+    const d = Math.min(1, w.mud) * 0.85,
       i = Math.min(1, w.ice) * 0.75,
       wet = Math.min(1, w.wet),
       dark = 1 - 0.35 * wet;
@@ -780,7 +783,7 @@ self.TM.vehicles = (() => {
     c.y = s.position.y;
     c.z = s.position.z;
     c.rate = 0;
-    c.tyre.forEach((w) => (w.wet = w.ice = w.dirt = 0));
+    c.tyre.forEach((w) => (w.wet = w.ice = w.mud = 0));
   }
 
   function step(c, s) {
@@ -797,9 +800,10 @@ self.TM.vehicles = (() => {
       respawn = key || moved > JUMP + 1.5 * steps * Math.max(c.rate, 0.03); // 0.03 units a frame = 108 km/h
     c.rate = respawn ? 0 : moved / steps;
     if (respawn) {
-      // Back to the vehicle the car had at its last checkpoint, with dry, thawed tyres (as the runtime).
+      // Back to the vehicle the car had at its last checkpoint, with dry, thawed tyres (as the runtime; with its tyre
+      // model clean ones).
       c.vehicle = c.cpVehicle;
-      for (const w of c.tyre) w.wet = w.ice = 0;
+      for (const w of c.tyre) (w.wet = w.ice = 0), TYRES && (w.mud = 0);
       x0 = p.x;
       y0 = p.y;
       z0 = p.z;
@@ -819,7 +823,7 @@ self.TM.vehicles = (() => {
     }
     if (best >= 0) {
       const v = GATES[c.gates[best].type];
-      if (v != c.vehicle) for (const w of c.tyre) w.ice = 0; // a new car has new tyres
+      if (v != c.vehicle) for (const w of c.tyre) (w.ice = 0), TYRES && (w.wet = w.mud = 0); // a new car has new tyres
       c.vehicle = v;
     }
     c.x = p.x;
@@ -836,16 +840,35 @@ self.TM.vehicles = (() => {
         break;
       }
     const ices = VEHICLES[c.vehicle]?.ices ?? ICES[c.vehicle] ?? [],
+      level = water ? water.surface ?? water.max[1] : 0,
       // The runtime soaks the tyres while the car's underside (WATER.under below its origin) is under the surface.
-      soaking = water != null && p.y - (WET.under ?? 0.45) < (water.surface ?? water.max[1]);
+      soaking = water != null && p.y - (WET.under ?? 0.45) < level;
     let contacts = 0,
       onIce = false;
     c.soaking = soaking;
+    if (TYRES) {
+      // With no new surfaces and no water nothing ever gets on a tyre.
+      if (!c.surfaces?.size && !c.water.length) return;
+      // The runtime's own step, once per physics frame since the last drawn one (with this frame's surfaces): a wheel on
+      // the ground is in the water when its contact is under the surface, one in the air when the car's underside is.
+      const n = Math.max(1, Math.min(250, Math.round(dt * 1000))),
+        d = dt / n,
+        skid = s.wheelSkidInfo;
+      for (let i = 0; i < 4; i++) {
+        const contact = s.wheelContact[i],
+          u = !contact ? TYRES.AIR : c.surfaces ? surfaceAt(c, contact) ?? TYRES.ROAD : TYRES.ROAD,
+          wet = contact ? water != null && contact.position.y < level : soaking,
+          heat = TYRES.heatOf(skid ? skid[i] : 1);
+        c.wu[i] = contact ? (u == TYRES.ROAD ? null : u) : null; // what the tyre spray throws up
+        for (let k = 0; k < n; k++) TYRES.step(c.tyre[i], u, wet, heat, c.vehicle, d);
+      }
+      return;
+    }
     for (let i = 0; i < 4; i++) {
       const w = c.tyre[i],
         contact = s.wheelContact[i],
         wheel = c.rig.wheels[i];
-      if (soaking && wheel != null && wheel.position.y - TYRE_RADIUS < (water.surface ?? water.max[1])) w.dirt = Math.max(0, w.dirt - DIRT.wash * dt);
+      if (soaking && wheel != null && wheel.position.y - TYRE_RADIUS < level) w.mud = Math.max(0, w.mud - DIRT.wash * dt);
       c.wu[i] = null;
       if (!contact) continue;
       contacts++;
@@ -856,7 +879,7 @@ self.TM.vehicles = (() => {
       if (icy && ices.includes(u)) w.ice = Math.min(1, w.ice + ICING.on * dt);
       else if (!icy) w.ice = Math.max(0, w.ice - ICING.off * dt);
       const d = DIRTY[u];
-      w.dirt = d ? Math.min(1, w.dirt + d * dt) : Math.max(0, w.dirt - DIRT.off * dt);
+      w.mud = d ? Math.min(1, w.mud + d * dt) : Math.max(0, w.mud - DIRT.off * dt);
     }
     const t = c.tyre[0];
     let wet = t.wet;
@@ -1306,7 +1329,7 @@ self.TM.vehicles = (() => {
   }
   // A car's own state over its track's tables (T).
   function setUp(car, T, ghost) {
-    const tyre = [0, 1, 2, 3].map(() => ({ wet: 0, ice: 0, dirt: 0 }));
+    const tyre = [0, 1, 2, 3].map(() => ({ wet: 0, ice: 0, mud: 0 }));
     cars.set(car, { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost });
   }
   // Ghosts and replays: the game sets up (track) only the cars it simulates itself, so a ghost or a replayed car never
@@ -1364,7 +1387,7 @@ self.TM.vehicles = (() => {
     if (c.look) follow(c, car, state);
     // Tyres only change colour while there is something on them, so a clean car costs nothing here.
     let any = false;
-    for (const w of c.tyre) any = any || w.wet > 0 || w.ice > 0 || w.dirt > 0;
+    for (const w of c.tyre) any = any || w.wet > 0 || w.ice > 0 || w.mud > 0;
     if (any || c.tinted) for (let i = 0; i < 4; i++) if (c.rig.tyres[i]) tint(c.tyre[i], c.rig.tyres[i]);
     c.tinted = any;
   }

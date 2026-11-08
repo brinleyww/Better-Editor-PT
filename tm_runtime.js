@@ -328,26 +328,116 @@ self.TM = (() => {
   // water (units/s), falling no steeper than maxSlope (fall speed / speed along), upright at least `upright`. It comes back
   // up at rebound x its fall speed (at least minUp), keeps `keep` of its speed and has its pitch and roll spin x calm.
   // Steering never adds speed to a bounce. guard: frames before another bounce can start.
-  // Wet tyres (TM2020's WetnessValue01, one value for the car as there): water soaks them at soak per second while the
-  // car's underside is in it; on the ground they dry at dry per second (not on ice, not in the air).
-  // A wet tyre's grip is x (1 - wetGrip x wetness), by the surface under it ('road': stock road). After TM2020's wet
-  // materials: wet wood is SlidingWood, nearly ice (soaked through, x0.08 of wood's grip: about platform ice's 0.14 of
-  // stock), wet dirt and grass turn to mud (WetDirtRoad, WetGrass), and wet tech road (WetAsphalt) loses little. Ice and
-  // bobsleigh are already as slippery as wet gets. The stock road, plastic and penalty grass numbers are the ones tracks
-  // were driven with before. Wetness stays through checkpoints and Reset blocks (see clear).
+  // Wet tyres are in TYRES.
   const WATER = {
     deep: { lin: 0.02, quad: 0.0008, engine: 0.6, lift: 6.4, sink: 1.5, right: 4, depth: 1 },
     shallow: { lin: 0.01, quad: 0.0003, engine: 0.4, lift: 0, sink: 0, right: 0, depth: 0.5 },
     bounce: { minSpeed: 41.7, maxSlope: 0.35, upright: 0.7, rebound: 0.5, minUp: 5, keep: 0.985, calm: 0.5, guard: 80 },
     under: 0.45, // car origin to its underside
-    soak: 0.6,
-    dry: 0.1,
-    wetGrip: { road: 0.15, 0: 0.3, 1: 0.92, 2: 0.3, 3: 0, 4: 0, 5: 0.4, 6: 0.4, 7: 0.1, 8: 0.15 },
   };
-  // Iced tyres (TM2020's per-wheel Icing01): a tyre on the surfaces its car ices up on (VEHICLES ices: ice, bobsleigh,
-  // snow) ices up at on per second and thaws at off per second on any ground but these; an iced tyre's grip off them is
-  // x (1 - grip x icing), so leaving the ice the car slides for a moment before the tyres bite again.
-  const ICING = { surfaces: [3, 4, 7], on: 0.8, off: 0.4, grip: 0.5 };
+  // The surfaces a tyre ices up on (and an iced tyre keeps its grip on), for pages made before TYRES.
+  const ICING = { surfaces: [3, 4, 7] };
+
+  // Tyres, after TM2020: every wheel carries how wet (its WetnessValue01, here per tyre), iced (Icing01) and muddy its
+  // tyre is, 0 to 1, and the ground under it adds or takes each away, so one surface undoes another: dirt scrubs ice off
+  // and soaks water up, water washes mud off and thaws ice, ice and snow freeze a wet tyre. TM2020's tunings sit in
+  // encrypted packs: every rate and grip loss here is this project's estimate of how TM2020 plays (a water section soaks
+  // the tyres, wet wood is its SlidingWood, nearly ice; ice and snow ice the tyres up), not a measurement.
+  // table: a row per surface (part.u 0-8; road: the stock road and tech 8; water: a wheel under a water surface, whatever
+  // floor it is on; air: off the ground). Rates per second:
+  //   soak: wetness on; dry: wetness off; ice: icing on (only for a car whose tyres ice up there, VEHICLES ices);
+  //   freeze: share of the wetness that freezes per second (it leaves the tyre, and iceGain x as much icing comes on for a
+  //   car that ices up there); thaw: icing off; mud: mud on while under mudCap (dry dirt dusts the tyre, no more);
+  //   wetMud: mud on per unit of wetness (a wet tyre on dirt picks up mud fast); wear: mud off.
+  // A sliding tyre is hot (heat 0 to 1, see heatOf: wheelspin, a drift, locked brakes), so its drying, thawing and mud
+  // wear go 1 + HEAT x heat times as fast: a burnout clears the tyres. Off the ground only a little dries and falls off.
+  // shed: the cars built for loose ground (Rally, Desert) throw mud off a little faster.
+  // Grip: a full state takes wetLoss, iceLoss, mudLoss of the grip on that row's surface, x (1 - loss x state). The three
+  // multiply, but together never take more than the worst one alone leaves x KEEP, so stacking them cannot zero the
+  // grip; only the states' own worst cases come near that (wet wood x0.08 of wood's grip, about platform ice's 0.14 of
+  // stock). After TM2020's wet materials: wet tech (WetAsphalt) loses little, wet dirt is a mud road (WetDirtRoad,
+  // slippery, wetRoll: a little more rolling drag, share of the speed per second), wet grass is slick (WetGrass), wet
+  // wood is SlidingWood: besides its grip, `slides` makes it handle like that surface's ice (platform ice) while wet, each
+  // wheel counting by its tyre's wetness (fxStep), so a wet car slides on wood as on ice. Iced tyres lose half their grip off ice and snow; muddy ones lose up to 30% on hard surfaces
+  // (tech, plastic, wood) and nothing on dirt and grass, where the mud is the ground. Dry tyres change nothing.
+  // The road, plastic, wood and penalty grass wet losses and the icing rates (0.8 on, 0.4 off on hard ground) are the
+  // ones tracks were driven with when wetness was one value for the car.
+  const TYRES = {
+    table: {
+      air: { dry: 0.03, thaw: 0.05, wear: 0.02 },
+      water: { soak: 0.6, thaw: 1, wear: 1.5 },
+      road: { dry: 0.1, thaw: 0.4, wear: 0.25, wetLoss: 0.15, iceLoss: 0.5, mudLoss: 0.3 },
+      0: { dry: 0.1, thaw: 0.4, wear: 0.3, wetLoss: 0.3, iceLoss: 0.5, mudLoss: 0.3 }, // plastic
+      1: { dry: 0.1, thaw: 0.4, wear: 0.25, wetLoss: 0.92, iceLoss: 0.5, mudLoss: 0.3, slides: 3 }, // wood
+      2: { dry: 0.25, thaw: 0.8, wetMud: 0.1, wear: 0.1, wetLoss: 0.3, iceLoss: 0.5 }, // penalty grass
+      3: { ice: 0.8, freeze: 1, wetLoss: 0.25 }, // platform ice: mud stays on
+      4: { ice: 0.8, freeze: 1, wetLoss: 0.25 }, // bobsleigh
+      5: { dry: 0.6, thaw: 2, mud: 0.08, mudCap: 0.25, wetMud: 1.5, wetLoss: 0.4, wetRoll: 0.05, iceLoss: 0.5 }, // dirt
+      6: { dry: 0.3, thaw: 1, wetMud: 0.15, wear: 0.1, wetLoss: 0.4, iceLoss: 0.5 }, // grass
+      7: { ice: 0.8, freeze: 0.6, wear: 0.15, wetLoss: 0.1 }, // snow
+    },
+    iceGain: 1.5,
+    HEAT: 3,
+    KEEP: 0.6,
+    shed: { Rally: 1.5, Desert: 1.3 },
+    // Wheel surface codes besides part.u: the stock road, and no ground.
+    ROAD: -1,
+    AIR: -2,
+    fresh: () => ({ wet: 0, ice: 0, mud: 0 }),
+    // How hot a tyre runs from the physics' skidInfo (1 while it grips, lower once its grip runs out: a drift, wheelspin,
+    // locked brakes): none above 0.9, fully hot from 0.4.
+    heatOf: (skid) => Math.max(0, Math.min(1, (0.9 - skid) / 0.5)),
+    row(u) {
+      return u == null || u == -1 || u == 8 ? this.table.road : u == -2 ? this.table.air : this.table[u] || this.table.road;
+    },
+    // One physics frame (dt seconds) of a tyre t ({wet, ice, mud}) on surface u (part.u, null or ROAD: stock road, AIR),
+    // in water or not, at heat 0 to 1, on the named vehicle.
+    step(t, u, inWater, heat, vehicle, dt) {
+      const R = inWater ? this.table.water : this.row(u),
+        V = VEHICLES[vehicle],
+        ices = !!V && V.ices.includes(u),
+        hot = 1 + this.HEAT * heat;
+      let wet = t.wet,
+        ice = t.ice,
+        mud = t.mud;
+      if (R.soak) wet = Math.min(1, wet + R.soak * dt);
+      if (R.freeze && wet > 0) {
+        const f = wet * R.freeze * dt;
+        wet -= f;
+        if (ices) ice = Math.min(1, ice + f * this.iceGain);
+      }
+      if (R.ice && ices) ice = Math.min(1, ice + R.ice * dt);
+      if (R.dry && wet > 0) wet = Math.max(0, wet - R.dry * hot * dt);
+      if (R.thaw && ice > 0) ice = Math.max(0, ice - R.thaw * hot * dt);
+      if (R.mud && mud < R.mudCap) mud = Math.min(R.mudCap, mud + R.mud * dt);
+      if (R.wetMud && wet > 0) mud = Math.min(1, mud + R.wetMud * wet * dt);
+      if (R.wear && mud > 0) mud = Math.max(0, mud - R.wear * hot * (this.shed[vehicle] || 1) * dt);
+      t.wet = wet;
+      t.ice = ice;
+      t.mud = mud;
+    },
+    // What the tyre's state does to its grip on surface u: 1 for a clean, dry tyre (and off the ground).
+    factor(u, t) {
+      if (t.wet == 0 && t.ice == 0 && t.mud == 0) return 1;
+      const R = this.row(u),
+        a = 1 - (R.wetLoss || 0) * t.wet,
+        b = 1 - (R.iceLoss || 0) * t.ice,
+        m = 1 - (R.mudLoss || 0) * t.mud;
+      return Math.max(a * b * m, this.KEEP * Math.min(a, b, m));
+    },
+    // A wheel's grip as fxStep sets it, as a share of the Stadium car's on dry stock road: the surface (front or rear
+    // tyres), wood's braking grip, the vehicle's multiplier, the tyre's state. Left out: the cap on extra grip under heavy
+    // load, plastic countersteer and bugslides (they need the physics' own forces).
+    grip(u, t, vehicle, braking, rear) {
+      if (u == -2) return 0;
+      const S = u == null || u < 0 ? null : SURFACES[u],
+        V = VEHICLES[vehicle];
+      let g = S ? (rear ? S.gripRear : S.gripFront) : 1;
+      if (S && S.brakeGrip && braking) g = Math.min(g, S.brakeGrip);
+      if (V) g *= (rear && V.rearGrip ? V.rearGrip : V.grip)[u == null || u < 0 || u == 8 ? 0 : u + 1];
+      return g * this.factor(u, t);
+    },
+  };
 
   // What each new surface does to a wheel touching it. Index = part.u (null: stock road, TM2020's Tech).
   // The newer surfaces also use: engine, the share of what the engine gains along the nose each frame that the surface
@@ -369,10 +459,11 @@ self.TM = (() => {
     // turns only as tightly as its front wheels point and its tyres never reach their limit on flat ground (tmphys.mjs:
     // wood at grip 1, 1.8 and 5 turns the same). So on wood the turn the steering asks for is made stronger: `turn` lists
     // [speed (units/s), extra share of that turn], in between straight lines, past the last one its value. Measured as
-    // sideways pull at full lock against the stock car at the same speed (tmphys.mjs steer): about x2 up to 75 km/h,
-    // x2.7 at 130, x3.7 at 190, x4.7 at 260, x5.6 at 370 (a 250 ms tap at 300 km/h turns the car 45 degrees, stock 9).
+    // sideways pull at full lock against the stock car at the same speed (tmphys.mjs steer): x3.2 to x3.3 at every speed
+    // from 40 km/h to 480 (x2.6 at 30). The bump round 12 units/s is there because the same share turns less at low
+    // speed (a 250 ms tap at 300 km/h turns the car 30 degrees, stock 9).
     // loadCap 2: the extra tyre grip holds up to twice the resting load (a hard corner, a compression), not a loop.
-    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [8, 0.7], [14, 0.9], [28, 1.4], [42, 2.1], [56, 2.9], [69, 3.5], [83, 4], [111, 4.6]], turnLevel: [3, 8], loadCap: 2 },
+    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [6, 2.2], [9, 4.3], [12, 5.34], [14, 4.45], [16, 3.6], [18.5, 3.2], [21.5, 2.9], [25, 2.75], [33, 2.6], [44, 2.5], [57, 2.42], [73, 2.37], [91, 2.33], [113, 2.3]], turnLevel: [3, 8], loadCap: 2 },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
     // Platform ice: the tyres barely hold, so the car slides; steering turns the car itself (ice.yaw, rad/s) and the
@@ -605,9 +696,9 @@ self.TM = (() => {
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }, tops = { tris: [], cells: new Map() }) {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
-    // to that); iceW: each tyre's icing, 0 to 1; susp0: the stock suspension, read on the first frame.
+    // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, iceW: [0, 0, 0, 0], waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
@@ -840,8 +931,7 @@ self.TM = (() => {
     if ((c.last && Math.abs(x - c.last.x) + Math.abs(y - c.last.y) + Math.abs(z - c.last.z) > 5) || (c.justReset && c.lastCp > 0)) {
       clear(c);
       c.vehicle = c.cpVehicle;
-      c.wet = 0;
-      c.iceW.fill(0);
+      for (const t of c.tyres) t.wet = t.ice = t.mud = 0;
     }
     const cp = s.getUint16(pos - 2, true);
     if (cp > c.lastCp) {
@@ -946,8 +1036,8 @@ self.TM = (() => {
         case 'CarRally':
         case 'CarDesert':
         case 'CarStadium':
-          // A new car has new tyres: icing does not carry over (CarStadium gives back exactly the stock car).
-          if (c.vehicle != GATES[q.type]) c.iceW.fill(0);
+          // A new car has new tyres: nothing on them carries over (CarStadium gives back exactly the stock car).
+          if (c.vehicle != GATES[q.type]) for (const t of c.tyres) t.wet = t.ice = t.mud = 0;
           c.vehicle = GATES[q.type];
           break;
       }
@@ -1011,8 +1101,13 @@ self.TM = (() => {
       // the contact points of the same wheels
       points = [],
       // Wheels on each surface (by part.u), so pushes and drag count each surface by its own share of the wheels.
-      on = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-    let plasticWheels = 0;
+      on = [0, 0, 0, 0, 0, 0, 0, 0, 0],
+      // and what their tyres' states leave of their grip, added up (TYRES.factor), for the grip that grows with speed
+      tyreOn = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let plasticWheels = 0,
+      wetRoll = 0, // the wet tyres' extra rolling drag (TYRES wetRoll), share of the speed per second, all wheels added up
+      slideWheels = 0, // wheels on wet wood, each by its wetness (TYRES slides), and the ice they handle like
+      slideIce = null;
     if (c.stockGrip == null) c.stockGrip = F[(wheels + 228) >> 2];
     // The old surfaces' pushes and drag (launch, expo, penalty grass, ice) keep their own rule, exactly as before the newer
     // surfaces: the wheels on such surfaces count, the last of them sets the numbers.
@@ -1029,13 +1124,20 @@ self.TM = (() => {
       contacts = 0;
     for (let w = 0; w < 4; w++) {
       const a = wheels + w * 284,
-        g = a >> 2;
-      if (!heap[a + 84]) continue;
+        g = a >> 2,
+        // the tyre's state, and how hot it runs from its skidInfo (+280)
+        t = c.tyres[w],
+        heat = TYRES.heatOf(F[g + 70]);
+      if (TEST && TEST.trace) (c.probe ??= { u: [], grip: [] }), (c.probe.u[w] = TYRES.AIR), (c.probe.grip[w] = 0);
+      if (!heap[a + 84]) {
+        // Off the ground the tyre is in the water while the car's underside is.
+        TYRES.step(t, TYRES.AIR, water != null && y - WATER.under < water.surface, heat, c.vehicle, 0.001);
+        continue;
+      }
       contacts++;
       // A little way under the contact point is inside the deck, whichever way the deck faces.
       const f = cellAt(c.cells, F[g + 4] - F[g] * 0.1, F[g + 5] - F[g + 1] * 0.1, F[g + 6] - F[g + 2] * 0.1),
-        surface = f == null ? null : SURFACES[f],
-        icy = f != null && ICING.surfaces.includes(f);
+        surface = f == null ? null : SURFACES[f];
       if (f != null) on[f]++;
       let grip = surface ? (w < 2 ? surface.gripFront : surface.gripRear) : 1; // wheels 0 and 1 steer
       if (surface && surface.brakeGrip && c.ctl && c.ctl.down) grip = Math.min(grip, surface.brakeGrip);
@@ -1056,13 +1158,18 @@ self.TM = (() => {
       }
       if (surface && surface.loose) looseWheels++;
       if (c.bug > 0) grip *= BUG.grip;
-      if (c.wet > 0) grip *= 1 - (WATER.wetGrip[f == null ? 'road' : f] ?? 0) * c.wet;
-      if (c.iceW[w] > 0 && !icy) grip *= 1 - ICING.grip * c.iceW[w];
+      // Wet, iced and muddy tyres (TYRES): from the state they came in with, so it counts from the next frame.
+      const tk = TYRES.factor(f, t);
+      if (tk != 1) grip *= tk;
+      if (f != null) tyreOn[f] += tk;
+      if (t.wet > 0 && TYRES.row(f).wetRoll) wetRoll += TYRES.row(f).wetRoll * t.wet;
+      if (t.wet > 0 && TYRES.row(f).slides != null) (slideWheels += t.wet), (slideIce = SURFACES[TYRES.row(f).slides].ice);
       normals.push(F[g], F[g + 1], F[g + 2]);
       points.push(F[g + 4], F[g + 5], F[g + 6]);
       F[g + 57] = c.stockGrip * grip;
-      if (icy && V.ices.includes(f)) c.iceW[w] = Math.min(1, c.iceW[w] + ICING.on * 0.001);
-      else if (!icy && c.iceW[w] > 0) c.iceW[w] = Math.max(0, c.iceW[w] - ICING.off * 0.001);
+      if (TEST && TEST.trace) (c.probe.u[w] = f ?? TYRES.ROAD), (c.probe.grip[w] = +grip.toFixed(3));
+      // On the ground the tyre is in the water when its contact is under the surface (shallow water's floor).
+      TYRES.step(t, f, water != null && F[g + 5] < water.surface, heat, c.vehicle, 0.001);
       if (surface && surface.drag) {
         dragWheels++;
         drag = surface.drag;
@@ -1128,13 +1235,21 @@ self.TM = (() => {
 
     // Ice: the tyres alone can hardly turn the car, so steering turns it directly, and the slide straightens out slowly
     // by swinging the velocity round to the nose without losing its length.
-    if (iceWheels >= 2) {
+    // Wet wood joins in (TYRES slides) when the car is not on ice already: its wheels count by their wetness, and the
+    // steering help comes in with them (iceWeight: full from two soaked wheels on), so drying tyres ease out of it.
+    let iceWeight = 1;
+    if (iceWheels < 2 && slideWheels > 0) {
+      iceWeight = Math.min(1, slideWheels / 2);
+      iceWheels += slideWheels;
+      if (!ice) ice = slideIce;
+    }
+    if (iceWheels >= 2 || iceWeight < 1) {
       // A car whose tyres hold on ice (the Snow car) gets only iceAssist of the steering and slide help; the spin still
       // dies away off the steering.
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
         help = V.iceAssist,
         d0 = steer != 0 ? (steer * ice.yaw * Math.min(1, spd / 15) - yaw) * ice.pull : -yaw * ice.spin,
-        d = help != 1 && steer != 0 ? d0 * help : d0;
+        d = (help != 1 && steer != 0 ? d0 * help : d0) * iceWeight;
       F[av] += upx * d;
       F[av + 1] += upy * d;
       F[av + 2] += upz * d;
@@ -1231,7 +1346,8 @@ self.TM = (() => {
 
     // Grip that grows with speed (SURFACES turn): the turn the front wheels ask for, forward speed x tan(steering) /
     // wheelbase, is made stronger by turning the whole car further. Only while the tyres hold (nothing left in a slide of
-    // 20 degrees), less on wet or iced tyres, times the vehicle's own grip there, by the share of wheels on the surface.
+    // 20 degrees), less on wet, iced or muddy tyres (what their states leave of the grip there, over the wheels on the
+    // surface), times the vehicle's own grip there, by the share of wheels on the surface.
     // The car turns about the ground under it (the wheels' mean contact normal), and only while it sits square on that
     // ground (turnLevel: in full within the first angle, in degrees, none past the second): with a wheel up on a kerb the
     // body is tipped against the deck, and turning about its own up would tip its speed up into the air.
@@ -1263,9 +1379,8 @@ self.TM = (() => {
       const angle = (F[(wheels + 232) >> 2] + F[(wheels + 284 + 232) >> 2]) / 2,
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
         hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
-        iced = 1 - (ICING.grip * (c.iceW[0] + c.iceW[1] + c.iceW[2] + c.iceW[3])) / 4,
-        wet = 1 - (WATER.wetGrip[u] ?? 0) * c.wet,
-        a = ((fwd * Math.tan(angle)) / base) * k * hold * level * iced * wet * V.grip[u + 1] * (on[u] / 4) * 0.001;
+        tyres = tyreOn[u] / on[u],
+        a = ((fwd * Math.tan(angle)) / base) * k * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * 0.001;
       if (a != 0 && base > 0.5) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
     }
 
@@ -1286,6 +1401,13 @@ self.TM = (() => {
       if (!n || !(S.roll || S.slide)) continue;
       const sn = Math.sin(Math.min(Math.abs(slip), Math.PI / 2)),
         k = 1 - ((S.roll || 0) + (S.slide || 0) * sn * sn) * (n / 4) * 0.001;
+      F[v] *= k;
+      F[v + 1] *= k;
+      F[v + 2] *= k;
+    }
+    // Wet tyres on dirt drive a mud road: a little more rolling drag (TYRES wetRoll), by the share of wheels.
+    if (wetRoll > 0) {
+      const k = 1 - (wetRoll / 4) * 0.001;
       F[v] *= k;
       F[v + 1] *= k;
       F[v + 2] *= k;
@@ -1436,8 +1558,7 @@ self.TM = (() => {
         F[av] += (ax / n) * t;
         F[av + 2] += (az / n) * t;
       }
-      c.wet = Math.min(1, c.wet + WATER.soak * 0.001);
-    } else if (c.wet > 0 && contacts > 0 && iceWheels == 0) c.wet = Math.max(0, c.wet - WATER.dry * 0.001);
+    }
 
     // Reactor boost: thrust along the car's own up axis for the whole effect; in the air the gas pushes along the nose
     // and steering turns the car about its up axis.
@@ -1552,7 +1673,9 @@ self.TM = (() => {
     c.last = { x, y, z, vx: F[v], vy: F[v + 1], vz: F[v + 2] };
     if (TEST && TEST.trace) {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, wet: +c.wet.toFixed(3), ice: c.iceW.map((q) => +q.toFixed(3)) } });
+      // per wheel; full: the exact values too (to compare against the page's own)
+      const r3 = (q) => +q.toFixed(3);
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 
@@ -1690,13 +1813,15 @@ self.TM = (() => {
     fxSave,
     fxLoad,
     surfaces: SURFACES,
-    // For the page: the cars (VEHICLES[name].look has the hints for drawing them), which gate gives which car, wet and
-    // icing rates. The page works out the car the same way: a Car* zone entered switches it, a checkpoint keeps it for
-    // respawns, a respawn or the respawn key goes back to it, a new car (start over) is the Stadium car.
+    // For the page: the cars (VEHICLES[name].look has the hints for drawing them), which gate gives which car, and the
+    // tyre model itself (TYRES: the page steps its tyres with the same code). The page works out the car the same way: a
+    // Car* zone entered switches it, a checkpoint keeps it for respawns, a respawn or the respawn key goes back to it, a
+    // new car (start over) is the Stadium car.
     VEHICLES,
     vehicleGates: GATES,
     WATER,
     ICING,
+    TYRES,
     fromSave,
     fromExport,
     SAVE_PREFIX,

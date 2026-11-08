@@ -5,6 +5,7 @@
 // node tools/test/tmphys.mjs susp                          ride height at rest per vehicle
 // node tools/test/tmphys.mjs effects [label]               bumpers, vehicle gates, wet and iced tyres
 // node tools/test/tmphys.mjs feel [label]                  catching drifts, turned bumpers, icing through checkpoints, respawns
+// node tools/test/tmphys.mjs tyres [label] [a,b,c1,c2,d,cp]   wet, iced and muddy tyres: which surface undoes which (TYRES)
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
@@ -20,7 +21,7 @@ const hook = `(()=>{const o=Worker.prototype.postMessage;Worker.prototype.postMe
 const c = await launch({ port: +(process.env.TMCDP || 9361), width: 800, height: 600 });
 await c.send('Page.addScriptToEvaluateOnNewDocument', { source: hook });
 await c.send('Page.navigate', { url: 'http://127.0.0.1:' + (process.env.TMPORT || 8123) + '/Better-Editor-PT/' });
-await c.waitFor(`[...document.querySelectorAll('button')].some(b=>b.innerText.trim()=='Exit'&&b.offsetParent)`, 90000);
+await c.waitFor(`[...document.querySelectorAll('button')].some(b=>['Exit','Editor'].includes(b.innerText.trim())&&b.offsetParent)`, 300000);
 await c.waitFor('!!window.__init');
 // Per frame, per car: frames, km/h, x, y, z, quaternion xyzw, wheel contacts (bit mask), next checkpoint, min skid.
 const K = 12;
@@ -447,6 +448,8 @@ if (section == 'verify') {
   const mixed = ['GrassStartPlat', 'GrassPlatBase', 'DirtPlatBase', 'DirtCarRallyPlat', 'StadiumShallowWater', 'StadiumShallowWater', 'DirtPlatBase', 'DirtFxBumperPlat', 'DirtPlatBase', { n: 'DirtCheckpointPlat', cp: 0 }, 'GrassPlatBase', 'GrassPlatBase', 'GrassFinishPlat', 'GrassPlatBase', 'GrassPlatBase'];
   tracks.mixed = [];
   mixed.forEach((n, i) => { const o = typeof n == 'string' ? { n } : n; tracks.mixed.push({ x: 0, y: 0, z: -4 * i, ...o }); for (const x of [-16, -12, -8, -4, 4, 8, 12, 16]) tracks.mixed.push(/Checkpoint|Finish/.test(o.n) ? { ...o, x, y: 0, z: -4 * i } : { n: /Grass/.test(o.n) ? 'GrassPlatBase' : 'DirtPlatBase', x, y: 0, z: -4 * i }); });
+  // Tyre states on the way: water, dirt (mud), a checkpoint, tech, ice (icing), wood, the finish on wood.
+  tracks.tyres = L(['DirtStartPlat', 'DirtPlatBase', 'StadiumShallowWater', 'StadiumShallowWater', 'DirtPlatBase', 'DirtPlatBase', { n: 'DirtCheckpointPlat', cp: 0 }, 'Plane', 'Plane', 'IcePlatBase', 'IcePlatBase', 'WoodPlatBase', 'WoodPlatBase', 'WoodFinishPlat', 'WoodPlatBase', 'WoodPlatBase']);
   // Stock road onto bump road through its connector, then a checkpoint, the bumper and the finish on the crown.
   for (const r of [0, 2]) tracks['bump' + r] = L(['Start', 'Straight', 'Straight', { n: 'StadiumBumpFromRoad', r }, 'StadiumBumpStraight', 'StadiumBumpStraight', { n: 'StadiumCheckpointBump', cp: 0 }, 'StadiumBumpStraight', 'StadiumFxUltraBump', 'StadiumBumpStraight', 'StadiumBumpStraight', 'StadiumFinishBump', 'StadiumBumpStraight', 'StadiumBumpStraight']);
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];
@@ -560,6 +563,97 @@ if (section == 'vehicles') {
     }
   results.rows = rows;
   table(rows, COLS);
+}
+
+if (section == 'tyres') {
+  // Tyre states (TYRES): which surface undoes which, per wheel, from the runtime's own probe every 10 frames.
+  const lane = (items, x = 0) => { let z = 0; return items.map((n) => { const o = typeof n == 'string' ? { n } : { ...n }; const p = { x, y: 0, z, ...o }; z -= o.len ?? 4; return p; }); };
+  // the same lane, with the pieces from index `from` on 9 wide (room to turn)
+  const widen = (P, from) => { const out = [...P]; P.forEach((p, i) => { if (i >= from) for (const dx of [-16, -12, -8, -4, 4, 8, 12, 16]) out.push({ ...p, x: p.x + dx }); }); return out; };
+  const W3 = Array(3).fill('StadiumShallowWater');
+  const mx = (a) => Math.max(...a), mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const fmt = (a) => a.map((v) => v.toFixed(2)).join('/');
+  const tl = (pr, from, to, keys) => pr.filter((q) => q.fr >= from && q.fr <= to && q.fr % 250 == 0).map((q) => q.fr + ' u' + q.u.join(',') + ' ' + keys.map((k) => k + ' ' + fmt(q[k])).join(' ')).join(' | ');
+  const onAll = (q, set) => q.u.every((u) => set.includes(u));
+  results.tyres = {};
+  const R = results.tyres;
+
+  // (a) Iced tyres off platform ice onto dirt, tech (stock Plane), grass, wood: how long until every tyre is under 0.1.
+  R.a = {};
+  if (!only || only.includes('a')) for (const next of ['DirtPlatBase', 'Plane', 'GrassPlatBase', 'WoodPlatBase']) {
+    const P = lane(['IceStartPlat', ...Array(7).fill('IcePlatBase'), ...Array(14).fill(next)]);
+    const r = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0] }, frames: 12000 }]), pr = r.probes;
+    const off = pr.find((q) => q.fr > 300 && onAll(q, [5, 6, -1, 1]));
+    const clr = off && pr.find((q) => q.fr >= off.fr && mx(q.ice) < 0.1);
+    R.a[next] = { offIceFrame: off?.fr, kmh: off ? +r[1][off.fr].v.toFixed(0) : null, iceAtOff: off && fmt(off.ice), gripAtOff: off && fmt(off.grip), msToIceUnder0_1: clr ? clr.fr - off.fr : null, timeline: off && tl(pr, off.fr - 250, off.fr + 3000, ['ice', 'grip']) };
+    console.log('(a) ice ->', next, JSON.stringify(R.a[next]));
+  }
+
+  // (b) Water, then dirt (dries fast, mud builds), then tech (muddy tyres lose grip until it wears off); against dry dirt.
+  R.b = {};
+  if (!only || only.includes('b')) for (const [name, mid] of [['water', W3], ['dry', Array(3).fill('DirtPlatBase')]]) {
+    const items = ['DirtStartPlat', 'DirtPlatBase', ...mid, ...Array(4).fill('DirtPlatBase'), ...Array(14).fill('Plane')];
+    const P = widen(lane(items), 9), lock = {};
+    const r = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0] }, frames: 10000 }]), pr = r.probes;
+    const out = pr.find((q) => q.fr > 300 && onAll(q, [5]) && q.fr > (pr.find((p) => mx(p.wet) > 0.5)?.fr ?? 0));
+    const dirtIn = name == 'water' ? out : pr.find((q) => q.fr > 300 && r[1][q.fr].z < -50);
+    const dried = dirtIn && pr.find((q) => q.fr >= dirtIn.fr && mx(q.wet) < 0.05);
+    const tech = pr.find((q) => q.fr > (dirtIn?.fr ?? 300) && onAll(q, [-1]));
+    const worn = tech && pr.find((q) => q.fr >= tech.fr && mx(q.mud) < 0.05);
+    // full right lock 150 ms onto the tech for 700 ms: turn rate and slide against the same on the dry run
+    const t0 = tech.fr + 150, l = (await run(P, null, [{ id: 2, rec: { up: [0], right: [t0, t0 + 700] }, frames: t0 + 1200 }]))[2];
+    Object.assign(lock, { kmh: +l[t0].v.toFixed(0), degPerSec: rate(l, t0 + 100, t0 + 700), slideKmh: slide(l, t0, t0 + 700), latAcc: latAcc(l, t0 + 100, t0 + 700) });
+    R.b[name] = { dirtFrame: dirtIn?.fr, wetOnDirt: dirtIn && fmt(dirtIn.wet), msToDryOnDirt: dried ? dried.fr - dirtIn.fr : null, techFrame: tech?.fr, mudOnTech: tech && fmt(tech.mud), gripOnTech: tech && fmt(tech.grip), gripTech1s: fmt(pr.find((q) => q.fr >= tech.fr + 1000).grip), msToMudUnder0_05: worn ? worn.fr - tech.fr : null, lockOnTech: lock, timeline: tl(pr, (dirtIn?.fr ?? 0) - 250, tech.fr + 3000, ['wet', 'mud', 'grip']) };
+    console.log('(b) ' + name + ' -> dirt -> tech', JSON.stringify(R.b[name]));
+  }
+
+  // (c1) Water, then wood: full right lock 150 ms after the water, against dry wood and platform ice at about the same speed.
+  R.c1 = {};
+  if (!only || only.includes('c1')) for (const slow of [false, true]) for (const [name0, start, mid, rest] of [['wetWood', 'WoodStartPlat', W3, 'WoodPlatBase'], ['dryWood', 'WoodStartPlat', Array(3).fill('WoodPlatBase'), 'WoodPlatBase'], ['ice', 'WoodStartPlat', Array(3).fill('WoodPlatBase'), 'IcePlatBase']]) {
+    const name = name0 + (slow ? '@slow' : ''), pre = slow ? [] : ['WoodPlatBase'], k0 = pre.length + 4;
+    const P = widen(lane([start, ...pre, ...mid, ...Array(12).fill(rest)]), k0);
+    const r0 = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0] }, frames: 6000 }]), at = first(r0[1], (q) => q.z < -k0 * 20 + 10);
+    const t0 = at + 150, r = await run(P, { trace: 10 }, [{ id: 2, rec: { up: [0], right: [t0, t0 + 800] }, frames: t0 + 1200 }]), l = r[2];
+    const pq = r.probes.find((q) => q.fr >= t0);
+    R.c1[name] = { kmh: +l[t0].v.toFixed(0), wet: fmt(pq.wet), grip: fmt(pq.grip), degPerSec: rate(l, t0 + 100, t0 + 800), slideKmh: slide(l, t0, t0 + 800), latAcc: latAcc(l, t0 + 100, t0 + 800), kmhEnd: +l[t0 + 800].v.toFixed(0) };
+    console.log('(c1)', name, JSON.stringify(R.c1[name]));
+  }
+
+  // (c2) Water, then tech: rolling straight, a full-lock drift, hard braking. Wetness over time, and how hot the tyres ran.
+  R.c2 = {};
+  if (!only || only.includes('c2')) {
+    const P = widen(lane(['WoodStartPlat', 'WoodPlatBase', ...W3, ...Array(16).fill('Plane')]), 5);
+    const r0 = await run(P, null, [{ id: 1, rec: { up: [0] }, frames: 6000 }]), at = first(r0[1], (q) => q.z < -5 * 20 + 10) + 100;
+    for (const [name, rec] of [['rolling', { up: [0] }], ['drift', { up: [0], right: [at] }], ['brake', { up: [0, at], down: [at] }], ['burnout', { up: [0, at], down: [at, at + 1500], left: [at + 1500] }]]) {
+      const r = await run(P, { trace: 10 }, [{ id: 1, rec, frames: at + 3000 }]), pr = r.probes, l = r[1];
+      const w0 = pr.find((q) => q.fr >= at), dry = pr.find((q) => q.fr >= at && mx(q.wet) < 0.05);
+      let minSkid = 1, n = 0, hot = 0;
+      for (let k = at; k < at + 2000; k++) { minSkid = Math.min(minSkid, l[k].sk); if (l[k].sk < 0.9) hot++; n++; }
+      R.c2[name] = { kmhAt: +l[at].v.toFixed(0), wetAt: fmt(w0.wet), wet1s: fmt(pr.find((q) => q.fr >= at + 1000).wet), wet2s: fmt(pr.find((q) => q.fr >= at + 2000).wet), msToDry: dry ? dry.fr - at : '>' + (pr[pr.length - 1].fr - at), minSkid: +minSkid.toFixed(2), framesSkidUnder0_9: hot + '/' + n, kmhEnd: +l[at + 2000].v.toFixed(0) };
+      console.log('(c2)', name, JSON.stringify(R.c2[name]));
+    }
+  }
+
+  // (d) Wet tyres onto platform ice: icing builds faster than with dry tyres.
+  R.d = {};
+  if (!only || only.includes('d')) for (const [name, mid] of [['wet', W3], ['dry', Array(3).fill('WoodPlatBase')]]) {
+    const P = lane(['WoodStartPlat', 'WoodPlatBase', ...mid, ...Array(10).fill('IcePlatBase')]);
+    const r = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0] }, frames: 7000 }]), pr = r.probes;
+    const on = pr.find((q) => q.fr > 300 && onAll(q, [3]));
+    const half = on && pr.find((q) => q.fr >= on.fr && mean(q.ice) >= 0.5), full = on && pr.find((q) => q.fr >= on.fr && mean(q.ice) >= 0.9);
+    R.d[name] = { iceFrame: on?.fr, wetOnIce: on && fmt(on.wet), msToMeanIce0_5: half ? half.fr - on.fr : null, msToMeanIce0_9: full ? full.fr - on.fr : null, timeline: on && tl(pr, on.fr, on.fr + 1500, ['wet', 'ice']) };
+    console.log('(d) ' + name + ' tyres onto ice', JSON.stringify(R.d[name]));
+  }
+
+  // Respawn clears, a checkpoint keeps: muddy tyres (water then dirt) through a checkpoint, then the respawn key.
+  if (!only || only.includes('cp')) {
+    const P = lane(['DirtStartPlat', 'DirtPlatBase', ...W3, 'DirtPlatBase', 'DirtPlatBase', { n: 'DirtCheckpointPlat', cp: 0 }, ...Array(8).fill('Plane')]);
+    const r0 = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0] }, frames: 6000 }]), cpAt = first(r0[1], (q) => q.n >= 1);
+    const r = await run(P, { trace: 10 }, [{ id: 1, rec: { up: [0], reset: [cpAt + 300, cpAt + 301] }, frames: cpAt + 600 }]);
+    const at = (fr) => r.probes.filter((q) => q.fr <= fr).pop();
+    R.checkpoint = { cpAt, before: fmt(at(cpAt - 10).mud), after: fmt(at(cpAt + 20).mud), beforeKey: fmt(at(cpAt + 290).mud), afterKey: fmt(at(cpAt + 350).mud) };
+    console.log('mud through a checkpoint, then the respawn key:', JSON.stringify(R.checkpoint));
+  }
 }
 
 fs.mkdirSync(OUT, { recursive: true });

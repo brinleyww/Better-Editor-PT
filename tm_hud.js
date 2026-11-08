@@ -1,6 +1,6 @@
 // Trackmania-style HUD for the new blocks: a banner naming the effects the car has (turbo, no engine, a new car...),
 // like TM2020's "Display an alert when you drive on a special block", and, when Wheel info is on in the settings, what
-// each tyre is on, its grip and how wet, icy or dirty it is. Page only, loaded after tm_vehicles.js.
+// each tyre is on, its grip and how wet, icy or muddy it is. Page only, loaded after tm_vehicles.js.
 // Nothing comes back from the worker: like tm_water.js and tm_vehicles.js this works it all out from the car states the
 // page already gets, frame by frame (VisualCar.setCarState calls TM.hud.state with every physics frame's state), the
 // same way tm_runtime.js fxStep decides it. It rides on tm_water's car hooks (TM.water.track / update / dispose) for the
@@ -19,6 +19,9 @@ self.TM.hud = (() => {
   const SURFACES = TM.surfaces ?? [];
   const WET = TM.WATER ?? { soak: 0.6, dry: 0.1, under: 0.45, wetGrip: { road: 0.15 } };
   const ICING = TM.ICING ?? { surfaces: [3, 4, 7], on: 0.8, off: 0.4, grip: 0.5 };
+  // The runtime's own tyre model where it has one (wet, iced and muddy tyres per wheel): the same code steps the tyres
+  // here, so the panel shows exactly what the physics has. Without it (an older runtime) the copies below stand in.
+  const TYRES = TM.TYRES && typeof TM.TYRES.step == 'function' && typeof TM.TYRES.grip == 'function' ? TM.TYRES : null;
   const ROULETTE = ['Turbo', 'Super', 'Ultra']; // the runtime's pick by the frame the car crosses it: frames % 3
   const RESPAWN = 5; // the runtime's respawn test: the car moved more than this in one frame (units, Manhattan)
   // Bumpers, the reset plate and a new car have nothing that lasts, so their chip stays this long (race frames, 1.5 s).
@@ -91,6 +94,7 @@ self.TM.hud = (() => {
       shotUntil: [0, 0, 0],
       wet: 0,
       ice: new Float32Array(4),
+      tyre: TYRES ? [0, 1, 2, 3].map(TYRES.fresh) : null, // each wheel's {wet, ice, mud} (TYRES)
       wheel: new Int8Array(4).fill(AIR), // surface code per wheel, last frame
       inWater: new Uint8Array(4), // the wheel is under a water surface
       brake: false,
@@ -110,11 +114,16 @@ self.TM.hud = (() => {
     c.lastCp = s.nextCheckpointIndex;
     c.has = false;
     c.done = false;
-    c.wet = 0;
-    c.ice.fill(0);
+    clean(c);
     c.wheel.fill(AIR);
     c.inWater.fill(0);
     c.shotLabel.fill(null);
+  }
+  // Clean, dry tyres (a respawn, a new car).
+  function clean(c) {
+    c.wet = 0;
+    c.ice.fill(0);
+    if (c.tyre) for (const t of c.tyre) t.wet = t.ice = t.mud = 0;
   }
   // A one-shot chip (CAR, BUMP or RESET) from this race frame on.
   function shot(c, k, label, frames) {
@@ -145,8 +154,7 @@ self.TM.hud = (() => {
     if ((c.has && Math.abs(p.x - c.x) + Math.abs(p.y - c.y) + Math.abs(p.z - c.z) > RESPAWN) || (reset && c.lastCp > 0)) {
       clear(c);
       c.vehicle = c.cpVehicle;
-      c.wet = 0;
-      c.ice.fill(0);
+      clean(c);
       c.shotLabel.fill(null); // a bumper or gate passed before the respawn is no news any more
     }
     const cp = s.nextCheckpointIndex;
@@ -213,9 +221,10 @@ self.TM.hud = (() => {
           break;
         default:
           if (q.type in GATES && GATES[q.type] != c.vehicle) {
-            // A new car has new tyres (the runtime thaws them too).
+            // A new car has new tyres (as in the runtime; an older one only thawed them).
             c.vehicle = GATES[q.type];
-            c.ice.fill(0);
+            if (c.tyre) clean(c);
+            else c.ice.fill(0);
             shot(c, CAR, LABEL[c.vehicle], s.frames);
           }
       }
@@ -229,11 +238,35 @@ self.TM.hud = (() => {
     c.has = true;
   }
 
-  // Which surface each wheel is on, and the runtime's wet tyres (one wetness for the car: soaks while the car's underside
-  // is in water, dries on the ground but not on ice) and iced tyres (per wheel: ices on the surfaces its car ices on,
-  // thaws on other ground). Per physics frame, so the rates are per 1 ms.
+  // Which surface each wheel is on, and its tyre's state. With the runtime's TYRES: its own step, per wheel, with what
+  // fxStep gives it (the surface, in water or not, the heat from the tyre's skidInfo), per physics frame (1 ms).
+  // Without: the older runtime's wet tyres (one wetness for the car: soaks while the car's underside is in water, dries
+  // on the ground but not on ice) and iced tyres (per wheel: ices on the surfaces its car ices on, thaws on other ground).
   function tyres(c, s, water) {
     if (!c.cells && typeof TM.surfaceIndex == 'function') c.cells = TM.surfaceIndex(c.track);
+    if (c.tyre) {
+      const level = water ? water.surface ?? water.max[1] : 0,
+        under = water != null && s.position.y - (WET.under ?? 0.45) < level,
+        skid = s.wheelSkidInfo;
+      for (let w = 0; w < 4; w++) {
+        const k = s.wheelContact[w],
+          heat = TYRES.heatOf(skid ? skid[w] : 1);
+        if (!k) {
+          c.wheel[w] = AIR;
+          c.inWater[w] = under ? 1 : 0;
+          TYRES.step(c.tyre[w], AIR, under, heat, c.vehicle, 0.001);
+          continue;
+        }
+        const p = k.position,
+          n = k.normal,
+          u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1) : null;
+        c.wheel[w] = u ?? -1;
+        c.inWater[w] = water != null && p.y < level ? 1 : 0;
+        TYRES.step(c.tyre[w], u, c.inWater[w] == 1, heat, c.vehicle, 0.001);
+      }
+      c.brake = !!s.controls?.down;
+      return;
+    }
     const V = VEHICLES[c.vehicle],
       ices = V?.ices ?? ICING.surfaces,
       level = water ? water.surface ?? water.max[1] : 0,
@@ -267,6 +300,7 @@ self.TM.hud = (() => {
   // the surface (front or rear tyres), wood's braking grip, the vehicle's multiplier, then wet and iced tyres. Left out:
   // the cap on extra grip under heavy load (the page has no suspension forces), plastic countersteer and bugslides.
   function gripOf(c, w) {
+    if (c.tyre) return TYRES.grip(c.wheel[w], c.tyre[w], c.vehicle, c.brake, w >= 2);
     const u = c.wheel[w],
       S = u >= 0 ? SURFACES[u] : null,
       V = VEHICLES[c.vehicle];
@@ -310,6 +344,7 @@ self.TM.hud = (() => {
     WET_TEXT = pct('Wet '),
     ICY_TEXT = pct('Icy '),
     DIRT_TEXT = pct('Dirty '),
+    MUD_TEXT = pct('Muddy '),
     BARS = 40, // steps of a chip's time bar
     BAR = Array.from({ length: BARS + 1 }, (_, i) => 'scaleX(' + i / BARS + ')');
   // Wheel surface names by code + 2 (AIR, stock road, then part.u 0-8), and one for a wheel under water.
@@ -416,7 +451,7 @@ self.TM.hud = (() => {
     } else span.classList.remove('on');
   }
   function wheels(car, c) {
-    const dirt = TM.vehicles?.tyres?.(car);
+    const dirt = c.tyre ? null : TM.vehicles?.tyres?.(car);
     for (const e of wheelEls) {
       const w = e.w,
         u = c.wheel[w],
@@ -424,9 +459,16 @@ self.TM.hud = (() => {
         grip = u == AIR ? -1 : Math.min(400, Math.max(0, Math.round(gripOf(c, w) * 100)));
       if (name !== e.name) e.s.textContent = e.name = name;
       if (grip !== e.grip) e.g.textContent = (e.grip = grip) < 0 ? NO_GRIP : GRIP_TEXT[grip];
+      const t = c.tyre?.[w];
+      if (t) {
+        badge(e, 0, e.wet, WET_TEXT, level(t.wet));
+        badge(e, 1, e.icy, ICY_TEXT, level(t.ice));
+        badge(e, 2, e.dirt, MUD_TEXT, level(t.mud));
+        continue;
+      }
       badge(e, 0, e.wet, WET_TEXT, level(c.wet));
       badge(e, 1, e.icy, ICY_TEXT, level(c.ice[w]));
-      badge(e, 2, e.dirt, DIRT_TEXT, dirt ? level(dirt[w]?.dirt ?? 0) : 0);
+      badge(e, 2, e.dirt, DIRT_TEXT, dirt ? level(dirt[w]?.mud ?? dirt[w]?.dirt ?? 0) : 0);
     }
   }
 
@@ -586,11 +628,38 @@ self.TM.hud = (() => {
     get wheels() {
       return wheelsOn;
     },
-    // What the HUD has for a car (tests): its effects, vehicle and tyres.
+    // What the HUD has for a car: its effects, vehicle and tyres (frames: the race frame it is at). The game reads it
+    // every frame (noEngine), so the tyre lists are only made when a test reads them.
     of(car) {
       const c = cars.get(car);
       if (!c) return null;
-      return { vehicle: c.vehicle, boost: c.boostLeft > 0 ? c.boost : null, reactor: c.reactorLeft > 0 ? c.reactor : null, slow: c.slow, noEngine: c.noEngine, noBrake: c.noBrake, noSteer: c.noSteer, cruise: c.cruise, fragile: c.fragile, wet: c.wet, ice: [...c.ice], wheels: [...c.wheel], grip: [0, 1, 2, 3].map((w) => (c.wheel[w] == AIR ? null : gripOf(c, w))) };
+      return {
+        frames: c.f,
+        vehicle: c.vehicle,
+        boost: c.boostLeft > 0 ? c.boost : null,
+        reactor: c.reactorLeft > 0 ? c.reactor : null,
+        slow: c.slow,
+        noEngine: c.noEngine,
+        noBrake: c.noBrake,
+        noSteer: c.noSteer,
+        cruise: c.cruise,
+        fragile: c.fragile,
+        get wet() {
+          return c.tyre ? c.tyre.map((t) => t.wet) : c.wet;
+        },
+        get ice() {
+          return c.tyre ? c.tyre.map((t) => t.ice) : [...c.ice];
+        },
+        get mud() {
+          return c.tyre ? c.tyre.map((t) => t.mud) : null;
+        },
+        get wheels() {
+          return [...c.wheel];
+        },
+        get grip() {
+          return [0, 1, 2, 3].map((w) => (c.wheel[w] == AIR ? null : gripOf(c, w)));
+        },
+      };
     },
   };
 })();

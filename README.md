@@ -43,7 +43,7 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 | | Behaviour |
 |---|---|
 | Plastic | Very low grip, rear lower than front, so the tail slides. Strong extra push from a standstill that fades out by about 160 km/h. Plastic bounce: a hit on the car's side or roof throws it back off the plastic. The whole collision is measured, so a roof landing from 25 units up bounces back to about 17. |
-| Wood | Very high grip: the tyres don't let go, so you can't drift. Brakes shorter than stock road. Extra push that grows exponentially with speed up to about 300 km/h and fades out by 500 km/h, so wood pulls harder the faster you go (0 to 200 km/h in 2.7 s, stock 3.3 s). The extra grip is a fixed amount, so in loops it stays close to stock. |
+| Wood | Very high grip: the tyres don't let go, so you can't drift. Brakes shorter than stock road. Extra push that grows exponentially with speed up to about 300 km/h and fades out by 500 km/h, so wood pulls harder the faster you go (0 to 200 km/h in 2.7 s, stock 3.3 s). It corners about 3.25 times as hard as stock road at any speed from 40 km/h up, a little less below that. The extra grip is a fixed amount, so in loops it stays close to stock. |
 | Penalty grass | Soft grip and heavy drag; the car crawls at about 60 km/h. Comes as whole blocks, and as grass strips inside plastic and wood blocks, where only the grass slows you. |
 | Platform ice, bobsleigh | The tyres barely hold, so the car slides; steering turns the car itself, and a held turn settles into a steady slide. Braking takes about five times the distance. Bobsleigh walls hold the car in the channel near their lip. |
 | Dirt | About 0.65 of the road's grip (corners at about 0.8 of the speed). The rear lets go first, so it drifts, and the drift settles when you let go of the steering. 0 to 100 km/h takes x1.17 as long, 0 to 200 x1.31, braking x1.6 the distance, and rolling drag costs about 8% of the speed a second. Comes as whole blocks and as dirt verges inside other blocks. |
@@ -51,13 +51,32 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 | Snow | About 0.4 of the grip, x1.3 as long to 100 km/h, x2.5 the braking distance and little drag: between dirt and ice. It is in the physics, but no block uses it yet. |
 | Tech (bump road) | Exactly the stock road, which is Trackmania's Tech road. It has its own entry only for its own wet grip and vehicle numbers. |
 | Water | Not solid. The car sinks slowly, loses speed hard and can drive out. Shallow water sits over a floor: a little drag and a softer engine. Hitting deep water fast and flat, the car skips off it like a stone. |
-| Wet tyres | Water soaks the tyres (fully wet in under 2 s); on the ground they dry over about 10 s, but not on ice. Wet grip by surface: wood x0.08 (soaked through it slides nearly like ice), dirt and grass x0.6 (mud), plastic x0.7, road and tech x0.85. Checkpoints keep them wet; respawns dry them. The tyres are drawn darker and shinier. |
-| Icing | A car that ices up (see Vehicles) gets icy tyres on ice, bobsleigh and snow, fully iced in just over 1 s. Off the ice an iced tyre has up to half less grip, so the car slides for a moment until the tyres thaw (about 2.5 s). The tyres are drawn frosted. |
-| Muddy tyres | Dirt, and drivable grass a little, colour the tyres; water washes them. Only a look. |
+| Tyres | Each tyre gets wet, icy and muddy on its own, and one surface undoes another: see Tyres below. |
 | Tyre spray | Each surface throws up its own bits, far more while sliding or braking hard: dust and clods on dirt, clippings on grass, powder on snow, glitter on ice, splinters on wood, chips in the deck's colour on plastic, smoke on the bump road. Stock road keeps the game's own smoke; the Particles setting turns it all off. Only a look. |
 | Stock blocks, ground | Unchanged. Tracks with no new blocks use stock physics exactly. |
 
-Wet and iced tyres follow Trackmania 2020, where the Stadium car gets them too. Checkpoints keep the tyres as they are; a respawn gives dry, thawed tyres.
+**Tyres.** As in Trackmania 2020, every tyre carries its own wetness and icing (and here mud), the Stadium car's too, and what it drives on next adds to them or takes them away. Checkpoints and Reset plates keep the tyres as they are; a respawn, the respawn key and a vehicle gate (new car, new tyres) give clean ones. The tyres are drawn darker and shinier when wet, frosted when icy and brown when muddy, and the Wheel info panel (Settings) shows each tyre's grip and how wet, icy and muddy it is. Trackmania keeps the numbers in its encrypted packs, so the times and grips below are this project's estimates of how it plays.
+
+| On | What it does to the tyres |
+|---|---|
+| Water | Soaks them (fully wet in under 2 s), washes mud off in under a second and thaws ice in about a second. |
+| Dirt | Soaks the water up (dry in under 2 s) and scrubs ice off fast (half a second). Dry tyres only get dusty; wet tyres pick up mud fast (fully muddy in about a second). |
+| Grass, penalty grass | Dries the tyres over 3 to 4 s and scrubs ice off in about a second; wet tyres get a little green slick. |
+| Road, tech, plastic, wood | Dries them slowly (about 10 s), thaws ice in about 2.5 s and wears mud off in about 4 s. |
+| Platform ice, bobsleigh | Ices them up (fully iced in just over 1 s; the water on a wet tyre freezes, so in about half that). Mud stays on. |
+| Snow | Packs ice onto them like ice does, and the water on a wet tyre freezes. Wears a little mud off. |
+| Air | Almost nothing: they dry and thaw very slowly. |
+| Sliding | A drift, wheelspin or locked brakes heats the tyres, so they dry, thaw and shed mud up to four times as fast. |
+
+The Snow car's studded tyres never ice. The Rally and Desert cars shed mud a little faster.
+
+| Grip with a full | Road, tech | Plastic | Wood | Penalty grass | Ice, bobsleigh | Dirt | Grass | Snow |
+|---|---|---|---|---|---|---|---|---|
+| Wet tyre | x0.85 | x0.7 | x0.08, and it steers and slides like ice (Trackmania's sliding wood) | x0.7 | x0.75 | x0.6, a mud road with a little more drag | x0.6, slick | x0.9 |
+| Icy tyre | x0.5 | x0.5 | x0.5 | x0.5 | unchanged | x0.5 | x0.5 | unchanged |
+| Muddy tyre | x0.7 | x0.7 | x0.7 | unchanged | unchanged | unchanged | unchanged | unchanged |
+
+States in between count in proportion, and states together multiply, but never below 0.6 of what the worst one alone leaves. Dry, clean tyres drive every surface exactly as above.
 
 **Vehicles.** The car you start with is PolyTrack's own car, which plays the part of Trackmania's Stadium car, and it never changes. A vehicle gate turns it into the Snow, Rally or Desert car, each with its own parts, wheels and colours, and the Stadium car gate gives back the exact stock car. The car stays through checkpoints and effect resets; a respawn gives back the car you had at that checkpoint, and starting over gives the Stadium car. Against the Stadium car on the same surface:
 
@@ -108,7 +127,7 @@ This section is for anyone running a modified PolyTrack (a fork, a site or a pri
 | `tm_runtime.js` | Loads geometry, reads and writes BE1 codes, feeds physics, runs surfaces and effects. Defines `self.TM`. |
 | `tm_menu.js` | The block browser in the editor. Optional if you build your own menu. |
 | `tm_water.js` | Page only: water's see-through material, splashes and spray, and the per-car hooks (`TM.water.track` / `update` / `dispose`). |
-| `tm_vehicles.js` | Page only, after `tm_water.js`: the Snow, Rally and Desert car looks and the wet, icy and muddy tyres. It rides on `tm_water.js`'s car hooks and works the vehicle out from the car's state, so nothing comes back from the worker. |
+| `tm_vehicles.js` | Page only, after `tm_water.js`: the Snow, Rally and Desert car looks and the wet, icy and muddy tyres. It rides on `tm_water.js`'s car hooks and works the vehicle and tyres out from the car's state (with the runtime's own `TYRES`), so nothing comes back from the worker. |
 
 The page loads them before the game bundles:
 
@@ -181,7 +200,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | `SAVE_PREFIX`, `EXPORT_PREFIX`, `extTrackIds` | Format prefixes; ids of tracks that must not be uploaded. |
 | `surfaces` | Grip, launch, bounce and drag per surface. Tune here. |
 | `zones(track)`, `surfaceIndex(track)`, `surfaceAt(index, x, y, z)` | A track's effect and gate zones, and the surface at a point. The page uses them for water and vehicles. |
-| `VEHICLES`, `vehicleGates`, `WATER`, `ICING` | The cars (with `look` hints for drawing them), which gate gives which car, and the wet and icing rates. |
+| `VEHICLES`, `vehicleGates`, `WATER`, `TYRES` | The cars (with `look` hints for drawing them), which gate gives which car, water, and the tyre model: the table of what each surface does to wet, iced and muddy tyres, `step` (one physics frame of a tyre) and `grip`. `tm_vehicles.js` and `tm_hud.js` step their tyres with this same code. |
 | `ui` | The block browser hooks (`tm_menu.js`). |
 
 ### 4. How the physics fits in
