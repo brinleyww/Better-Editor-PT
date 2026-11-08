@@ -67,27 +67,84 @@ const PATTERNS = {
   },
 };
 
-function styleFor(surface) {
-  const plastic = surface == 'Plastic';
-  // Plastic kerbs and wood rails alternate colour every 2.5 units along the road.
-  const every = (k) => (ring) => Math.floor((ring.s + 1e-6) / k) % 2 == 0;
+// Kerbs and rails alternate colour every k units along the road.
+const every = (k) => (ring) => Math.floor((ring.s + 1e-6) / k) % 2 == 0;
+// One entry per kit. plastic: drawn on the plastic panel lattice (rings every 5, plastic rail tops).
+// Dirt and Grass are the plastic lattice with every plastic material swapped for one of their own, one for one,
+// so a shape they share with plastic is the same geometry and build.js stores it once; only their own pieces
+// (dirt berms, the narrow road, deco) cost bin space.
+const STYLES = {
+  Plastic: () => ({
+    plastic: true,
+    pattern: PATTERNS.plastic,
+    deck: (ring) => (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'PlasticDeckB' : 'PlasticDeck'),
+    patchMat: (i, j) => (((i >> 1) + (j >> 1)) % 2 ? 'PlasticDeckB' : 'PlasticDeck'),
+    line: () => 'PlasticLine',
+    rail: (ring) => (every(2.5)(ring) ? 'PlasticRail' : 'PlasticKerb'),
+    railTop: (ring) => (every(2.5)(ring) ? 'PlasticRail' : 'PlasticKerb'),
+    side: 'PlasticRail',
+    posts: false,
+    under: 'PlasticUnder',
+    solid: 'PlasticDeck',
+    solidB: 'PlasticRail',
+    trim: 'PlasticLine',
+    wallMat: () => 'PlasticDeck',
+    deco: 'plastic',
+    tower: 'Truss tower, 4 layers',
+    fence: 'Fence, plastic rails',
+  }),
+  Wood: () => ({
+    plastic: false,
+    pattern: PATTERNS.wood,
+    deck: (ring) => plankTone(Math.floor((ring.s + 1e-6) / PLANK)),
+    patchMat: (i) => plankTone(i),
+    line: () => 'WoodBeam',
+    rail: (ring) => (every(5)(ring) ? 'WoodBeam' : 'WoodBeamB'),
+    railTop: () => 'WoodBeamB',
+    side: 'WoodBeam',
+    posts: true,
+    under: 'WoodUnder',
+    solid: 'WoodDeckA',
+    solidB: 'WoodBeam',
+    trim: 'WoodBeamB',
+    wallMat: (i) => (i % 2 ? 'WoodDeckB' : 'WoodDeckA'),
+    deco: 'wood',
+    tower: 'Trestle tower, 4 layers',
+    fence: 'Fence, wooden rails',
+  }),
+  // TM2020 dirt: packed brown earth in two close tones, dark ruts where plastic has light seams, wooden kerbs.
+  Dirt: () => ({
+    ...relabel(STYLES.Plastic(), { PlasticDeck: 'DirtDeck', PlasticDeckB: 'DirtDeckB', PlasticSeam: 'DirtSeam', PlasticLine: 'DirtLine', PlasticRail: 'DirtRail', PlasticKerb: 'DirtKerb', PlasticUnder: 'DirtUnder' }),
+    berm: (ring) => (every(5)(ring) ? 'DirtBerm' : 'DirtBermB'),
+    deco: 'dirt',
+    tower: 'Trestle tower, 4 layers',
+    fence: 'Fence, wooden rails',
+  }),
+  // TM2020 grass platform: mown grass in stripes, darker mowing lines, dark hedge kerbs over brown soil.
+  Grass: () => ({
+    ...relabel(STYLES.Plastic(), { PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' }),
+    deco: 'grass',
+    tower: 'Truss tower, 4 layers',
+    fence: 'Fence',
+  }),
+};
+// A style with every material swapped through R, the geometry left exactly as it was.
+function relabel(base, R) {
+  const swap = (f) => (...a) => R[f(...a)];
+  const P = base.pattern;
   return {
-    surface,
-    plastic,
-    // BE_PLAIN builds the plain collision meshes: same shapes, no pattern cuts (see build.js).
-    pattern: process.env.BE_PLAIN ? null : plastic ? PATTERNS.plastic : PATTERNS.wood,
-    deck: plastic ? (ring) => (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'PlasticDeckB' : 'PlasticDeck') : (ring) => plankTone(Math.floor((ring.s + 1e-6) / PLANK)),
-    patchMat: plastic ? (i, j) => (((i >> 1) + (j >> 1)) % 2 ? 'PlasticDeckB' : 'PlasticDeck') : (i) => plankTone(i),
-    line: plastic ? () => 'PlasticLine' : () => 'WoodBeam',
-    rail: plastic ? (ring) => (every(2.5)(ring) ? 'PlasticRail' : 'PlasticKerb') : (ring) => (every(5)(ring) ? 'WoodBeam' : 'WoodBeamB'),
-    railTop: plastic ? (ring) => (every(2.5)(ring) ? 'PlasticRail' : 'PlasticKerb') : () => 'WoodBeamB',
-    side: plastic ? 'PlasticRail' : 'WoodBeam',
-    posts: !plastic,
-    under: plastic ? 'PlasticUnder' : 'WoodUnder',
-    solid: plastic ? 'PlasticDeck' : 'WoodDeckA',
-    solidB: plastic ? 'PlasticRail' : 'WoodBeam',
-    trim: plastic ? 'PlasticLine' : 'WoodBeamB',
+    ...base,
+    pattern: P && { ...P, mat: swap(P.mat) },
+    ...Object.fromEntries(['deck', 'patchMat', 'line', 'rail', 'railTop', 'wallMat'].map((k) => [k, swap(base[k])])),
+    ...Object.fromEntries(['side', 'under', 'solid', 'solidB', 'trim'].map((k) => [k, R[base[k]]])),
   };
+}
+
+function styleFor(surface) {
+  const st = { surface, ...STYLES[surface]() };
+  // BE_PLAIN builds the plain collision meshes: same shapes, no pattern cuts (see build.js).
+  if (process.env.BE_PLAIN) st.pattern = null;
+  return st;
 }
 
 // ---- cross sections (all counter-clockwise, x to the right of travel, y up from the slab bottom) -------------
@@ -147,10 +204,12 @@ function stockDecal(fam, kind, dx = 0, ds = 0) {
     },
   };
 }
-// kind: Start, Checkpoint or Finish. key: Road, Open, Plat, PlatWide or Wall.
+// kind: Start, Checkpoint or Finish. key: Road, Open, Plat, PlatWide or Wall; Dirt and Narrow are the stock road
+// gate on the banked dirt road and the narrow dirt road.
 // opt: y, roll, segs, start, step and ds for the road it stands on, and place(p) to move the stock posts onto it.
 function stockGate(st, kind, key, opt = {}) {
-  const fam = key == 'Road' || key == 'Open' ? 'Road' : key == 'PlatWide' ? 'PlaneWide' : 'Plane',
+  const banked = key == 'Dirt' || key == 'Narrow',
+    fam = key == 'Road' || key == 'Open' || banked ? 'Road' : key == 'PlatWide' ? 'PlaneWide' : 'Plane',
     wide = key == 'PlatWide',
     decal = stockDecal(fam, kind, wide ? -10 : 0, opt.ds ?? 0),
     barrier = { ...st, rail: () => 'RoadBarrier', railTop: () => 'RoadBarrier' };
@@ -163,7 +222,16 @@ function stockGate(st, kind, key, opt = {}) {
         }
       : key == 'Open'
         ? () => [deckPoly(st, HALF_ROAD, DECK, 0.5, null, decal)]
-        : () => [deckPoly(st, wide ? 20 : 10, DECK, 0.5, null, decal)];
+        : banked
+          ? () => {
+              const B = key == 'Dirt' ? BERM : NARROW;
+              return [deckPoly(st, B.x0, DECK, B.line, null, decal), ...bermSides(st, B, null, decal)];
+            }
+          : () => [deckPoly(st, wide ? 20 : 10, DECK, 0.5, null, decal)];
+  // The stock road posts stand 5.55-6.17 out. On the narrow road they move in onto its banks, keeping their own
+  // thickness, and the banner between them shrinks to fit.
+  const D = 6.171 - (NARROW.x1 - 0.05),
+    fit = key == 'Narrow' ? ([x, y, z]) => [Math.abs(x) >= 5.5 ? x - Math.sign(x) * D : (x * (5.5 - D)) / 5.5, y, z] : (p) => p;
   let m;
   if (key == 'Wall') {
     // Rings straight up the wall, cut where the markings start and stop.
@@ -178,9 +246,9 @@ function stockGate(st, kind, key, opt = {}) {
   for (const t of opt.arch === false ? [] : STOCK[fam][kind].arch) {
     const v = [0, 1, 2].map((k) => {
       const p = t.slice(1 + 3 * k, 4 + 3 * k);
-      // Road posts start inside the barrier; with no barrier they stand on the deck.
-      if (key == 'Open' && p[1] < 1) p[1] = DECK;
-      return place(p);
+      // Road posts start inside the barrier; with no barrier they stand on the deck (inside the bank on dirt).
+      if ((key == 'Open' || banked) && p[1] < 1) p[1] = DECK;
+      return place(fit(p));
     });
     m.tri(t[0], v[0], v[1], v[2]);
     const cx = (t[1] + t[4] + t[7]) / 3;
@@ -262,6 +330,57 @@ const roadProfile = (st, paint) => {
 };
 const openProfile = (st, paint) => () => [deckPoly(st, HALF_ROAD, DECK, 0.5, paint)];
 const platProfile = (st, paint) => () => [deckPoly(st, 10, DECK, 0.5, paint)];
+
+// TM2020 dirt road: no rails, soft earth banks that rise from the deck edge out to the stock road's width. The bank
+// leaves the deck flat (tangent to it) and rounds over at the top, so a car running wide rides up it and comes back
+// instead of hitting a wall. x0: deck half width, x1: outer edge, h: bank height over the deck, line: deck edge strip.
+// NARROW is TM's narrow dirt road: about half the width, with low banks.
+const BERM = { x0: 4.5, x1: HALF_ROAD, h: 1.2, n: 6, line: 0.35 };
+const NARROW = { x0: 2.6, x1: 3.6, h: 0.45, n: 4, line: 0.25 };
+// A bank squeezed to nothing (a connector's far end) has no width: it is flat at the deck.
+const bermY = (B, x) => (B.x1 - B.x0 < 1e-9 ? DECK : DECK + (B.h * (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, (Math.abs(x) - B.x0) / (B.x1 - B.x0)))))) / 2);
+// The banks as n strips a side (the bank as a whole is concave, so it cannot be one convex polygon).
+// sides: which banks, +1 right, -1 left. paint and decal colour them like the deck (effect plates, gate markings).
+function bermSides(st, B, paint, decal, sides = [1, -1]) {
+  const { x0, x1, n } = B,
+    polys = [];
+  for (const side of sides)
+    for (let i = 0; i < n; i++) {
+      const xa = x0 + ((x1 - x0) * i) / n,
+        xb = x0 + ((x1 - x0) * (i + 1)) / n,
+        q = [[xa, 0], [xb, 0], [xb, bermY(B, xb)], [xa, bermY(B, xa)]];
+      polys.push({
+        pts: side > 0 ? q : q.map(([x, y]) => [-x, y]).reverse(),
+        cap: st.under,
+        mats: (e0, ring) => {
+          // Mirrored strips run the other way round: edge k on the left is edge MIRROR[k] on the right.
+          const e = side > 0 ? e0 : [2, 1, 0, 3][e0];
+          if (e == 0) return st.under;
+          // Only the outermost strip shows its outside; the faces between strips are inside the bank.
+          if (e == 1) return i == n - 1 ? st.under : null;
+          if (e == 2) return decal?.at((side * (xa + xb)) / 2, (ring.s + ring.next) / 2) ?? paint?.(ring) ?? (st.berm ?? st.deck)(ring);
+          return null;
+        },
+      });
+    }
+  return polys;
+}
+const bermProfile = (st, B, paint) => () => [deckPoly(st, B.x0, DECK, B.line, paint), ...bermSides(st, B, paint)];
+// Connector between two banked sections, or to a section with no banks (h 0, x0 = x1 = its half width): the deck
+// widens and the banks shrink and flatten along the part. The pattern is left off, its cuts would move with the width.
+function bermMorph(st, A, B) {
+  return (ring) => {
+    const t = smooth(ring.u),
+      L = (k) => A[k] + (B[k] - A[k]) * t,
+      S = { x0: L('x0'), x1: L('x1'), h: L('h'), line: L('line'), n: Math.max(A.n ?? 0, B.n ?? 0) };
+    return [deckPoly({ ...st, pattern: null }, S.x0, DECK, S.line), ...bermSides(st, S)];
+  };
+}
+const OPEN_END = { x0: HALF_ROAD, x1: HALF_ROAD, h: 0, line: 0.5 };
+// The stock road's end: its deck out to the rails, a bank as high as the rails where they stand. A car running along the
+// stock road near its rail meets the bank rising slowly ahead instead of its square end.
+const STOCK_END = { x0: RAIL_IN, x1: HALF_ROAD, h: RAIL_TOP - DECK, line: 0.35 };
+const PLAT_END = { x0: 10, x1: 10, h: 0, line: 0.5 };
 
 // Connector profile: lerps width and rail height between two kinds of section along the part.
 function morphProfile(st, fromW, toW, fromRail, toRail) {
@@ -440,22 +559,73 @@ function ringGlyph(m, mat, y = DECAL) {
   }
 }
 
+// The road widths a kit's gates, effect plates and vehicle gates come in. gate: the stockGate key; det and sx: the
+// gate trigger and effect zone widths; post, postY: where a vehicle gate's posts stand (on the rail, the bank or
+// the deck); glyph: how much an effect glyph is narrowed to fit between the banks.
+function kitWidths(st) {
+  const W = {
+    Road: { key: 'Road', fam: 'road', gate: 'Road', det: 10.5, sx: 11.13, make: (p) => roadProfile(st, p), post: 6.0667, postY: RAIL_TOP - 0.1 },
+    Open: { key: 'Open', fam: 'open road', gate: 'Open', det: 12.5, sx: 13.1, make: (p) => openProfile(st, p), post: 6.2, postY: DECK - 0.05 },
+    Plat: { key: 'Plat', fam: 'platform', gate: 'Plat', det: 18.25, sx: 19.5, make: (p) => platProfile(st, p), post: 9.6, postY: DECK - 0.05 },
+    Dirt: { key: 'Road', fam: 'dirt road', gate: 'Dirt', det: 12.5, sx: 13.1, make: (p) => bermProfile(st, BERM, p), post: 6.0, postY: DECK - 0.05, glyph: 0.9 },
+    Narrow: { key: 'Narrow', fam: 'narrow road', gate: 'Narrow', det: 7.5, sx: 7.5, make: (p) => bermProfile(st, NARROW, p), post: 3.25, postY: DECK - 0.05, glyph: 0.55 },
+  };
+  return { Dirt: [W.Dirt, W.Open, W.Plat, W.Narrow], Grass: [W.Open, W.Plat] }[st.surface] ?? [W.Road, W.Open, W.Plat];
+}
+// Draws an effect glyph onto m, narrowed across the road by k (1 or absent: as drawn).
+function glyphOn(m, glyph, k) {
+  if (!k || k == 1) return glyph(m, DECAL);
+  const g = new Mesh();
+  glyph(g, DECAL);
+  for (const [mat, l] of g.byMat) for (let i = 0; i < l.length; i += 3) m.tri(mat, ...[0, 1, 2].map((j) => [l[i + j][0] * k, l[i + j][1], l[i + j][2]]));
+}
+
+// A vehicle gate: two posts in the gate's colour, a beam across, and a sign hanging from it with the car it turns
+// you into on both faces. Posts stand at +-w from y0; everything stays under `top` (4.9: inside one layer).
+function vehicleArch(m, w, y0, V, top = 4.9) {
+  const pw = 0.3,
+    sign = top - 0.5;
+  for (const x of [-w, w]) {
+    m.box(V.mat, [x - pw, y0, -pw], [x + pw, top, pw]);
+    softAround(m, [[x, y0, 0], [x, top, 0]], 0.35);
+  }
+  // The beam ends just inside the posts and stops short of their tops, so no face lies on a post face.
+  m.box('VehFrame', [-w + pw - 0.02, sign, -0.22], [w - pw + 0.02, top - 0.05, 0.22]);
+  m.box('VehPanel', [-2.4, sign - 1.6, -0.1], [2.4, sign + 0.05, 0.1], 'VehFrame');
+  // The car, 0.05 in front of each face of the sign; seen from behind it faces the other way, like a real sign.
+  for (const side of [1, -1])
+    for (const [u0, v0, u1, v1] of V.car) {
+      const z = side * 0.15,
+        y = (v) => sign - 1.45 + v,
+        x = (u) => side * u;
+      m.quadFacing('VehGlyph', [x(u0), y(v0), z], [x(u1), y(v0), z], [x(u1), y(v1), z], [x(u0), y(v1), z], [0, 0, side]);
+    }
+  softAround(m, [[-w, sign - 1.6, 0], [w, top, 0]], 0.3);
+}
+
 // ---- catalogue ---------------------------------------------------------------------------------------------
 
 function buildSurface(surface) {
   const st = styleFor(surface);
   const parts = [];
-  const put = (name, label, tab, sub, mesh, extra = {}) => parts.push({ name: surface + name, label, tab, sub, surface, mesh, ...extra });
-  const families = [
-    { key: 'Road', tab: 'Road', profile: roadProfile(st), width: HALF_ROAD, rail: true },
-    { key: 'Open', tab: 'Open road', profile: openProfile(st), width: HALF_ROAD, rail: false },
-  ];
+  const putAll = (name, label, tab, sub, mesh, extra = {}) => parts.push({ name: surface + name, label, tab, sub, surface, mesh, ...extra });
+  const put = putAll;
+  const railed = { key: 'Road', tab: 'Road', profile: roadProfile(st), width: HALF_ROAD, rail: true },
+    open = { key: 'Open', tab: 'Open road', profile: openProfile(st), width: HALF_ROAD, rail: false };
+  // Dirt: TM's dirt road with banks instead of rails, the open road, and the narrow dirt road (straights, turns,
+  // slopes, hills and junctions only: no banking, diagonals or loops). Grass is platform land: no railed road.
+  // skip: part names (after the family key) the family leaves out.
+  const families = {
+    Dirt: [{ key: 'Road', tab: 'Dirt road', profile: bermProfile(st, BERM), width: HALF_ROAD, berm: BERM, loops: false }, open, { key: 'Narrow', tab: 'Narrow road', profile: bermProfile(st, NARROW), width: NARROW.x1, berm: NARROW, loops: false, skip: /^(Tilt|ToTilt|Diag)/ }],
+    Grass: [open],
+  }[surface] ?? [railed, open];
 
   for (const F of families) {
     const P = F.profile,
       K = F.key,
       T = F.tab,
       RS = 5;
+    const put = (name, ...rest) => (F.skip?.test(name.slice(K.length)) ? null : putAll(name, ...rest));
 
     // straights and junctions
     put(K + 'Straight', 'Straight', T, 'Straights', roadPart(st, P, [{ line: 20 }]));
@@ -568,7 +738,7 @@ function buildSurface(surface) {
     put(K + 'DiagUp', 'Diagonal climb', T, 'Diagonals', roadPart(st, P, [{ line: 20 * S2 }], { start: [-10, 10, 45 * DEG], step: 3.5355, y: (s) => s * (5 / (20 * S2)) }));
 
     // walls and loops: the road leaves the ground. Quarters are ordered 1-4 around one loop.
-    loopSet(put, st, P, K, T, 'Walls and loops');
+    if (F.loops !== false) loopSet(put, st, P, K, T, 'Walls and loops');
     void RS;
   }
 
@@ -706,7 +876,7 @@ function buildSurface(surface) {
           const a = samples[i],
             b = samples[i + 1],
             h = 20,
-            f = st.plastic ? st.solid : i % 2 ? 'WoodDeckB' : 'WoodDeckA';
+            f = st.wallMat(i);
           const out = norm(add(mul(a.R, dir), mul(b.R, dir)));
           m.quadFacing(f, a.p, b.p, add(b.p, [0, h, 0]), add(a.p, [0, h, 0]), mul(out, 1));
           const o = (q) => add(q, mul(out, -0.21));
@@ -753,18 +923,36 @@ function buildSurface(surface) {
     const T = 'Connectors',
       W = 10,
       R = HALF_ROAD;
+    const banked = {
+      Dirt: [
+        ['RoadFromRoad', 'Dirt road from road', STOCK_END, BERM],
+        ['RoadToOpen', 'Dirt road to open road', BERM, OPEN_END],
+        ['RoadToPlat', 'Dirt road to platform', BERM, PLAT_END],
+        ['NarrowToRoad', 'Narrow road to dirt road', NARROW, BERM],
+        // The narrow road from the stock road: the banks close in from the rails to the narrow road's.
+        ['NarrowFromRoad', 'Narrow road from road', STOCK_END, NARROW],
+        ['NarrowToOpen', 'Narrow road to open road', NARROW, OPEN_END],
+      ],
+      Grass: [],
+    };
     const cases = [
       ['RoadToOpen', 'Road to open road', R, R, RAIL_TOP, DECK],
       ['RoadToPlat', 'Road to platform', R, W, RAIL_TOP, DECK],
       ['OpenToPlat', 'Open road to platform', R, W, DECK, DECK],
-    ];
+    ].filter(([n]) => !banked[surface] || n == 'OpenToPlat');
+    // The banked kits have their own road ends: the banks sink into the open road or the platform.
+    for (const [n, label, A, B] of banked[surface] ?? []) {
+      put(n, label, T, 'Road types', roadPart(st, bermMorph(st, A, B), [{ line: 20 }], { step: 2.5 }));
+      put(n + 'Long', label + ', long', T, 'Road types', roadPart(st, bermMorph(st, A, B), [{ line: 40 }], { step: 2.5 }));
+    }
+    if (surface == 'Dirt') put('RoadToPlatUp', 'Dirt road to platform, climbing', T, 'Road types', roadPart(st, bermMorph(st, BERM, PLAT_END), [{ line: 40 }], { step: 2.5, y: (s) => (0.25 * s * s) / 80 }));
     for (const [n, label, a, b, ra, rb] of cases) {
       put(n, label, T, 'Road types', roadPart(st, morphProfile(st, a, b, ra, rb), [{ line: 20 }], { step: 2.5 }));
       put(n + 'Long', label + ', long', T, 'Road types', roadPart(st, morphProfile(st, a, b, ra, rb), [{ line: 40 }], { step: 2.5 }));
     }
     // Road opening out into a platform while climbing.
-    put('RoadToPlatUp', 'Road to platform, climbing', T, 'Road types', roadPart(st, morphProfile(st, R, W, RAIL_TOP, DECK), [{ line: 40 }], { step: 2.5, y: (s) => (0.25 * s * s) / 80 }));
-    for (const dir of [1, -1]) {
+    if (!banked[surface]) put('RoadToPlatUp', 'Road to platform, climbing', T, 'Road types', roadPart(st, morphProfile(st, R, W, RAIL_TOP, DECK), [{ line: 40 }], { step: 2.5, y: (s) => (0.25 * s * s) / 80 }));
+    for (const dir of banked[surface] ? [] : [1, -1]) {
       const off = dir * (10 - HALF_ROAD);
       const m = new Mesh();
       const profile = (ring) => {
@@ -785,35 +973,33 @@ function buildSurface(surface) {
       { kind: 'Checkpoint', label: 'Checkpoint', band: 'Checkpoint' },
       { kind: 'Finish', label: 'Finish', band: 'Finish' },
     ];
-    const widths = [
-      { key: 'Road', fam: 'road', det: 10.5 },
-      { key: 'Open', fam: 'open road', det: 12.5 },
-      { key: 'Plat', fam: 'platform', det: 18.25 },
-    ];
+    const widths = kitWidths(st);
     const detector = (kind, size, cy = 2.2, cz = 0, cx = 0, h = 3.8) =>
       kind == 'Start' ? {} : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [cx, cy, cz], size: [size, h, kind == 'Finish' ? 2 : 1] } };
     for (const { kind, label } of kinds)
-      for (const W of widths) put(kind + W.key, label + ', ' + W.fam, T, label, stockGate(st, kind, W.key), { ...detector(kind, W.det), ...(kind == 'Start' ? { startOffset: [0, 0.35, 1.35] } : {}) });
+      for (const W of widths) put(kind + W.key, label + ', ' + W.fam, T, label, stockGate(st, kind, W.gate), { ...detector(kind, W.det), ...(kind == 'Start' ? { startOffset: [0, 0.35, 1.35] } : {}) });
     // Checkpoints in the middle of slopes, banks and diagonals: the stock gate leans with the road the way stock
     // slopes do, cross-sections kept vertical. The trigger box is taller so it still catches the car.
     for (const W of widths)
       for (const { g, n } of [{ g: 0.25, n: 'gentle' }, { g: 0.5, n: 'medium' }, { g: 1, n: 'steep' }]) {
-        const m = stockGate(st, 'Checkpoint', W.key, { y: (s) => g * s, place: ([x, y, z]) => [x, y + g * (10 - z), z] });
+        const m = stockGate(st, 'Checkpoint', W.gate, { y: (s) => g * s, place: ([x, y, z]) => [x, y + g * (10 - z), z] });
         put('Checkpoint' + W.key + n, 'Checkpoint, ' + n + ' slope, ' + W.fam, T, 'Checkpoint on slope', m, { detector: { type: 0, center: [0, g * 10 + 2.2, 0], size: [W.det, 3.8 + g * 2, 1] } });
       }
-    for (const W of widths.slice(0, 2))
+    // Banks and diagonals only come in the full road widths.
+    const roads = widths.filter((W) => W.key == 'Road' || W.key == 'Open');
+    for (const W of roads)
       for (const dir of [1, -1]) {
         const roll = dir * TILT,
           c = Math.cos(roll),
           sn = Math.sin(roll);
-        const m = stockGate(st, 'Checkpoint', W.key, { y: () => 5, roll: () => roll, place: ([x, y, z]) => [x * c + y * sn, 5 + y * c - x * sn, z] });
+        const m = stockGate(st, 'Checkpoint', W.gate, { y: () => 5, roll: () => roll, place: ([x, y, z]) => [x * c + y * sn, 5 + y * c - x * sn, z] });
         put('Checkpoint' + W.key + 'Tilt' + (dir > 0 ? 'L' : 'R'), 'Checkpoint, banked ' + (dir > 0 ? 'left high' : 'right high') + ', ' + W.fam, T, 'Checkpoint on bank', m, { detector: { type: 0, center: [0, 6.2, 0], size: [W.det, 9, 1] } });
       }
-    for (const W of widths.slice(0, 2)) {
+    for (const W of roads) {
       // The diagonal runs from (-10, 10) at 45 degrees; its middle is 10 x sqrt 2 along it.
       const mid = 10 * Math.SQRT2,
         k = Math.SQRT1_2;
-      const m = stockGate(st, 'Checkpoint', W.key, { segs: [{ line: 20 * Math.SQRT2 }], start: [-10, 10, 45 * DEG], step: 2.02, ds: mid - 10, place: ([x, y, z]) => [(mid - z) * k + x * k - 10, y, 10 - (mid - z) * k + x * k] });
+      const m = stockGate(st, 'Checkpoint', W.gate, { segs: [{ line: 20 * Math.SQRT2 }], start: [-10, 10, 45 * DEG], step: 2.02, ds: mid - 10, place: ([x, y, z]) => [(mid - z) * k + x * k - 10, y, 10 - (mid - z) * k + x * k] });
       // spawnDir: the road's direction through the gate, so respawning there faces along the diagonal.
       put('Checkpoint' + W.key + 'Diag', 'Checkpoint, diagonal, ' + W.fam, T, 'Checkpoint on diagonal', m, { detector: { type: 0, center: [0, 2.2, 0], size: [7.5, 3.8, 7.5] }, spawnDir: [Math.SQRT1_2, 0, -Math.SQRT1_2] });
     }
@@ -825,28 +1011,37 @@ function buildSurface(surface) {
     // A checkpoint on a wall, climbing straight up: the stock platform gate stood on its end.
     put('CheckpointWall', 'Checkpoint on a wall', T, 'Checkpoint on wall', stockGate(st, 'Checkpoint', 'Wall'), { detector: { type: 0, center: [0, 10, -7.6], size: [18.25, 1, 3.8] } });
     // Finish hoops, 1 to 4 blocks across, on each road width. The trigger is the stock finish line's.
-    for (const W of widths)
-      for (let n = 1; n <= 4; n++) put('FinishHoop' + W.key + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ' + W.fam, T, 'Finish hoop', hoopGate(st, W.key, n), detector('Finish', W.det));
+    for (const W of widths.filter((W) => W.key != 'Narrow'))
+      for (let n = 1; n <= 4; n++) put('FinishHoop' + W.key + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ' + W.fam, T, 'Finish hoop', hoopGate(st, W.gate, n), detector('Finish', W.det));
   }
 
   // ---- gameplay plates: effects run in the physics worker (see tm_runtime.js) -------------------------------------
   {
     const T = 'Effects';
     for (const fx of FX)
-      for (const W of [
-        { key: 'Road', fam: 'road', make: (p) => roadProfile(st, p), sx: 11.13 },
-        { key: 'Open', fam: 'open road', make: (p) => openProfile(st, p), sx: 13.1 },
-        { key: 'Plat', fam: 'platform', make: (p) => platProfile(st, p), sx: 19.5 },
-      ]) {
+      for (const W of kitWidths(st)) {
         const paint = (ring, isLine) => (isLine ? st.line(ring) : fx.mat);
         const m = roadPart(st, W.make(paint), [{ line: 20 }], { step: 5 });
-        fx.glyph(m, DECAL);
+        glyphOn(m, fx.glyph, W.glyph);
         put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 12] } });
       }
   }
 
-  // ---- penalty grass built into this surface's blocks ------------------------------------------------------------------
+  // ---- vehicle gates: TM2020's transform gates, an arch across the road with the car it turns you into ------------------
   {
+    const T = 'Vehicle gates';
+    for (const V of VEHICLES)
+      for (const W of kitWidths(st)) {
+        // The deck under the arch takes the gate's colour, the rest of the piece keeps the surface pattern.
+        const paint = (ring) => (ring.s >= 9 - 1e-6 && ring.s < 11 - 1e-6 ? V.mat : null);
+        const m = roadPart(st, W.make(paint), [{ line: 20 }], { marks: [9, 11] });
+        vehicleArch(m, W.post, W.postY, V);
+        put('Car' + V.key + W.key, V.label + ', ' + W.fam, T, V.label, m, { fx: { type: 'Car' + V.key, center: [0, 2.6, 0], size: [W.sx, 5, 3] } });
+      }
+  }
+
+  // ---- penalty grass built into this surface's blocks ------------------------------------------------------------------
+  if (surface != 'Grass') {
     const T = 'Penalty grass';
     // Open road with grass verges out to the block edge.
     const verge = (paint) => () => [deckPoly(st, HALF_ROAD, DECK, 0.5, paint), ...grassStrips(HALF_ROAD, 10)];
@@ -889,6 +1084,35 @@ function buildSurface(surface) {
       put('GrassPlatIsland', 'Platform with a grass island', T, 'Platform with grass', m);
     }
     [30, 50].forEach((r) => put('GrassPlatCurve' + r, 'Platform curve with grass outside, radius ' + r, T, 'Platform with grass', roadPart(st, plat([[5, 10]]), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) })));
+
+    // TM's penalty pieces also come with dirt borders: the verge drives like dirt (surface 5, build.js regions),
+    // the road keeps this surface. The dirt kit's own road is dirt already, so it has none.
+    if (surface != 'Dirt') {
+      const sub = 'Road with dirt verges',
+        D = () => [deckPoly(st, HALF_ROAD, DECK, 0.5), ...grassStrips(HALF_ROAD, 10, null, null, DIRT_VERGE)];
+      put('DirtVergeStraight', 'Open road with dirt verges', T, sub, roadPart(st, D, [{ line: 20 }]));
+      put('DirtVergeStraightX2', 'Open road with dirt verges, 2 long', T, sub, roadPart(st, D, [{ line: 40 }]));
+      [10, 30, 50, 70, 90].forEach((r, i) => put('DirtVergeCurve' + (i + 1), 'Open road with dirt, curve ' + (i + 1), T, sub, roadPart(st, D, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) })));
+      for (const { g, n, L } of [{ g: 0.25, n: 'Gentle', L: 40 }, { g: 0.5, n: 'Medium', L: 20 }]) {
+        put('DirtVerge' + n + 'Start', 'Open road with dirt, ' + n.toLowerCase() + ' slope start', T, sub, roadPart(st, D, [{ line: L }], { step: 2.5, y: (s) => (g * s * s) / (2 * L) }));
+        put('DirtVerge' + n, 'Open road with dirt, ' + n.toLowerCase() + ' slope', T, sub, roadPart(st, D, [{ line: 20 }], { y: (s) => g * s }));
+        put('DirtVerge' + n + 'End', 'Open road with dirt, ' + n.toLowerCase() + ' slope end', T, sub, roadPart(st, D, [{ line: L }], { step: 2.5, y: (s) => g * s - (g * s * s) / (2 * L) }));
+      }
+      put('DirtVergeToOpen', 'Dirt verges to plain open road', T, sub, roadPart(st, (ring) => [deckPoly(st, HALF_ROAD, DECK, 0.5), ...grassStrips(HALF_ROAD, HALF_ROAD + (10 - HALF_ROAD) * (1 - smooth(ring.u)) + 0.01, null, null, DIRT_VERGE)], [{ line: 20 }], { step: 2.5 }));
+      const dplat = (cuts) => () => {
+        const out = [];
+        let x = -10;
+        for (const [a, b] of cuts) {
+          if (a > x) out.push(sidePoly(st, x, a));
+          out.push(...grassStrips(null, null, a, b, DIRT_VERGE));
+          x = b;
+        }
+        if (x < 10) out.push(sidePoly(st, x, 10));
+        return out;
+      };
+      put('DirtVergePlatEdge', 'Platform with a dirt edge', T, 'Platform with dirt', roadPart(st, dplat([[-10, -5]]), [{ line: 20 }]));
+      put('DirtVergePlatBoth', 'Platform with dirt on both edges', T, 'Platform with dirt', roadPart(st, dplat([[-10, -5], [5, 10]]), [{ line: 20 }]));
+    }
   }
 
   // ---- deco and scenery ----------------------------------------------------------------------------------------------
@@ -912,7 +1136,43 @@ const FX = [
   { key: 'Slow', label: 'Slow motion', mat: 'FxSlow', glyph: (m, y) => ringGlyph(m, 'FxSlowB', y) },
   { key: 'Cruise', label: 'Cruise control', mat: 'FxCruise', glyph: (m, y) => chevrons(m, 'FxCruiseB', 2, y, 2.4) },
   { key: 'Fragile', label: 'Fragile', mat: 'FxFragile', glyph: (m, y) => ringGlyph(m, 'FxFragileB', y) },
+  // TM2020 additions: the purple ultra turbo, and the bumpers (rubber pads that kick the car sideways).
+  { key: 'Ultra', label: 'Ultra turbo', mat: 'FxUltra', glyph: (m, y) => chevrons(m, 'FxUltraB', 3, y, 4.4) },
+  { key: 'Bumper', label: 'Bumper', mat: 'FxBumper', glyph: (m, y) => bumperGlyph(m, 'FxBumperB', y, 1) },
+  { key: 'Bumper2', label: 'Super bumper', mat: 'FxBumper', glyph: (m, y) => bumperGlyph(m, 'FxBumper2B', y, 2) },
 ];
+
+// TM2020 vehicle transform gates; zone type 'Car' + key (tm_runtime.js), Stadium turns you back into the normal car.
+// car: the silhouette on the gate's sign as rectangles [u0, v0, u1, v1], u along the car (front at +u, -2.1..2.1),
+// v up from its wheels (0..1.32). None overlap, so the sign never flickers.
+const VEHICLES = [
+  // Tall body on a ski, with a cab.
+  { key: 'Snow', label: 'Snow car gate', mat: 'VehSnow', car: [[-2, 0, 1.8, 0.12], [1.8, 0.05, 2.05, 0.25], [-1.3, 0.12, -1.1, 0.35], [1, 0.12, 1.2, 0.35], [-1.8, 0.35, 1.7, 0.85], [-1.2, 0.85, 0.6, 1.25]] },
+  // A hatchback with a light bar on the roof.
+  { key: 'Rally', label: 'Rally car gate', mat: 'VehRally', car: [[-1.5, 0, -0.9, 0.45], [0.9, 0, 1.5, 0.45], [-1.9, 0.45, 1.9, 0.8], [-1.3, 0.8, 0.7, 1.15], [-0.9, 1.15, 0.3, 1.25]] },
+  // A buggy: big wheels, a high flat body, a roll cage.
+  { key: 'Desert', label: 'Desert car gate', mat: 'VehDesert', car: [[-1.9, 0, -0.9, 0.6], [0.8, 0, 1.8, 0.6], [-1.6, 0.6, 1.7, 0.85], [-0.9, 0.85, -0.75, 1.18], [0.45, 0.85, 0.6, 1.18], [-0.95, 1.18, 0.65, 1.3]] },
+  // The stadium car: low and long, a small cockpit and a rear wing.
+  { key: 'Stadium', label: 'Stadium car gate', mat: 'VehStadium', car: [[-1.75, 0, -1.05, 0.4], [0.95, 0, 1.65, 0.4], [-2, 0.4, 1.9, 0.7], [-0.7, 0.7, 0.4, 0.95], [-1.85, 0.7, -1.7, 1.05], [-2.05, 1.05, -1.35, 1.2]] },
+];
+
+// A bumper pad's glyph: a bright ring with n arrows a side pointing out, the way the kick goes.
+function bumperGlyph(m, mat, y, n) {
+  const N = 16,
+    r0 = 2.1,
+    r1 = 2.9;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * TAU,
+      b = ((i + 1) / N) * TAU,
+      p = (r, an) => [Math.cos(an) * r, y, Math.sin(an) * r];
+    m.quadFacing(mat, p(r0, a), p(r1, a), p(r1, b), p(r0, b), [0, 1, 0]);
+  }
+  for (const side of [1, -1])
+    for (let k = 0; k < n; k++) {
+      const z = n == 1 ? 0 : (k - 0.5) * 2.6;
+      m.triFacing(mat, [side * 4.9, y, z], [side * 3.5, y, z - 1.1], [side * 3.5, y, z + 1.1], [0, 1, 0]);
+    }
+}
 
 function arrowGlyph(m, mat, y, dir) {
   // An up or down arrow seen from the driver: a triangle and a stem along the road.
@@ -929,12 +1189,15 @@ function rouletteGlyph(m, y) {
   }
 }
 
-// Penalty grass strips as extra profile polygons, flush with the deck top.
-function grassStrips(inner, outer, a, b) {
+// Penalty grass strips as extra profile polygons, flush with the deck top. kind: the verge's top tones and
+// underside, grass unless told otherwise (DIRT_VERGE for dirt borders).
+const GRASS_VERGE = { top: ['Grass', 'GrassB'], under: 'GrassUnder' };
+const DIRT_VERGE = { top: ['DirtVerge', 'DirtVergeB'], under: 'DirtUnder' };
+function grassStrips(inner, outer, a, b, kind = GRASS_VERGE) {
   const strip = (x0, x1) => ({
     pts: [[x0, 0], [x1, 0], [x1, DECK], [x0, DECK]],
-    cap: 'GrassUnder',
-    mats: (e, ring) => (e == 2 ? (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'GrassB' : 'Grass') : e == 0 || e == 1 || e == 3 ? 'GrassUnder' : null),
+    cap: kind.under,
+    mats: (e, ring) => (e == 2 ? kind.top[Math.floor((ring.s + 1e-6) / 5) % 2] : e == 0 || e == 1 || e == 3 ? kind.under : null),
   });
   if (a != null) return [strip(a, b)];
   return [strip(inner, outer), strip(-outer, -inner)];
@@ -955,7 +1218,11 @@ function shiftMesh(m, dx) {
 }
 
 function junction(st, F, kind) {
-  const w = F.width,
+  // A banked road's deck stops where its banks start; the banks are swept round the corners below.
+  const B = F.berm,
+    bc = B && (B.x0 + B.x1) / 2,
+    bermCorner = (s) => roadRings(hPath([{ r: 10 - bc, ang: Math.PI / 2, dir: 1 }], s), { arcStep: 1 });
+  const w = B ? B.x0 : F.width,
     m = new Mesh(),
     r = 10 - w,
     A = (cx, cz, a0, a1) => {
@@ -971,6 +1238,16 @@ function junction(st, F, kind) {
   const NE = A(10, -10, Math.PI * 0.5, Math.PI);
   const NW = A(-10, -10, 0, Math.PI * 0.5);
   const SW = A(-10, 10, -Math.PI * 0.5, 0);
+  if (B) {
+    // The deck's corners follow the banks' inner edge cut for cut, so the deck never shows through a bank's foot.
+    // The south-east corner from the bank's own rings, the others turned from it a quarter at a time.
+    const rot = ([x, z]) => [z, -x],
+      se = bermCorner([bc, 10, 0]).map((r) => [r.p[0] + r.R[0] * (B.x0 - bc), r.p[2] + r.R[2] * (B.x0 - bc)]);
+    SE.splice(0, SE.length, ...se);
+    NE.splice(0, NE.length, ...SE.map(rot));
+    NW.splice(0, NW.length, ...NE.map(rot));
+    SW.splice(0, SW.length, ...NW.map(rot));
+  }
   let outline;
   if (kind == 'X') outline = [...SE, [10, w], [10, -w], ...NE.slice().reverse().reverse(), [w, -10], [-w, -10], ...NW, [-10, -w], [-10, w], ...SW, [-w, 10], [w, 10]];
   else outline = [...SE, [10, w], [10, -w], [-10, -w], [-10, w], ...SW, [-w, 10], [w, 10]];
@@ -992,12 +1269,22 @@ function junction(st, F, kind) {
       corner([-6.0667, -10, Math.PI]); // north arm to west arm
     } else rail(roadRings(hPath([{ line: 20 }], [10, -6.0667, -Math.PI / 2]), { step: 5 }));
   }
+  if (B) {
+    // The right-hand bank alone, centred on the path, swept round each corner like the rails above.
+    const bank = (rings) => sweep(m, rings, () => bermSides(st, B, null, null, [1]).map((p) => ({ ...p, pts: p.pts.map(([x, y]) => [x - bc, y]) })));
+    bank(bermCorner([bc, 10, 0]));
+    bank(bermCorner([-10, bc, Math.PI / 2]));
+    if (kind == 'X') {
+      bank(bermCorner([10, -bc, -Math.PI / 2]));
+      bank(bermCorner([-bc, -10, Math.PI]));
+    } else bank(roadRings(hPath([{ line: 20 }], [10, -bc, -Math.PI / 2]), { step: 5 }));
+  }
   return m;
 }
 
 function deadEnd(st, F) {
   const m = new Mesh();
-  sweep(m, roadRings(hPath([{ line: 10 }]), { step: ringStep(st) }), F.rail ? roadProfile(st) : openProfile(st));
+  sweep(m, roadRings(hPath([{ line: 10 }]), { step: ringStep(st) }), F.berm ? F.profile : F.rail ? roadProfile(st) : openProfile(st));
   const w = F.width;
   m.box(st.solidB, [-w, 0, -1.2], [w, 2.2, 0], st.trim);
   return m;
@@ -1066,7 +1353,7 @@ function decoSet(put, st) {
     t.beam(c, [6.5, 0.5, 0], [-6.5, 9.5, 0], 0.25);
     t.beam(c, [-6.5, 10.5, 0], [6.5, 19.5, 0], 0.25);
     t.beam(c, [6.5, 10.5, 0], [-6.5, 19.5, 0], 0.25);
-    put('SupportTrestle', st.plastic ? 'Truss tower, 4 layers' : 'Trestle tower, 4 layers', T, 'Supports', t);
+    put('SupportTrestle', st.tower, T, 'Supports', t);
     const l = new Mesh();
     for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) l.box(b, [x - 0.6, 0, z - 0.6], [x + 0.6, 4.6, z + 0.6], c);
     l.box(c, [-10, 4.6, -10], [10, 5, 10], b);
@@ -1118,7 +1405,7 @@ function decoSet(put, st) {
     for (let i = 0; i < 5; i++) r.box(c, [-9.6 + i * 4.6, 0, -0.25], [-9.1 + i * 4.6, 2, 0.25], b);
     r.box(b, [-10, 1.8, -0.2], [10, 2.2, 0.2], c);
     r.box(b, [-10, 0.8, -0.2], [10, 1.2, 0.2], c);
-    put('Fence', st.plastic ? 'Fence, plastic rails' : 'Fence, wooden rails', T, 'Barriers and signs', r);
+    put('Fence', st.fence, T, 'Barriers and signs', r);
     for (const [n, l, dir] of [['SignLeft', 'Sign, turn left', 1], ['SignRight', 'Sign, turn right', -1]]) {
       const s = new Mesh();
       s.box(b, [-0.3, 0, -9.8], [0.3, 3, -9.2], c);
@@ -1136,7 +1423,9 @@ function decoSet(put, st) {
     arch.box(a, [-10, 7, -1], [10, 9, 1], c);
     put('Arch', 'Arch', T, 'Shapes', arch);
     const cr = new Mesh();
-    if (st.plastic) {
+    if (st.deco == 'dirt') dirtDeco(put, T);
+    else if (st.deco == 'grass') grassDeco(put, T);
+    else if (st.deco == 'plastic') {
       cr.box('FxReset', [-1, 0, -1], [1, 0.2, 1], 'FxNoEngine');
       const N = 8;
       for (let i = 0; i < N; i++) {
@@ -1174,6 +1463,94 @@ function decoSet(put, st) {
   }
 }
 
+// A dome, half an ellipsoid standing on c: r across, h tall. bottom closes it underneath (a tree crown, seen from
+// below); bump(i, j) scales the radius vertex by vertex, for rocks.
+function dome(m, mat, c, r, h, { n = 14, rows = 5, bottom = false, bump = () => 1 } = {}) {
+  const P = (j, i) => {
+    const lat = (j / rows) * (Math.PI / 2),
+      lon = (i / n) * TAU,
+      k = j == rows ? 1 : bump(i % n, j);
+    return [c[0] + Math.cos(lat) * Math.cos(lon) * r * k, c[1] + Math.sin(lat) * h * k, c[2] + Math.cos(lat) * Math.sin(lon) * r * k];
+  };
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < n; i++) {
+      const q = [P(j, i), P(j, i + 1), P(j + 1, i + 1), P(j + 1, i)];
+      m.quadFacing(mat, ...q, G.sub(mul(add(q[0], q[2]), 0.5), c));
+    }
+  if (bottom) for (let i = 0; i < n; i++) m.triFacing(mat, c, P(0, i), P(0, i + 1), [0, -1, 0]);
+}
+// The same mesh with every point moved by f (f must keep the winding: a rotation, not a mirror).
+function mapMesh(src, f) {
+  const out = new Mesh();
+  for (const [mat, l] of src.byMat) for (let i = 0; i < l.length; i += 3) out.tri(mat, f(l[i]), f(l[i + 1]), f(l[i + 2]));
+  return out;
+}
+// Rocks: a lumpy dome, the lumps from a fixed hash so every build is the same.
+const lumps = (k) => (i, j) => 1 + k * ((((i * 7 + j * 13 + 3) * 2654435761) >>> 0) % 101 / 100 - 0.5);
+
+// Dirt deco, TM2020's rally country: hay bales, a hay roll and rocks in place of the plastic cones.
+function dirtDeco(put, T) {
+  const one = (name, label, f) => {
+    const m = new Mesh();
+    f(m);
+    put(name, label, T, 'Obstacles', m);
+  };
+  one('HayBale', 'Hay bale', (m) => m.box('Hay', [-1.5, 0, -0.8], [1.5, 1.1, 0.8], 'HayB'));
+  one('HayStack', 'Stack of hay bales', (m) => {
+    // A small gap between the two bottom bales, so their ends never share a face.
+    m.box('Hay', [-3.1, 0, -0.8], [-0.05, 1.1, 0.8], 'HayB');
+    m.box('Hay', [0.05, 0, -0.8], [3.1, 1.1, 0.8], 'HayB');
+    m.box('Hay', [-1.5, 1.1, -0.8], [1.5, 2.2, 0.8], 'HayB');
+  });
+  one('HayRoll', 'Hay roll', (m) => {
+    const c = new Mesh();
+    cyl(c, 'HayB', 'Hay', 1.1, 0, 1.6, 14);
+    // Laid on its side: the axis along x, resting on the ground.
+    m.merge(mapMesh(c, ([x, y, z]) => [y - 0.8, x + 1.1, -z]));
+  });
+  one('Rock', 'Rock', (m) => dome(m, 'Rock', [0, 0, 0], 1.6, 1.3, { n: 9, rows: 3, bump: lumps(0.35) }));
+  one('RockBig', 'Big rock', (m) => dome(m, 'Rock', [0, 0, 0], 4, 3.2, { n: 11, rows: 4, bump: lumps(0.3) }));
+}
+
+// A tree the way the user's own tracks draw them: a low grass mound, a trunk that bends as it rises, and one dome of
+// leaves sitting on top (never a pole sticking out of it). h: trunk height, lean: how far its top leans over.
+function tree(m, { h, lean, r, crown, mound }) {
+  dome(m, 'GrassDeck', [0, 0, 0], mound, 0.45, { n: 12, rows: 3 });
+  const N = 8,
+    rings = [];
+  for (let k = 0; k <= N; k++) {
+    const t = k / N,
+      T = norm([2 * lean * t, h - 0.2, 0]);
+    rings.push({ p: [lean * t * t, 0.2 + (h - 0.2) * t, 0], T, R: [0, 0, 1], U: norm(G.cross([0, 0, 1], T)), s: t * h, u: t, i: k });
+  }
+  // An octagon thinning as it climbs; its foot is inside the mound and its top inside the crown.
+  sweep(m, rings, (ring) => [{ pts: [0, 1, 2, 3, 4, 5, 6, 7].map((q) => [Math.cos((q / 8) * TAU) * (0.42 - 0.16 * ring.u), Math.sin((q / 8) * TAU) * (0.42 - 0.16 * ring.u)]), cap: 'Trunk', mats: () => 'Trunk' }]);
+  dome(m, 'Leaf', [lean, h - crown * 0.35, 0], r, crown, { n: 16, rows: 6, bottom: true });
+}
+
+// Grass deco: bushes, a hedge, trees and a rock, for TM2020 grass country.
+function grassDeco(put, T) {
+  const one = (name, label, sub, f) => {
+    const m = new Mesh();
+    f(m);
+    put(name, label, T, sub, m);
+  };
+  one('Bush', 'Bush', 'Plants', (m) => {
+    dome(m, 'Bush', [0, 0, 0], 1.8, 1.5, { n: 12, rows: 4 });
+    dome(m, 'Bush', [1.4, 0, 0.8], 1.2, 1.0, { n: 10, rows: 3 });
+  });
+  one('BushBig', 'Big bush', 'Plants', (m) => {
+    dome(m, 'Bush', [0, 0, 0], 3, 2.4, { n: 14, rows: 5 });
+    dome(m, 'Bush', [-2.4, 0, 1.4], 1.8, 1.5, { n: 12, rows: 4 });
+    dome(m, 'Bush', [2.2, 0, -1.2], 1.6, 1.3, { n: 12, rows: 4 });
+  });
+  one('Hedge', 'Hedge', 'Plants', (m) => m.box('Bush', [-10, 0, -0.9], [10, 2.2, 0.9]));
+  one('Tree', 'Tree', 'Trees', (m) => tree(m, { h: 5, lean: 0.8, r: 2.6, crown: 2.6, mound: 2.4 }));
+  one('TreeBent', 'Tree, bent', 'Trees', (m) => tree(m, { h: 6.5, lean: 2.4, r: 3.2, crown: 3, mound: 2.8 }));
+  one('TreeTall', 'Tree, tall', 'Trees', (m) => tree(m, { h: 9, lean: 1.4, r: 3.6, crown: 3.8, mound: 3 }));
+  one('Rock', 'Rock', 'Obstacles', (m) => dome(m, 'Rock', [0, 0, 0], 1.6, 1.3, { n: 9, rows: 3, bump: lumps(0.35) }));
+}
+
 function cyl(m, top, side, r, y0, y1, n) {
   const p = (a, y) => [Math.cos(a) * r, y, Math.sin(a) * r];
   for (let i = 0; i < n; i++) {
@@ -1185,4 +1562,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { hoopRing, hoopGate, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, RAIL_TOP, TILT, DEG, smooth, hermite, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, chevrons, loopSet, stockGate };
+module.exports = { hoopRing, hoopGate, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, DECAL, RAIL_TOP, TILT, DEG, smooth, hermite, every, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, DIRT_VERGE, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, VEHICLES, vehicleArch, chevrons, loopSet, stockGate };

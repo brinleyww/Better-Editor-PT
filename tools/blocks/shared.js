@@ -3,7 +3,7 @@
 const G = require('./geom');
 const { Mesh, hPath, roadRings, sweep, patch, prism, add, mul, norm, TAU } = G;
 const C = require('./catalog');
-const { DECK, DEG, smooth, deckPoly, grassStrips, grassPatch, roadPart, cyl, arcStepFor, FX, hoopRing, hoopGate } = C;
+const { DECK, DECAL, DEG, HALF_ROAD, smooth, every, deckPoly, grassStrips, grassPatch, DIRT_VERGE, roadPart, gateArch, cyl, arcStepFor, FX, VEHICLES, vehicleArch, hoopRing, hoopGate } = C;
 
 // Concrete stands in for the stock grey; penalty grass mows in 5-unit stripes.
 const ST = {
@@ -26,6 +26,62 @@ const GRASS = {
   line: (ring) => (Math.floor((ring.s + 1e-6) / 5) % 2 ? 'GrassB' : 'Grass'),
   under: 'GrassUnder',
 };
+// TM2020's bump road ("sausage"): stock road grey, the stock road's red and white kerbs down both edges, and a crown
+// right across instead of a flat deck. Its grip is stock road's (surface 8, tech).
+const TECH = {
+  ...ST,
+  pattern: null,
+  deck: () => 'TechDeck',
+  line: (ring) => (every(5)(ring) ? 'TechEdgeRed' : 'TechEdgeWhite'),
+  side: 'ConcreteDark',
+  under: 'ConcreteUnder',
+  solid: 'TechDeck',
+  solidB: 'ConcreteDark',
+  trim: 'TechEdgeWhite',
+};
+// The crown: half an ellipse over the stock road's width, h above the deck at the middle, cut into n edges.
+const BUMP = { w: HALF_ROAD, h: 1.4, n: 16 };
+const crownY = (x) => DECK + BUMP.h * Math.sqrt(Math.max(0, 1 - (x / BUMP.w) ** 2));
+// One convex polygon: the slab's bottom and sides, then the crown from the right edge over to the left. The two
+// crown edges at each side are the kerbs. paint colours the crown (gate bands, effect plates); h, a lower crown.
+function bumpPoly(paint, h = BUMP.h) {
+  const { w, n } = BUMP,
+    crown = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI;
+    crown.push([w * Math.cos(a), DECK + h * Math.sin(a)]);
+  }
+  const pts = [[-w, 0], [w, 0], ...crown];
+  return {
+    pts,
+    cap: TECH.under,
+    mats: (e, ring) => {
+      if (e == 0) return TECH.under;
+      if (e == 1 || e == pts.length - 1) return TECH.side;
+      const k = e - 2,
+        kerb = k < 2 || k >= n - 2;
+      return paint?.(ring, kerb) ?? (kerb ? TECH.line(ring) : TECH.deck(ring));
+    },
+  };
+}
+// Effect glyphs are flat; on the crown they are cut small and laid onto it. They float 0.02 higher than on a flat
+// deck: the crown is curved, so the plate under a glyph is never quite parallel to it.
+function onCrown(m) {
+  const out = new Mesh(),
+    lift = (p) => [p[0], p[1] + crownY(p[0]) - DECK + 0.02, p[2]];
+  for (const [mat, l] of m.byMat)
+    for (let i = 0; i < l.length; i += 3) {
+      const [a, b, c] = [l[i], l[i + 1], l[i + 2]],
+        k = Math.max(1, Math.ceil(Math.max(G.len(G.sub(b, a)), G.len(G.sub(c, b)), G.len(G.sub(a, c))) / 0.5)),
+        at = (u, v) => add(add(a, mul(G.sub(b, a), u / k)), mul(G.sub(c, a), v / k));
+      for (let u = 0; u < k; u++)
+        for (let v = 0; u + v < k; v++) {
+          out.tri(mat, lift(at(u, v)), lift(at(u + 1, v)), lift(at(u, v + 1)));
+          if (u + v + 1 < k) out.tri(mat, lift(at(u + 1, v)), lift(at(u + 1, v + 1)), lift(at(u, v + 1)));
+        }
+    }
+  return out;
+}
 
 function buildShared() {
   const parts = [];
@@ -88,6 +144,8 @@ function buildShared() {
     }
     // Concrete with a grass verge: the verge is penalty grass, the concrete drives like stock road.
     put('ConcreteGrassVerge', 'Concrete with a grass verge', T, 'Flat', roadPart(ST, () => [{ pts: [[-10, 0], [3, 0], [3, DECK], [-10, DECK]], cap: 'ConcreteUnder', mats: (e) => (e == 2 ? 'Concrete' : 'ConcreteUnder') }, ...grassStrips(null, null, 3, 10)], [{ line: 20 }]));
+    // The same with a dirt verge, TM's other offroad border: the verge drives like dirt (surface 5).
+    put('ConcreteDirtVerge', 'Concrete with a dirt verge', T, 'Flat', roadPart(ST, () => [{ pts: [[-10, 0], [3, 0], [3, DECK], [-10, DECK]], cap: 'ConcreteUnder', mats: (e) => (e == 2 ? 'Concrete' : 'ConcreteUnder') }, ...grassStrips(null, null, 3, 10, DIRT_VERGE)], [{ line: 20 }]));
   }
 
   // ---- expandable box gates ------------------------------------------------------------------------------------------
@@ -161,6 +219,60 @@ function buildShared() {
       m.box(fx.mat, [-10, 4.4, -0.7], [10, 5.4, 0.7], 'ConcreteDark');
       for (let i = 0; i < 4; i++) m.box(fx.mat, [-9.2, 0.21 + i * 1.05, -0.3], [-8.9, 0.81 + i * 1.05, 0.3]), m.box(fx.mat, [8.9, 0.21 + i * 1.05, -0.3], [9.2, 0.81 + i * 1.05, 0.3]);
       put('Gate' + fx.key, fx.label + ' gate', T, 'Special gates', m, { fx: { type: fx.key, center: [0, 2.6, 0], size: [18.4, 5, 3] } });
+    }
+  }
+
+  // ---- vehicle gates: TM2020's transform gates on any surface, posts at the block edges like the special gates ----------
+  for (const V of VEHICLES) {
+    const m = new Mesh();
+    vehicleArch(m, 9.6, DECK, V);
+    put('GateCar' + V.key, V.label, 'Vehicle gates', V.label, m, { fx: { type: 'Car' + V.key, center: [0, 2.6, 0], size: [18.4, 5, 3] } });
+  }
+
+  // ---- bump road: TM2020's sausage road, a crown right across, driven at stock road grip -------------------------------
+  {
+    const T = 'Bump road',
+      u = { u: 8 },
+      P = (paint) => () => [bumpPoly(paint)];
+    put('BumpStraight', 'Bump road', T, 'Straights', roadPart(TECH, P(), [{ line: 20 }]), u);
+    put('BumpStraightX2', 'Bump road, 2 long', T, 'Straights', roadPart(TECH, P(), [{ line: 40 }]), u);
+    put('BumpHalf', 'Bump road, half', T, 'Straights', roadPart(TECH, P(), [{ line: 10 }]), u);
+    [10, 30, 50, 70, 90].forEach((r, i) => put('BumpCurve' + (i + 1), 'Bump road curve ' + (i + 1) + ' (radius ' + r + ')', T, 'Turns', roadPart(TECH, P(), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: arcStepFor(r) }), u));
+    for (const [L, shift] of [[20, 5], [40, 10], [40, 20]])
+      for (const dir of [1, -1]) {
+        const r = (L * L + shift * shift) / (4 * shift),
+          ang = Math.asin(L / (2 * r));
+        put('BumpChicane' + L + 'x' + shift + (dir > 0 ? 'R' : 'L'), 'Bump road chicane ' + (dir > 0 ? 'right' : 'left') + ', ' + L / 20 + ' long, ' + shift + ' over', T, 'Chicanes', roadPart(TECH, P(), [{ r, ang, dir }, { r, ang, dir: -dir }], { arcStep: 3.75 }), u);
+      }
+    for (const { g, n, L } of [{ g: 0.25, n: 'Gentle', L: 40 }, { g: 0.5, n: 'Medium', L: 20 }]) {
+      const sub = n + ' slopes';
+      put('Bump' + n + 'Start', 'Bump road, ' + n.toLowerCase() + ' slope start', T, sub, roadPart(TECH, P(), [{ line: L }], { step: 2.5, y: (s) => (g * s * s) / (2 * L) }), u);
+      put('Bump' + n, 'Bump road, ' + n.toLowerCase() + ' slope', T, sub, roadPart(TECH, P(), [{ line: 20 }], { y: (s) => g * s }), u);
+      put('Bump' + n + 'End', 'Bump road, ' + n.toLowerCase() + ' slope end', T, sub, roadPart(TECH, P(), [{ line: L }], { step: 2.5, y: (s) => g * s - (g * s * s) / (2 * L) }), u);
+    }
+    // The way on from the stock road: the crown rises out of the flat deck over one block (0.02 at the road end, so
+    // the polygon never folds flat), without it a car driving onto bump road hits a 1.4 unit step and stops dead.
+    {
+      const L = 20,
+        h = (s) => { const t = Math.min(1, Math.max(0, s / L)); return 0.02 + (BUMP.h - 0.02) * t * t * (3 - 2 * t); };
+      put('BumpFromRoad', 'Bump road from road', T, 'Straights', roadPart(TECH, (ring) => [bumpPoly(null, h(ring.s))], [{ line: L }], { step: 2.5 }), u);
+    }
+    put('BumpCrest', 'Bump road crest', T, 'Crests and dips', roadPart(TECH, P(), [{ line: 40 }], { step: 2.5, y: (s) => 5 * (0.5 - 0.5 * Math.cos((s / 40) * 2 * Math.PI)) }), u);
+    put('BumpDip', 'Bump road dip', T, 'Crests and dips', roadPart(TECH, P(), [{ line: 40 }], { step: 2.5, y: (s) => 5 - 5 * (0.5 - 0.5 * Math.cos((s / 40) * 2 * Math.PI)) }), u);
+    // Gates the bobsleigh way: a band painted across the crown and an arch whose posts stand in the kerbs. The posts
+    // sit 0.2 up so the banner stays inside one layer; the start puts the car on top of the crown.
+    for (const { kind, label, band } of [{ kind: 'Start', label: 'Start', band: 'StartLine' }, { kind: 'Checkpoint', label: 'Checkpoint', band: 'Checkpoint' }, { kind: 'Finish', label: 'Finish', band: 'Finish' }]) {
+      const m = roadPart(TECH, P((ring) => (ring.s >= 9 - 1e-6 && ring.s < 11 - 1e-6 ? band : null)), [{ line: 20 }], { marks: [9, 11] });
+      gateArch(m, 6.2, TECH, kind, 0.2);
+      const det = kind == 'Start' ? { startOffset: [0, 0.35 + BUMP.h, 1.35] } : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [0, 2.9, 0], size: [12.5, 3.8, kind == 'Finish' ? 2 : 1] } };
+      put(kind + 'Bump', label + ', bump road', T, 'Gates', m, { ...u, ...det });
+    }
+    for (const fx of FX) {
+      const m = roadPart(TECH, P((ring, kerb) => (kerb ? null : fx.mat)), [{ line: 20 }], { step: 5 }),
+        glyph = new Mesh();
+      fx.glyph(glyph, DECAL);
+      m.merge(onCrown(glyph));
+      put('Fx' + fx.key + 'Bump', fx.label + ', bump road', T, 'Effects', m, { ...u, fx: { type: fx.key, center: [0, 2.5, 0], size: [13.1, 5, 12] } });
     }
   }
 

@@ -1096,6 +1096,7 @@
             if ((0, l.gn)(this, Be, "f")) return;
             const n = (0, l.gn)(this, te, "f");
             (0, l.GG)(this, te, e, "f");
+            self.TM.hud.state(this, e);
             const i = 0.001;
             if (t) {
               ((0, l.GG)(this, Ue, null, "f"), (0, l.gn)(this, Ne, "f")?.clear());
@@ -8608,10 +8609,10 @@
               (q) =>
                 new d(
                   null,
-                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice, r.A.Water][q.f],
+                  r.A[(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])[q.f]],
                   q.i,
                   [],
-                  self.TM.palette(q),
+                  self.TM.palette(q) ?? self.TM.data.palettes[0],
                   q.c,
                   q.d ?? null,
                   q.o ? new i.Pq0(q.o[0], q.o[1], q.o[2]) : null,
@@ -25737,7 +25738,8 @@
               (e[(e.CheckpointVolume = 20)] = "CheckpointVolume"),
               (e[(e.GhostCarSoundsEnabled = 21)] = "GhostCarSoundsEnabled"),
               (e[(e.VibrationEnabled = 22)] = "VibrationEnabled"),
-              (e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"));
+              (e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"),
+              (e[(e.WheelInfo = 24)] = "WheelInfo"));
           })(i || (i = {})));
         const r = i;
       },
@@ -31322,11 +31324,7 @@
               (e[(e.WallTrack = 6)] = "WallTrack"),
               (e[(e.Pillar = 7)] = "Pillar"),
               (e[(e.Sign = 8)] = "Sign"),
-              (e[(e.Plastic = 9)] = "Plastic"),
-              (e[(e.Wood = 10)] = "Wood"),
-              (e[(e.Stadium = 11)] = "Stadium"),
-              (e[(e.Ice = 12)] = "Ice"),
-              (e[(e.Water = 13)] = "Water"));
+              (self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"]).forEach((n, f) => (e[(e[n] = 9 + f)] = n)));
           })(i || (i = {})));
         const r = i;
       },
@@ -47454,6 +47452,7 @@
             (0, R.gn)(this, Fa, "f").hasFinished() && null != (0, R.gn)(this, Ga, "f")
               ? (0, R.gn)(this, Sa, "f").update((0, R.gn)(this, Ga, "f"))
               : (0, R.gn)(this, Sa, "f").update((0, R.gn)(this, Fa, "f").getSpeedKmh()),
+            self.TM.hud.focus((0, R.gn)(this, Fa, "f")),
             (0, R.gn)(this, ka, "f").update((0, R.gn)(this, Fa, "f")),
             (0, R.gn)(this, xa, "f").update((0, R.gn)(this, Fa, "f")),
             (0, R.gn)(this, Ua, "f").setResetCheckpointAvailable((0, R.gn)(this, jr, "m", hs).call(this)),
@@ -53903,6 +53902,15 @@
                 { title: Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "Top"), value: "top" },
               ],
               P.A.Speedometer,
+            ),
+            (0, R.gn)(this, zs, "m", ao).call(
+              this,
+              "Wheel info",
+              [
+                { title: Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "Off"), value: "false" },
+                { title: Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "On"), value: "true" },
+              ],
+              P.A.WheelInfo,
             ),
             (0, R.gn)(this, zs, "m", ro).call(this, Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "Mobile")),
             (0, R.gn)(this, zs, "m", ao).call(
@@ -60491,6 +60499,13 @@
               break;
             case ru.A.Water:
               n = this.getPart(iu.A.StadiumWaterCorner);
+              break;
+            // The first of these the block table has, so the icon still draws while a kit lacks its usual piece.
+            case ru.A.Dirt:
+              n = this.getPart(iu.A.DirtRoadCurve2 ?? iu.A.DirtOpenCurve2 ?? iu.A.DirtPlatBase ?? iu.A.PlasticRoadCurve2);
+              break;
+            case ru.A.Grass:
+              n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);
           }
           switch (t) {
             case wl.A.Summer:
@@ -62380,6 +62395,7 @@
             [P.A.GhostCarSoundsEnabled, "true"],
             [P.A.VibrationEnabled, "false"],
             [P.A.TouchSteeringSide, "true"],
+            [P.A.WheelInfo, "false"],
           ]);
         }
         defaultKeyBindings() {
@@ -62458,6 +62474,7 @@
             if (!(0, R.gn)(this, cf, "f").has(t)) throw new Error("Setting name is missing");
             (0, R.gn)(this, cf, "f").set(t, n);
           }
+          self.TM.hud.setWheels(this.getSettingBoolean(P.A.WheelInfo));
         }
         saveSettings() {
           (0, R.gn)(this, lf, "f").saveSettings((0, R.gn)(this, cf, "f"));
@@ -63649,7 +63666,8 @@
                   i.car.hasFinished() && null != i.finishSpeed
                     ? (0, R.gn)(this, tg, "f").update(i.finishSpeed)
                     : (0, R.gn)(this, tg, "f").update(i.car.getSpeedKmh()),
-                  (0, R.gn)(this, ng, "f").update(i.car));
+                  (0, R.gn)(this, ng, "f").update(i.car),
+                  self.TM.hud.focus(i.car));
               },
               (0, R.gn)(this, Kp, "f"),
             ),
@@ -63904,7 +63922,8 @@
             s.car.hasFinished() && null != s.finishSpeed
               ? (0, R.gn)(this, tg, "f").update(s.finishSpeed)
               : (0, R.gn)(this, tg, "f").update(s.car.getSpeedKmh()),
-            (0, R.gn)(this, ng, "f").update(s.car));
+            (0, R.gn)(this, ng, "f").update(s.car),
+            self.TM.hud.focus(s.car));
           for (const e of (0, R.gn)(this, jp, "f")) (e.car.update(i), e.car.updateCameras(i));
           ((0, R.gn)(this, rg, "f")?.updateCar(s.car),
             (0, R.gn)(this, ig, "f")?.update(r),

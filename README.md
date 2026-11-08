@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 1,142 editor blocks inspired by Trackmania's plastic and wood kits, plus a Stadium category. Plastic, wood and penalty grass each drive differently. Turbos, reactor boosts and other effect plates work, and tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,369 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -23,16 +23,20 @@ Online features (leaderboards, multiplayer, profile sync) talk to Kodub's server
 
 ## What is in the editor
 
-Three new categories sit at the top of the editor's block column, right under the eraser. Each opens a browser with tabs, a search box, a Recent tab and colour options.
+Seven new categories sit near the top of the editor's block column, under the eraser and Road. Each opens a browser with tabs, a search box, a Recent tab and colour options.
 
 | Category | Tabs |
 |---|---|
-| Plastic, Wood (492 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Connectors, Deco |
-| Stadium (158) | Penalty grass, Box gates, Special gates, Track walls, Structures, Stage and screens, Water, Deco |
+| Plastic, Wood (541 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Stadium (212) | Penalty grass, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
+| Ice (151) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Vehicle gates |
+| Water (9) | Pools, Shallow water |
+| Dirt (581) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Grass (334) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
 
-The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates.
+The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates. Every kit has vehicle gates. The bump road is Trackmania's sausage road: a rounded crown with the stock road's kerbs.
 
-Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and banks), so they join stock blocks seamlessly.
+Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and banks), so they join stock blocks seamlessly. The dirt road and the narrow road are narrower, as in Trackmania, so they join the stock road and the other kits through their connectors (Dirt, Connectors), and the bump road joins through "Bump road from road".
 
 ### How things drive
 
@@ -41,20 +45,40 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 | Plastic | Very low grip, rear lower than front, so the tail slides. Strong extra push from a standstill that fades out by about 160 km/h. Plastic bounce: a hit on the car's side or roof throws it back off the plastic. The whole collision is measured, so a roof landing from 25 units up bounces back to about 17. |
 | Wood | Very high grip: the tyres don't let go, so you can't drift. Brakes shorter than stock road. Extra push that grows exponentially with speed up to about 300 km/h and fades out by 500 km/h, so wood pulls harder the faster you go (0 to 200 km/h in 2.7 s, stock 3.3 s). The extra grip is a fixed amount, so in loops it stays close to stock. |
 | Penalty grass | Soft grip and heavy drag; the car crawls at about 60 km/h. Comes as whole blocks, and as grass strips inside plastic and wood blocks, where only the grass slows you. |
-| Water | Not solid. The car sinks slowly, loses speed hard and can drive out. |
+| Platform ice, bobsleigh | The tyres barely hold, so the car slides; steering turns the car itself, and a held turn settles into a steady slide. Braking takes about five times the distance. Bobsleigh walls hold the car in the channel near their lip. |
+| Dirt | About 0.65 of the road's grip (corners at about 0.8 of the speed). The rear lets go first, so it drifts, and the drift settles when you let go of the steering. 0 to 100 km/h takes x1.17 as long, 0 to 200 x1.31, braking x1.6 the distance, and rolling drag costs about 8% of the speed a second. Comes as whole blocks and as dirt verges inside other blocks. |
+| Grass | Trackmania's drivable grass, not the penalty verges. About half the grip, x1.35 as long to 100 km/h, x2 to 200, x2 the braking distance, and heavy drag that holds the car well under the road's top end. |
+| Snow | About 0.4 of the grip, x1.3 as long to 100 km/h, x2.5 the braking distance and little drag: between dirt and ice. It is in the physics, but no block uses it yet. |
+| Tech (bump road) | Exactly the stock road, which is Trackmania's Tech road. It has its own entry only for its own wet grip and vehicle numbers. |
+| Water | Not solid. The car sinks slowly, loses speed hard and can drive out. Shallow water sits over a floor: a little drag and a softer engine. Hitting deep water fast and flat, the car skips off it like a stone. |
+| Wet tyres | Water soaks the tyres (fully wet in under 2 s); on the ground they dry over about 10 s, but not on ice. Wet grip by surface: wood x0.08 (soaked through it slides nearly like ice), dirt and grass x0.6 (mud), plastic x0.7, road and tech x0.85. Checkpoints keep them wet; respawns dry them. The tyres are drawn darker and shinier. |
+| Icing | A car that ices up (see Vehicles) gets icy tyres on ice, bobsleigh and snow, fully iced in just over 1 s. Off the ice an iced tyre has up to half less grip, so the car slides for a moment until the tyres thaw (about 2.5 s). The tyres are drawn frosted. |
+| Muddy tyres | Dirt, and drivable grass a little, colour the tyres; water washes them. Only a look. |
 | Stock blocks, ground | Unchanged. Tracks with no new blocks use stock physics exactly. |
+
+Wet and iced tyres follow Trackmania 2020, where the Stadium car gets them too. Checkpoints keep the tyres as they are; a respawn gives dry, thawed tyres.
+
+**Vehicles.** The car you start with is PolyTrack's own car, which plays the part of Trackmania's Stadium car, and it never changes. A vehicle gate turns it into the Snow, Rally or Desert car, each with its own parts, wheels and colours, and the Stadium car gate gives back the exact stock car. The car stays through checkpoints and effect resets; a respawn gives back the car you had at that checkpoint, and starting over gives the Stadium car. Against the Stadium car on the same surface:
+
+| Vehicle | Behaviour |
+|---|---|
+| Snow | Studded tyres: on platform ice it brakes in about a quarter of the distance and doesn't spin, on snow it grips almost like on the road, and its tyres never ice. About 0.86 of the grip on road, 1.1 on dirt and grass. A little slower to 100 km/h (x1.1), and drag holds it near 230 km/h. Softer, taller suspension and a little air control. |
+| Rally | Built for loose ground: about 1.45 of the grip on dirt and grass (on dirt it corners about as fast as the Stadium car on road) and 1.2 on snow, slightly less on road. It pulls well on dirt, grass and snow, and drag holds it near 260 km/h. Soft springs that soak up bumps. |
+| Desert | The fastest top end (drag holds it near 330 km/h) and quicker to 100 km/h (x0.95), but it understeers on road (about 0.75 of the grip); 1.25 on dirt and grass. Very soft long-travel suspension that lands big drops without losing speed, and strong air control: steering turns it and the brake lifts the nose. |
 
 | Effect | Behaviour |
 |---|---|
-| Turbo, super turbo | A push that is strongest as you cross and fades over 1.0 s or 1.4 s. |
-| Turbo roulette | Turbo, super or a stronger third level, picked by the exact frame you cross it. |
+| Turbo, super turbo, ultra turbo | A push that is strongest as you cross and fades over 1.0 s, 1.4 s or 1.8 s. Crossed at about 190 km/h, the car does about 385, 460 or 515 km/h a second later (280 with none). |
+| Turbo roulette | Turbo, super or ultra, picked by the exact frame you cross it. |
+| Bumper, super bumper | One sideways kick as you enter, about 50 km/h (super: 85), away from the line through the plate's centre along the way you are going, plus a small hop. |
+| Vehicle gates | Snow, Rally, Desert and Stadium car gates (the Stadium car gate gives back the stock car). See Vehicles. |
 | Reactor boost, super reactor boost (up or down) | 6 s of thrust along the car's own up axis. Up stretches jumps; down presses the car onto any surface. In the air, the gas pushes along the nose and steering turns the car. |
 | Slow motion | The car runs at half speed while the race clock keeps counting, until reset or respawn. |
 | No engine, no brakes, no steering, cruise control | Lock out that input until reset. |
 | Fragile | A hard hit sends you back to the last checkpoint. |
 | Reset | Clears every effect. |
 
-The durations, strengths and drag values are this project's own choices. Trackmania doesn't publish its numbers, so the behaviour follows its descriptions, not measurements.
+Trackmania 2020 keeps its car and surface tunings in encrypted packs, so every number here is this project's own estimate, set relative to how Trackmania's Stadium car drives on its Tech road (PolyTrack's stock car on the stock road) and measured with `tools/test/tmphys.mjs`. A Trackmania install was read only for its catalogue: the surface materials, the gameplay effect ids, the per-wheel states the car keeps (wetness, icing) and the editor's block styles and categories.
 
 **Box gates** (Stadium, Box gates) come one per block, with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
 
@@ -74,7 +98,7 @@ New block ids start at 1000 and never change: [tools/blocks/ids.json](tools/bloc
 
 This section is for anyone running a modified PolyTrack (a fork, a site or a private build) who wants these blocks, codes and physics. It assumes 0.6.2 bundles. Other versions have the same structure but different minified names.
 
-### 1. Copy four files
+### 1. Copy the files
 
 | File | Purpose |
 |---|---|
@@ -82,6 +106,8 @@ This section is for anyone running a modified PolyTrack (a fork, a site or a pri
 | `models/tm_blocks.bin` | All block geometry. Generated; must match `tm_parts.js` (its size is checked). |
 | `tm_runtime.js` | Loads geometry, reads and writes BE1 codes, feeds physics, runs surfaces and effects. Defines `self.TM`. |
 | `tm_menu.js` | The block browser in the editor. Optional if you build your own menu. |
+| `tm_water.js` | Page only: water's see-through material, splashes and spray, and the per-car hooks (`TM.water.track` / `update` / `dispose`). |
+| `tm_vehicles.js` | Page only, after `tm_water.js`: the Snow, Rally and Desert car looks and the wet, icy and muddy tyres. It rides on `tm_water.js`'s car hooks and works the vehicle out from the car's state, so nothing comes back from the worker. |
 
 The page loads them before the game bundles:
 
@@ -89,6 +115,8 @@ The page loads them before the game bundles:
 <script defer src="tm_parts.js"></script>
 <script defer src="tm_runtime.js"></script>
 <script defer src="tm_menu.js"></script>
+<script defer src="tm_water.js"></script>
+<script defer src="tm_vehicles.js"></script>
 ```
 
 The physics worker needs the first two as its very first line, because the part enum is built when the bundle starts:
@@ -105,7 +133,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
 
 | Change | Why |
 |---|---|
-| Part id enum calls `TM.addEnum(e)`; categories get `Plastic`, `Wood`, `Stadium` | The game validates ids and names categories from these enums. |
+| Part id enum calls `TM.addEnum(e)`; categories get one entry per name in `TM_DATA.families` (Plastic to Grass) | The game validates ids and names categories from these enums. |
 | Part definitions array concatenates `TM.parts` as definition objects | New blocks become real parts: tiles, triggers, start offsets, colours. The constructor's duplicate-tile check uses a Set, because big blocks have many tiles. |
 | Part loader: new parts get a lazy colour map and skip the GLB lookup | A block's mesh is built only when a colour is first asked for, from `TM.renderArrays`. |
 | `getPhysicsParts` skips new parts and appends `TM.proxyConfigs()` | See section 4. |
@@ -114,7 +142,8 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | TrackData writer: two-byte ids and the catalogue version when a track has an id above 255; `~BE1` save-string prefix; `PolyTrackBE1` export prefix | The format. Tracks with only stock parts still write the stock format byte for byte. |
 | `fromSaveString` and `fromExportString` try `TM.fromSave` / `TM.fromExport` first | Reading the format. See the `tmCtx` block in `patch.js` for the context object. |
 | Track ids of tracks with new blocks go into `TM.extTrackIds`; the leaderboard upload returns early for them | Never send unverifiable runs to Kodub. |
-| Full scene rebuild only visits parts that are placed | 1,142 more parts would make every rebuild slow. |
+| Full scene rebuild only visits parts that are placed | 2,369 more parts would make every rebuild slow. |
+| The car's visuals call `TM.water.track`, `TM.water.update` and `TM.water.dispose` | Water splashes, vehicle looks and tyres (`tm_water.js`, `tm_vehicles.js`). |
 
 **Editor bundle (`112.bundle.js`)**
 
@@ -150,6 +179,8 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | `fromSave(str, ctx)`, `fromExport(str, ctx)` | Read BE1 codes. Return `null` for anything else, so the stock readers can run next. |
 | `SAVE_PREFIX`, `EXPORT_PREFIX`, `extTrackIds` | Format prefixes; ids of tracks that must not be uploaded. |
 | `surfaces` | Grip, launch, bounce and drag per surface. Tune here. |
+| `zones(track)`, `surfaceIndex(track)`, `surfaceAt(index, x, y, z)` | A track's effect and gate zones, and the surface at a point. The page uses them for water and vehicles. |
+| `VEHICLES`, `vehicleGates`, `WATER`, `ICING` | The cars (with `look` hints for drawing them), which gate gives which car, and the wet and icing rates. |
 | `ui` | The block browser hooks (`tm_menu.js`). |
 
 ### 4. How the physics fits in
@@ -160,7 +191,8 @@ The physics engine (`polytrack_physics.wasm`) is stripped and reads part ids as 
 - **Gates:** checkpoints, finishes and starts need the engine's trigger boxes. Each distinct trigger box is a proxy part with a spare one-byte id (190 and up), registered through `proxyConfigs()` with a tiny triangle far below the world. A gate block writes its proxy id in the part records.
 - **Surfaces:** each physics frame, `fxStep` looks up the block under each wheel's contact point and writes that wheel's friction slip. These are Bullet `btWheelInfo` structs: 284 bytes each, contact normal at +0, contact point at +16, in-contact flag at +84, friction slip at +228, suspension force at +276. The wheel array pointer is at `car + 32` then `+144`; the rigid body is at `car + 36` (linear velocity at +312, angular at +328, inverse mass at +344). The car object comes from the engine's `unordered_map<int, Car*>`, with its bucket array pointer at address 18848 and bucket count at 18852 (`carPointer` in `tm_runtime.js`).
 - **Effects** add velocity or mask inputs in the same frame hooks, so ghosts, replays and the game's own run verifier all see identical runs. Slow motion holds every other frame and advances the engine's frame counter at `car + 172`.
-- **Grass inside a block:** a part can list boxes in its own frame (`r`) where the surface is penalty grass. Everything else on the part uses its own surface (`u`).
+- **Surfaces inside a block:** a part can list boxes in its own frame (`r`) with their own surface, such as grass strips or dirt verges. Everything else on the part uses its own surface (`u`). On the new surfaces, launch, engine and brake effects count by the share of wheels on each.
+- **Vehicles:** a vehicle gate changes the car's grip, engine, top-end drag, air control and suspension (spring, damper and rest length fields of the wheel structs). The Stadium car gate writes every changed field back to the stock value read on the first frame.
 
 These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A different engine build needs them checked again.
 
@@ -172,7 +204,8 @@ These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A 
 
 | Field | Meaning |
 |---|---|
-| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (0 plastic, 1 wood, 2 stadium), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone, `p` proxy id, `u` physics surface (0 plastic, 1 wood, 2 grass, absent = stock), `r` grass boxes |
+| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (index into `families`), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone (`type`: Turbo, Super, Ultra, Roulette, the reactors, Bumper, Bumper2, CarSnow, CarRally, CarDesert, CarStadium, Water and the rest), `p` proxy id, `u` physics surface, `r` surface boxes |
+| `families` | Category names in `f` order: 0 Plastic, 1 Wood, 2 Stadium, 3 Ice, 4 Water, 5 Dirt, 6 Grass. The game's category enum value is `f + 9`. |
 | `materials`, `materialNames` | Default colour per material index |
 | `palettes[f]` | Colour slots per category: environments 1-3 and custom 32-40, as `{ id, colors: { material: hex } }` |
 | `noPhysics` | Material indices that are drawn but never collide (water) |
@@ -180,11 +213,13 @@ These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A 
 | `proxies` | Proxy ids with their trigger box and start offset |
 | `binBytes`, `hash`, `version`, `tabs` | Integrity, catalogue version, menu tab order |
 
+`u` is the `SURFACES` index in `tm_runtime.js`: 0 plastic, 1 wood, 2 penalty grass, 3 platform ice, 4 bobsleigh, 5 dirt, 6 grass, 7 snow, 8 tech; absent means the stock road. An `r` entry is `[[lo], [hi]]` (penalty grass) or `[[lo], [hi], u]`.
+
 Each mesh entry is `[material, positionsOffset, floatCount, indicesOffset, indexCount]` into `models/tm_blocks.bin`: Float32 positions and Uint16 indices, every chunk 4-byte aligned. Positions are in the part's frame: the origin at the block centre, y up, travel at rotation 0 along -z, one block 20 units wide and 5 units per layer.
 
 ## Making your own blocks
 
-Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic and wood) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
+Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt and grass), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
 
 ```bash
 cd tools && npm install
@@ -202,7 +237,7 @@ cd tools && npm install
 node build-all.js
 ```
 
-This formats `_original/app` into `_original/formatted`, copies the assets to the root, generates the blocks, then applies `tools/patch.js`. `tm_runtime.js`, `tm_menu.js`, `tm_water.js` and `tm_tools.js` are edited by hand and are not regenerated.
+This formats `_original/app` into `_original/formatted`, copies the assets to the root, generates the blocks, then applies `tools/patch.js`. `tm_runtime.js`, `tm_menu.js`, `tm_water.js`, `tm_vehicles.js` and `tm_tools.js` are edited by hand and are not regenerated.
 
 ## Repository layout
 
@@ -219,7 +254,7 @@ This formats `_original/app` into `_original/formatted`, copies the assets to th
 
 ## Known limits
 
-- The catalogue follows Trackmania's block families for plastic and wood, plus stadium scenery. It is not a complete copy of every Trackmania block, and dirt, ice and bump surfaces are not included.
+- The catalogue follows Trackmania 2020's block families for plastic, wood, ice, water, dirt and grass, plus the bump road and stadium scenery. It is not a complete copy of every Trackmania block: there are no castle or water roads, and no snow blocks yet.
 - On the tightest plastic loop (radius 20), a car can lose the loop if it steers at the wrong moment.
-- `models/tm_blocks.bin` is about 17 MB (about 5 MB compressed), so the first load takes longer than the stock game.
+- `models/tm_blocks.bin` is about 63 MB (about 29 MB compressed), so the first load takes longer than the stock game.
 - The code under `_original/` and the formatted bundles keep PolyTrack's minified names. [docs/MODULE_MAP.md](docs/MODULE_MAP.md) says where things are.
