@@ -124,6 +124,27 @@
     }
     hookTests();
 
+    // NSWS hides the editor between uses (it keeps its unsaved work), and a hidden frame on the same site would keep
+    // drawing the whole track every frame behind the game. Paused, frame callbacks wait until NSWS shows it again.
+    let paused = false;
+    let heldId = 0;
+    const held = new Map();
+    const realRaf = window.requestAnimationFrame.bind(window);
+    const realCancel = window.cancelAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => {
+        if (!paused) return realRaf(cb);
+        held.set(--heldId, cb);
+        return heldId;
+    };
+    window.cancelAnimationFrame = (id) => (id < 0 ? held.delete(id) : realCancel(id));
+    function setPaused(on) {
+        paused = on;
+        if (on) return;
+        const cbs = [...held.values()];
+        held.clear();
+        for (const cb of cbs) realRaf(cb);
+    }
+
     function post(msg) {
         if (!parentOrigin) return;
         try {
@@ -328,6 +349,9 @@
             editTrack(typeof msg.name === "string" ? msg.name : null, !!msg.force, !!msg.fresh).then(reply, () => reply({ ok: false, error: "The editor couldn't open that track." }));
         } else if (msg.type === "current") {
             reply({ track: currentTrack() });
+        } else if (msg.type === "pause") {
+            setPaused(!!msg.paused);
+            reply({ ok: true });
         } else if (msg.type === "mode") {
             mode = ["rocket", "royale"].includes(msg.mode) ? msg.mode : "normal";
             reply({ ok: true });

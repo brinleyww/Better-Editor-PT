@@ -27461,22 +27461,28 @@
             if (o.length > 0) {
               const n = e.colors.get(t);
               if (null == n) throw new Error("Mesh is not loaded");
-              const l = new b.ZLX(n.geometry, n.material, o.length);
-              ((l.matrixAutoUpdate = !1),
-                (l.matrixWorldAutoUpdate = !1),
-                (l.frustumCulled = !1),
-                (l.castShadow = i),
-                (l.receiveShadow = !0));
-              for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);
-              if (
-                ((0, v.gn)(this, r, "f").scene.add(l),
-                (0, v.gn)(this, p, "f").push({ trackPartId: e.configuration.id, color: t, mesh: l }),
-                null != a)
-              ) {
-                const n = new M.t(l, a);
-                (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),
-                  (0, v.gn)(this, r, "f").scene.add(n),
-                  (0, v.gn)(this, p, "f").push({ trackPartId: e.configuration.id, color: t, mesh: n }));
+              // tm_cull.js: the parts in chunks the camera can skip; Low performance mode drops their flat shadows.
+              const all = o;
+              for (const o of self.TM.cull.split(all, n.geometry)) {
+                const l = new b.ZLX(n.geometry, n.material, o.length);
+                ((l.matrixAutoUpdate = !1),
+                  (l.matrixWorldAutoUpdate = !1),
+                  (l.frustumCulled = !0),
+                  (l.castShadow = i),
+                  (l.receiveShadow = !0));
+                for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);
+                if (
+                  ((0, v.gn)(this, r, "f").scene.add(l),
+                  self.TM.cull.add((0, v.gn)(this, r, "f").scene, l),
+                  (0, v.gn)(this, p, "f").push({ trackPartId: e.configuration.id, color: t, mesh: l }),
+                  null != a && !self.TM.cull.low)
+                ) {
+                  const n = new M.t(l, a);
+                  (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),
+                    self.TM.cull.flat(n, l),
+                    (0, v.gn)(this, r, "f").scene.add(n),
+                    (0, v.gn)(this, p, "f").push({ trackPartId: e.configuration.id, color: t, mesh: n }));
+                }
               }
             }
           }),

@@ -44,6 +44,13 @@
         write(key, pairs(read(key)).filter((p) => !names.has(p[0])).concat(theirs));
     }
     merge(P + "settings", prefs.settings);
+    // NSWS's Low performance mode (tm_cull.js reads it): no flat shadows, chunks past the view distance hidden in a
+    // Test, and the screen drawn at one pixel per CSS pixel as NSWS does.
+    const low = pairs(prefs.settings).some((p) => p[0] === "LowPerformanceMode" && p[1] === "true");
+    try {
+        localStorage.setItem("be_low_performance", low ? "1" : "0");
+    } catch {}
+    if (low) merge(P + "settings", [["ScreenPixelDensity", "false"]]);
     merge(P + "key_bindings", prefs.keys);
 
     if (prefs.unlocked && typeof prefs.unlocked === "object") {
