@@ -24,10 +24,146 @@ self.TM.water = (() => {
     }
   `;
 
+  // ---- seams between water blocks ----------------------------------------------------------------------------------
+  // Every water block draws its own sides, so two blocks side by side showed a see-through wall where they touch. The
+  // shader drops a side wherever there is water at the same level on both sides of it; outer sides stay. Where the water
+  // is comes from the meshes a scene draws with this material (the editor, Test and NSWS build them the same way), so
+  // no page hook is needed: each block's water is read off its geometry once and placed by its instance matrices, and a
+  // changed set of water meshes is picked up on the next frame.
+  // Water boxes per scene, two texels each: 2048 wide is the smallest texture every WebGL2 device takes. Blocks past
+  // that keep their sides.
+  const SEAM_MAX = 1024;
+  const seamTex = { value: null },
+    seamCount = { value: 0 };
+  const seamScenes = new WeakMap(); // scene -> what it drew last frame and the boxes built from that
+  const localBoxes = new WeakMap(); // geometry -> its water as [minX, minZ, maxX, maxZ, bottom, surface] in the part frame
+  let three3 = null;
+
+  // One box per water level of a block: the surface's extent, from the block's lowest point up to the surface.
+  function boxesOf(geo, mats) {
+    let out = localBoxes.get(geo);
+    if (out) return out;
+    const P = geo.attributes.position.array,
+      I = geo.index ? geo.index.array : null,
+      levels = new Map();
+    for (const g of geo.groups) {
+      if (mats[g.materialIndex] !== material) continue;
+      for (let k = g.start; k < g.start + g.count; k += 3) {
+        const v = [0, 1, 2].map((j) => (I ? I[k + j] : k + j) * 3),
+          y = P[v[0] + 1];
+        // Sides are skipped; only flat surface triangles give the water's extent.
+        if (Math.abs(P[v[1] + 1] - y) > 1e-3 || Math.abs(P[v[2] + 1] - y) > 1e-3) continue;
+        const key = Math.round(y * 1000);
+        let r = levels.get(key);
+        if (!r) levels.set(key, (r = [Infinity, Infinity, -Infinity, -Infinity, y]));
+        for (const i of v) {
+          r[0] = Math.min(r[0], P[i]);
+          r[1] = Math.min(r[1], P[i + 2]);
+          r[2] = Math.max(r[2], P[i]);
+          r[3] = Math.max(r[3], P[i + 2]);
+        }
+      }
+    }
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    out = [...levels.values()].map((r) => [r[0], r[1], r[2], r[3], geo.boundingBox.min.y, r[4]]);
+    localBoxes.set(geo, out);
+    return out;
+  }
+
+  const seamKey = (o) => o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + o.matrixWorld.elements.join(',');
+
+  // World boxes of everything drawn, two texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0).
+  function buildSeams(s) {
+    const data = [],
+      W = new Float32Array(16);
+    for (const o of s.drawn) {
+      const local = boxesOf(o.geometry, o.material);
+      if (!local.length) continue;
+      const w = o.matrixWorld.elements,
+        n = o.isInstancedMesh ? o.count : 1;
+      for (let i = 0; i < n && data.length < SEAM_MAX * 8; i++) {
+        // W = matrixWorld x instance matrix (column-major, as three stores them).
+        const m = o.isInstancedMesh ? o.instanceMatrix.array.subarray(i * 16, i * 16 + 16) : null;
+        for (let c = 0; c < 4; c++)
+          for (let r = 0; r < 4; r++)
+            W[c * 4 + r] = m ? w[r] * m[c * 4] + w[4 + r] * m[c * 4 + 1] + w[8 + r] * m[c * 4 + 2] + w[12 + r] * m[c * 4 + 3] : w[c * 4 + r];
+        // Only blocks standing upright have level water; one on its side or upside down keeps its sides.
+        if (Math.abs(W[5] - 1) > 1e-3 || Math.abs(W[1]) > 1e-3 || Math.abs(W[9]) > 1e-3) continue;
+        for (const [x0, z0, x1, z1, bot, top] of local) {
+          const ax = W[0] * x0 + W[8] * z0 + W[12],
+            az = W[2] * x0 + W[10] * z0 + W[14],
+            bx = W[0] * x1 + W[8] * z1 + W[12],
+            bz = W[2] * x1 + W[10] * z1 + W[14];
+          data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, 0);
+        }
+      }
+    }
+    if (s.tex) s.tex.dispose();
+    s.n = Math.min(data.length / 8, SEAM_MAX);
+    s.tex = null;
+    if (!s.n) return;
+    // A float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
+    const t = new three3.gPd();
+    t.image = { data: new Float32Array(data.slice(0, s.n * 8)), width: s.n * 2, height: 1 };
+    t.isDataTexture = true;
+    t.format = 1023; // RGBAFormat
+    t.type = 1015; // FloatType
+    t.magFilter = t.minFilter = 1003; // NearestFilter: texelFetch reads exact values
+    t.generateMipmaps = false;
+    t.flipY = false;
+    t.unpackAlignment = 1;
+    t.needsUpdate = true;
+    s.tex = t;
+  }
+
+  // Runs before each water draw. renderer.info.render.frame counts render() calls, so a new value means the scene's last
+  // render is complete: its drawn list is rebuilt into boxes if it changed. Uniforms upload with the scene's first water
+  // draw, so each scene (the track, a part thumbnail) gets its own boxes.
+  function seams(renderer, scene, camera, geometry, object) {
+    let s = seamScenes.get(scene);
+    if (!s) seamScenes.set(scene, (s = { frame: -1, drawn: [], key: '', tex: null, n: 0 }));
+    const f = renderer.info.render.frame;
+    if (s.frame != f) {
+      s.frame = f;
+      const key = s.drawn.map(seamKey).join('|');
+      if (key != s.key) {
+        s.key = key;
+        buildSeams(s);
+      }
+      s.drawn = [];
+    }
+    if (!s.drawn.includes(object)) s.drawn.push(object);
+    seamTex.value = s.tex;
+    seamCount.value = s.n;
+  }
+
+  // A side (a face that stands upright) is a seam when points 0.3 either side of it are both in water of the same level.
+  const SEAM = `
+    {
+      vec3 beFace = normalize(cross(dFdx(vBeWorld), dFdy(vBeWorld)));
+      if (beSeamCount > 0 && abs(beFace.y) < 0.3) {
+        vec2 beOut = normalize(beFace.xz) * 0.3;
+        vec2 beA = vBeWorld.xz + beOut, beB = vBeWorld.xz - beOut;
+        float beLa = -1e9, beLb = 1e9; // water level found on each side
+        for (int i = 0; i < beSeamCount; i++) {
+          vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
+          if (vBeWorld.y < h.x - 0.01 || vBeWorld.y > h.y + 0.01) continue;
+          if (all(greaterThan(beA, r.xy - 0.01)) && all(lessThan(beA, r.zw + 0.01))) beLa = h.y;
+          if (all(greaterThan(beB, r.xy - 0.01)) && all(lessThan(beB, r.zw + 0.01))) beLb = h.y;
+        }
+        if (abs(beLa - beLb) < 0.01) discard;
+      }
+    }
+  `;
+
   function makeMaterial(three) {
     const m = new three._4j({ vertexColors: true, transparent: true, opacity: 0.58, roughness: 0.06, metalness: 0.1, side: 2 });
+    three3 = three;
+    m.onBeforeRender = seams;
     m.onBeforeCompile = (sh) => {
       sh.uniforms.beTime = time;
+      sh.uniforms.beSeams = seamTex;
+      sh.uniforms.beSeamCount = seamCount;
       sh.vertexShader = 'varying vec3 vBeWorld;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -37,9 +173,10 @@ self.TM.water = (() => {
         #endif
         vBeWorld = (modelMatrix * beW).xyz;`,
       );
-      sh.fragmentShader = 'uniform float beTime;\nvarying vec3 vBeWorld;\n' + WAVES + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nvarying vec3 vBeWorld;\n' + WAVES + sh.fragmentShader.replace(
         '#include <normal_fragment_begin>',
-        `#include <normal_fragment_begin>
+        `${SEAM}
+        #include <normal_fragment_begin>
         {
           vec3 beN = (vec4(normal, 0.0) * viewMatrix).xyz;
           float beUp = smoothstep(0.6, 0.95, abs(beN.y));

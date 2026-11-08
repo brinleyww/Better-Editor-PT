@@ -54,6 +54,7 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 | Wet tyres | Water soaks the tyres (fully wet in under 2 s); on the ground they dry over about 10 s, but not on ice. Wet grip by surface: wood x0.08 (soaked through it slides nearly like ice), dirt and grass x0.6 (mud), plastic x0.7, road and tech x0.85. Checkpoints keep them wet; respawns dry them. The tyres are drawn darker and shinier. |
 | Icing | A car that ices up (see Vehicles) gets icy tyres on ice, bobsleigh and snow, fully iced in just over 1 s. Off the ice an iced tyre has up to half less grip, so the car slides for a moment until the tyres thaw (about 2.5 s). The tyres are drawn frosted. |
 | Muddy tyres | Dirt, and drivable grass a little, colour the tyres; water washes them. Only a look. |
+| Tyre spray | Each surface throws up its own bits, far more while sliding or braking hard: dust and clods on dirt, clippings on grass, powder on snow, glitter on ice, splinters on wood, chips in the deck's colour on plastic, smoke on the bump road. Stock road keeps the game's own smoke; the Particles setting turns it all off. Only a look. |
 | Stock blocks, ground | Unchanged. Tracks with no new blocks use stock physics exactly. |
 
 Wet and iced tyres follow Trackmania 2020, where the Stadium car gets them too. Checkpoints keep the tyres as they are; a respawn gives dry, thawed tyres.

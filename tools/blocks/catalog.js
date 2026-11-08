@@ -592,15 +592,105 @@ function vehicleArch(m, w, y0, V, top = 4.9) {
   // The beam ends just inside the posts and stops short of their tops, so no face lies on a post face.
   m.box('VehFrame', [-w + pw - 0.02, sign, -0.22], [w - pw + 0.02, top - 0.05, 0.22]);
   m.box('VehPanel', [-2.4, sign - 1.6, -0.1], [2.4, sign + 0.05, 0.1], 'VehFrame');
-  // The car, 0.05 in front of each face of the sign; seen from behind it faces the other way, like a real sign.
-  for (const side of [1, -1])
-    for (const [u0, v0, u1, v1] of V.car) {
-      const z = side * 0.15,
-        y = (v) => sign - 1.45 + v,
-        x = (u) => side * u;
-      m.quadFacing('VehGlyph', [x(u0), y(v0), z], [x(u1), y(v0), z], [x(u1), y(v1), z], [x(u0), y(v1), z], [0, 0, side]);
-    }
+  // The picture on both faces of the sign, each the right way round from its own side. A band in the car's colour runs
+  // along each face of the beam, 0.035 in front of it, so the gate reads from far off.
+  for (const side of [1, -1]) {
+    vehicleSign(m, V, side, sign - 1.6);
+    const x = w - pw - 0.12,
+      z = side * 0.255;
+    m.quadFacing(V.mat + 'B', [-x, sign + 0.13, z], [x, sign + 0.13, z], [x, top - 0.18, z], [-x, top - 0.18, z], [0, 0, side]);
+  }
   softAround(m, [[-w, sign - 1.6, 0], [w, top, 0]], 0.3);
+}
+
+// A vehicle sign's picture, flat shapes in front of one face of the panel (x -2.4..2.4, 1.6 high from y0 up to the beam):
+// a frame in the car's colour and the car side on, nose to +u, in white with its details in the car's colour. Shapes
+// that cover each other sit on separate layers (ICON_Z, 0.035 apart: clear of zfight.js's 0.03), shapes on one layer
+// never overlap. None of it collides (NO_PHYSICS in build.js), so the sign's collision mesh is the plain panel.
+// Layers: 0 frame and body, 1 windows, wheel gaps, arches and flaps, 2 tyres, 3 hubs and decals, 4 hub caps.
+const ICON_Z = [0.135, 0.17, 0.205, 0.24, 0.275];
+const ICON_BASE = 0.2, // the car's wheels stand this high over the bottom of the panel
+  ICON_K = 0.9; // a car is drawn about 4.2 long and 1.38 high, scaled by this
+function vehicleSign(m, V, side, y0) {
+  const accent = V.mat + 'B';
+  const out = (L, mat, pts) => {
+    for (const [a, b, c] of earClip(pts)) m.triFacing(mat, ...[a, b, c].map(([u, v]) => [side * u, y0 + v, side * ICON_Z[L]]), [0, 0, side]);
+  };
+  // The frame: four strips 0.11 wide just inside the panel's edges; the top one stops under the beam.
+  const F = 0.11,
+    X = 2.36,
+    B = 0.04,
+    T = 1.6;
+  out(0, accent, [[-X, B], [X, B], [X, B + F], [-X, B + F]]);
+  out(0, accent, [[-X, T - F], [X, T - F], [X, T], [-X, T]]);
+  for (const s of [-1, 1]) out(0, accent, [[s * X, B + F], [s * (X - F), B + F], [s * (X - F), T - F], [s * X, T - F]]);
+  // The car's own shapes, in car units: u along the car, v up from the ground under its wheels.
+  const P = (pts) => pts.map(([u, v]) => [u * ICON_K, ICON_BASE + v * ICON_K]);
+  const S = {
+    white: 'VehGlyph',
+    dark: 'VehIconDark',
+    accent,
+    poly: (L, mat, pts) => out(L, mat, P(pts)),
+    // An n-gon round (u, v); bumps > 0 gives every other corner radius r - bumps (tyre knobs).
+    disc: (L, mat, u, v, r, n = 20, bumps = 0) => out(L, mat, P(Array.from({ length: n }, (_, i) => [u + Math.cos((i / n) * TAU) * (r - (i % 2) * bumps), v + Math.sin((i / n) * TAU) * (r - (i % 2) * bumps)]))),
+    // A ring segment from angle a0 to a1 (radians), r0..r1.
+    arc: (L, mat, u, v, r0, r1, a0, a1, n = 10) => {
+      for (let i = 0; i < n; i++) {
+        const a = a0 + ((a1 - a0) * i) / n,
+          b = a0 + ((a1 - a0) * (i + 1)) / n,
+          p = (r, t) => [u + Math.cos(t) * r, v + Math.sin(t) * r];
+        out(L, mat, P([p(r0, a), p(r1, a), p(r1, b), p(r0, b)]));
+      }
+    },
+    // A tube from a to b, w wide.
+    bar: (L, mat, a, b, w) => {
+      const d = [b[0] - a[0], b[1] - a[1]],
+        l = Math.hypot(...d),
+        n = [(-d[1] / l) * w * 0.5, (d[0] / l) * w * 0.5];
+      out(L, mat, P([[a[0] + n[0], a[1] + n[1]], [a[0] - n[0], a[1] - n[1]], [b[0] - n[0], b[1] - n[1]], [b[0] + n[0], b[1] + n[1]]]));
+    },
+    // A wheel: a dark gap round the tyre cuts it out of the body behind, a white tyre, a hub in the car's colour and a
+    // dark cap. knobs: tread knob depth (0: smooth).
+    wheel: (u, r, { knobs = 0, n = 24, hub = 0.45, gap = 0.07 } = {}) => {
+      S.disc(1, S.dark, u, r, r + gap, n);
+      S.disc(2, S.white, u, r, r, knobs ? n : 20, knobs);
+      S.disc(3, accent, u, r, r * hub, 14);
+      S.disc(4, S.dark, u, r, r * hub * 0.4, 10);
+    },
+    // A suspension tube from the hub of the wheel at (u, r) to (tu, tv), on the hub layer: it starts on the hub's rim
+    // (its end square to the rim there), so the two never overlap.
+    strut: (u, r, tu, tv, w) => {
+      const l = Math.hypot(tu - u, tv - r),
+        h = r * 0.45;
+      S.bar(3, accent, [u + ((tu - u) * h) / l, r + ((tv - r) * h) / l], [tu, tv], w);
+    },
+  };
+  V.draw(S);
+}
+// Triangulates a simple polygon (either winding) by clipping ears.
+function earClip(pts) {
+  const area = pts.reduce((s, p, i) => s + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0);
+  const idx = pts.map((_, i) => i);
+  if (area < 0) idx.reverse();
+  const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const tris = [];
+  while (idx.length > 3) {
+    let cut = false;
+    for (let i = 0; i < idx.length && !cut; i++) {
+      const ia = idx[(i + idx.length - 1) % idx.length],
+        ib = idx[i],
+        ic = idx[(i + 1) % idx.length],
+        [a, b, c] = [pts[ia], pts[ib], pts[ic]];
+      if (cr(a, b, c) <= 1e-9) continue;
+      if (idx.some((j) => j != ia && j != ib && j != ic && cr(a, b, pts[j]) > 1e-9 && cr(b, c, pts[j]) > 1e-9 && cr(c, a, pts[j]) > 1e-9)) continue;
+      tris.push([a, b, c]);
+      idx.splice(i, 1);
+      cut = true;
+    }
+    if (!cut) throw new Error('earClip: not a simple polygon');
+  }
+  tris.push(idx.map((j) => pts[j]));
+  return tris;
 }
 
 // ---- catalogue ---------------------------------------------------------------------------------------------
@@ -1143,17 +1233,75 @@ const FX = [
 ];
 
 // TM2020 vehicle transform gates; zone type 'Car' + key (tm_runtime.js), Stadium turns you back into the normal car.
-// car: the silhouette on the gate's sign as rectangles [u0, v0, u1, v1], u along the car (front at +u, -2.1..2.1),
-// v up from its wheels (0..1.32). None overlap, so the sign never flickers.
+// draw(S): the car on the gate's sign, side on (vehicleSign: u along the car, nose at +u, about -2.1..2.1; v up from
+// the ground, 0..1.38). Each outline is its own design, so the four read apart at a glance.
 const VEHICLES = [
-  // Tall body on a ski, with a cab.
-  { key: 'Snow', label: 'Snow car gate', mat: 'VehSnow', car: [[-2, 0, 1.8, 0.12], [1.8, 0.05, 2.05, 0.25], [-1.3, 0.12, -1.1, 0.35], [1, 0.12, 1.2, 0.35], [-1.8, 0.35, 1.7, 0.85], [-1.2, 0.85, 0.6, 1.25]] },
-  // A hatchback with a light bar on the roof.
-  { key: 'Rally', label: 'Rally car gate', mat: 'VehRally', car: [[-1.5, 0, -0.9, 0.45], [0.9, 0, 1.5, 0.45], [-1.9, 0.45, 1.9, 0.8], [-1.3, 0.8, 0.7, 1.15], [-0.9, 1.15, 0.3, 1.25]] },
-  // A buggy: big wheels, a high flat body, a roll cage.
-  { key: 'Desert', label: 'Desert car gate', mat: 'VehDesert', car: [[-1.9, 0, -0.9, 0.6], [0.8, 0, 1.8, 0.6], [-1.6, 0.6, 1.7, 0.85], [-0.9, 0.85, -0.75, 1.18], [0.45, 0.85, 0.6, 1.18], [-0.95, 1.18, 0.65, 1.3]] },
-  // The stadium car: low and long, a small cockpit and a rear wing.
-  { key: 'Stadium', label: 'Stadium car gate', mat: 'VehStadium', car: [[-1.75, 0, -1.05, 0.4], [0.95, 0, 1.65, 0.4], [-2, 0.4, 1.9, 0.7], [-0.7, 0.7, 0.4, 0.95], [-1.85, 0.7, -1.7, 1.05], [-2.05, 1.05, -1.35, 1.2]] },
+  // A chunky winter buggy: big knobbly tyres, a high body, an open roll cage with a light bar, a nudge bar.
+  {
+    key: 'Snow',
+    label: 'Snow car gate',
+    mat: 'VehSnow',
+    draw: (S) => {
+      S.poly(0, S.white, [[-1.75, 0.55], [1.8, 0.58], [2.0, 0.7], [1.95, 0.84], [1.55, 0.95], [0.75, 1.02], [-1.66, 1.02], [-1.98, 0.98], [-2.02, 0.72], [-1.92, 0.6]]);
+      // The cage stands on the body: rear hoop, centre post and windscreen post, one outline so nothing overlaps.
+      S.poly(0, S.white, [[-1.2, 1.02], [-1.07, 1.02], [-0.9, 1.21], [-0.4, 1.21], [-0.4, 1.02], [-0.29, 1.02], [-0.29, 1.21], [0.18, 1.21], [0.6, 1.02], [0.75, 1.02], [0.24, 1.31], [-0.98, 1.31]]);
+      S.poly(0, S.accent, [[-0.62, 1.31], [0.2, 1.31], [0.2, 1.39], [-0.62, 1.39]]);
+      for (const u of [-0.45, -0.21, 0.03]) S.poly(1, S.white, [[u - 0.06, 1.33], [u + 0.06, 1.33], [u + 0.06, 1.37], [u - 0.06, 1.37]]);
+      S.poly(3, S.accent, [[1.9, 0.52], [2.18, 0.52], [2.18, 0.92], [1.9, 0.92], [1.9, 0.84], [2.08, 0.84], [2.08, 0.6], [1.9, 0.6]]);
+      S.poly(3, S.accent, [[-0.72, 0.66], [0.74, 0.7], [0.74, 0.8], [-0.72, 0.76]]);
+      for (const u of [-1.3, 1.32]) S.wheel(u, 0.52, { knobs: 0.075, n: 28 });
+    },
+  },
+  // A rally hatchback: flared arches, a roof spoiler and scoop, mud flaps, a light pod on the bonnet, a livery stripe.
+  {
+    key: 'Rally',
+    label: 'Rally car gate',
+    mat: 'VehRally',
+    draw: (S) => {
+      S.poly(0, S.white, [[-1.92, 0.3], [1.96, 0.28], [2.06, 0.4], [2.0, 0.66], [1.72, 0.76], [0.88, 0.84], [0.22, 1.15], [0.1, 1.16], [0.02, 1.22], [-0.25, 1.22], [-0.35, 1.16], [-1.74, 1.14], [-1.94, 1.0], [-2.04, 0.62], [-2.04, 0.36]]);
+      S.poly(1, S.dark, [[-1.68, 1.06], [-1.6, 0.88], [-0.42, 0.88], [-0.42, 1.08]]);
+      S.poly(1, S.dark, [[-0.32, 1.08], [-0.32, 0.88], [0.66, 0.88], [0.2, 1.08]]);
+      S.poly(1, S.white, [[-1.5, 1.17], [-1.95, 1.06], [-2.18, 1.17], [-2.16, 1.26]]);
+      for (const u of [-1.3, 1.32]) S.arc(1, S.white, u, 0.34, 0.425, 0.51, 0.1, Math.PI - 0.1);
+      for (const u of [-1.84, 0.76]) S.poly(1, S.accent, [[u, 0.08], [u + 0.09, 0.08], [u + 0.09, 0.3], [u, 0.3]]);
+      S.poly(3, S.accent, [[-0.76, 0.5], [0.8, 0.5], [0.8, 0.64], [-0.76, 0.64]]);
+      S.poly(3, S.accent, [[1.2, 0.79], [1.6, 0.75], [1.6, 0.84], [1.2, 0.88]]);
+      for (const u of [1.3, 1.5]) S.disc(4, S.white, u, 0.82, 0.035, 8);
+      for (const u of [-1.3, 1.32]) S.wheel(u, 0.34);
+    },
+  },
+  // A desert trophy truck: big sand tyres hanging under high open fenders on long-travel suspension, a cab, a
+  // tube-framed bed with the spare wheel in it, a light bar on the roof.
+  {
+    key: 'Desert',
+    label: 'Desert car gate',
+    mat: 'VehDesert',
+    draw: (S) => {
+      S.poly(0, S.white, [[-2.12, 0.8], [-1.98, 0.8], [-1.86, 0.94], [-0.94, 0.94], [-0.82, 0.8], [0.8, 0.8], [0.92, 0.94], [1.84, 0.94], [1.96, 0.8], [2.12, 0.84], [2.12, 0.98], [1.74, 1.1], [0.62, 1.14], [0.22, 1.34], [-0.38, 1.34], [-0.5, 1.1], [-2.06, 1.1], [-2.12, 1.02]]);
+      S.poly(1, S.dark, [[-0.36, 1.14], [-0.28, 1.28], [0.2, 1.28], [0.48, 1.14]]);
+      S.poly(0, S.accent, [[-0.34, 1.34], [0.16, 1.34], [0.16, 1.41], [-0.34, 1.41]]);
+      for (const u of [-0.22, 0.0]) S.poly(1, S.white, [[u - 0.06, 1.355], [u + 0.06, 1.355], [u + 0.06, 1.395], [u - 0.06, 1.395]]);
+      // The spare wheel stands in the bed, half hidden by its side, behind the tube rack running back from the roof.
+      S.poly(0, S.white, Array.from({ length: 13 }, (_, i) => [-1.22 + Math.cos((i / 12) * Math.PI) * 0.3, 1.1 + Math.sin((i / 12) * Math.PI) * 0.3]));
+      S.arc(1, S.dark, -1.22, 1.1, 0.19, 0.24, 0, Math.PI, 10);
+      S.poly(3, S.accent, [[-0.42, 1.31], [-0.44, 1.23], [-1.92, 1.19], [-1.92, 1.1], [-2.02, 1.1], [-2.02, 1.27]]);
+      // The long-travel shocks, from each hub up into the open fender.
+      for (const [u, top] of [[-1.4, -1.62], [1.38, 1.6]]) S.strut(u, 0.42, top, 0.94, 0.12);
+      for (const u of [-1.4, 1.38]) S.wheel(u, 0.42, { knobs: 0.03 });
+    },
+  },
+  // The stadium car, the stock car itself: a long low wedge rising from the nose to a ridge near the tail.
+  {
+    key: 'Stadium',
+    label: 'Stadium car gate',
+    mat: 'VehStadium',
+    draw: (S) => {
+      S.poly(0, S.white, [[-2.0, 0.3], [2.0, 0.3], [2.1, 0.42], [-0.8, 0.98], [-1.15, 0.98], [-2.02, 0.66], [-2.06, 0.4]]);
+      S.poly(1, S.dark, [[-0.78, 0.89], [0.4, 0.66], [0.22, 0.6], [-0.82, 0.8]]);
+      S.poly(3, S.accent, [[-0.86, 0.46], [0.86, 0.46], [0.86, 0.54], [-0.86, 0.54]]);
+      for (const u of [-1.3, 1.3]) S.wheel(u, 0.33);
+    },
+  },
 ];
 
 // A bumper pad's glyph: a bright ring with n arrows a side pointing out, the way the kick goes.

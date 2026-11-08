@@ -121,7 +121,9 @@ self.TM = (() => {
       cells = new Map(),
       spawns = [],
       // Plastic collision triangles by 5-unit cell, world coordinates: the bounce reads its surface normal from these.
-      walls = { tris: [], cells: new Map() };
+      walls = { tris: [], cells: new Map() },
+      // Level faces of bobsleigh ice by 5-unit column, world coordinates: the tops of its walls (see iceTop).
+      tops = { tris: [], cells: new Map() };
     track.forEachPart((x, y, z, id) => {
       if (!isTM(id)) {
         records++;
@@ -131,7 +133,7 @@ self.TM = (() => {
       if (p.p != null) records++;
       for (const m of physicsMeshes(p)) extra += m[4] * 3;
     });
-    fxBegin(carId, zones, cells, extra > 0, spawns, walls);
+    fxBegin(carId, zones, cells, extra > 0, spawns, walls, tops);
     if (extra == 0) return { vertices: mountain, records };
 
     loadSync();
@@ -184,6 +186,38 @@ self.TM = (() => {
                     l = walls.cells.get(key);
                   l ? l.push(k) : walls.cells.set(key, [k]);
                 }
+          }
+        }
+      if (p.u != null && SURFACES[p.u].ice && SURFACES[p.u].ice.follow)
+        for (const m of physicsMeshes(p)) {
+          const P = positions(m),
+            I = indices(m);
+          for (let t = 0; t < I.length; t += 3) {
+            const T = [];
+            for (let j = 0; j < 3; j++) {
+              const q = I[t + j] * 3;
+              T.push(...rotate(M, P[q], P[q + 1], P[q + 2]));
+              T[3 * j] += wx;
+              T[3 * j + 1] += wy;
+              T[3 * j + 2] += wz;
+            }
+            // Faces within 46 degrees of level, either winding (a steep slope's wall tops too).
+            const ex = T[3] - T[0],
+              ey = T[4] - T[1],
+              ez = T[5] - T[2],
+              fx = T[6] - T[0],
+              fy = T[7] - T[1],
+              fz = T[8] - T[2],
+              ny = ez * fx - ex * fz;
+            if (Math.abs(ny) < 0.69 * Math.hypot(ey * fz - ez * fy, ny, ex * fy - ey * fx)) continue;
+            const k = tops.tris.length / 9;
+            tops.tris.push(...T);
+            for (let cx = Math.floor(Math.min(T[0], T[3], T[6]) / 5); cx <= Math.floor(Math.max(T[0], T[3], T[6]) / 5); cx++)
+              for (let cz = Math.floor(Math.min(T[2], T[5], T[8]) / 5); cz <= Math.floor(Math.max(T[2], T[5], T[8]) / 5); cz++) {
+                const key = cellKey(cx, 0, cz),
+                  l = tops.cells.get(key);
+                l ? l.push(k) : tops.cells.set(key, [k]);
+              }
           }
         }
       addCells(cells, p, x, y, z, M, rotatedTiles(id, rot, axis));
@@ -330,7 +364,15 @@ self.TM = (() => {
     // the brake is down wood holds the car with brakeGrip instead, or it would stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
     // so it pulls harder the faster you go without running away.
-    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 } },
+    // Like TM2020 wood it grips more the faster the car goes (turn). More tyre friction alone changes nothing here: the
+    // game narrows the steering with speed (0.41 rad at full lock from rest, 0.04 at 200 km/h, 0.02 at 300), so the car
+    // turns only as tightly as its front wheels point and its tyres never reach their limit on flat ground (tmphys.mjs:
+    // wood at grip 1, 1.8 and 5 turns the same). So on wood the turn the steering asks for is made stronger: `turn` lists
+    // [speed (units/s), extra share of that turn], in between straight lines, past the last one its value. Measured as
+    // sideways pull at full lock against the stock car at the same speed (tmphys.mjs steer): about x2 up to 75 km/h,
+    // x2.7 at 130, x3.7 at 190, x4.7 at 260, x5.6 at 370 (a 250 ms tap at 300 km/h turns the car 45 degrees, stock 9).
+    // loadCap 2: the extra tyre grip holds up to twice the resting load (a hard corner, a compression), not a loop.
+    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [8, 0.7], [14, 0.9], [28, 1.4], [42, 2.1], [56, 2.9], [69, 3.5], [83, 4], [111, 4.6]], turnLevel: [3, 8], loadCap: 2 },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
     // Platform ice: the tyres barely hold, so the car slides; steering turns the car itself (ice.yaw, rad/s) and the
@@ -340,7 +382,9 @@ self.TM = (() => {
     // car onto bobsleigh ice, and near the top of a bobsleigh wall `follow` (per second) turns the car's climb up the wall
     // into speed along the channel, so the walls carry the car round a curve instead of throwing it over the top. It
     // starts where the wall's normal has `from` upward (0.5: a 60 degree wall) and grows with the square of the way
-    // from there to straight up, so the car rides freely up the lower and middle wall and is held at the lip.
+    // from there to straight up, so the car rides freely up the lower and middle wall and is held at the lip. Measured
+    // from the top of the wall (ICE_TOP) it never starts more than about 2 units under it, so the upright upper wall of
+    // the high-wall pieces can be ridden too.
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
     { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5 } },
@@ -421,6 +465,12 @@ self.TM = (() => {
   // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
   // speed kept at keep per frame (about 2% a second lost); over below endSlip.
   const BUG = { minSpeed: 100 / 3.6, minSlip: 0.17, endSlip: 0.05, frames: 1200, air: 120, window: 150, kink: 0.99, grip: 0.55, keep: 0.99998 };
+  // Where the top of a bobsleigh wall is looked for: reach units straight out behind the wheel's contact (inside the
+  // wall, under its top face; the wall tops are 2.2 wide), from below units under the contact up, on faces leaning
+  // less than lean (sine) towards or away from the channel. The wall holds the car (follow) fully from hold under that
+  // top and not at all from hold + band under it: on the plain channel always at least as much as its steepness asks
+  // (from 2 units under the lip, where the wall passes 60 degrees), so there it changes nothing.
+  const ICE_TOP = { reach: 1, below: 0.3, lean: 0.3, hold: 0.25, band: 2 };
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -520,13 +570,44 @@ self.TM = (() => {
         }
     return best;
   }
+  // The top of the bobsleigh ice above a point inside its wall: the lowest face over (x, z) at or above y that does not
+  // lean towards or away from the channel (ox, oz: unit, out of the channel; the wall's own faces do), or null.
+  function iceTop(tops, x, y, z, ox, oz) {
+    const T = tops.tris,
+      l = tops.cells.get(cellKey(Math.floor(x / 5), 0, Math.floor(z / 5)));
+    let best = null;
+    if (l)
+      for (const t of l) {
+        const b = t * 9,
+          ax = T[b + 3] - T[b],
+          az = T[b + 5] - T[b + 2],
+          bx = T[b + 6] - T[b],
+          bz = T[b + 8] - T[b + 2],
+          px = x - T[b],
+          pz = z - T[b + 2],
+          det = ax * bz - az * bx;
+        if (Math.abs(det) < 1e-9) continue;
+        const u = (px * bz - pz * bx) / det,
+          w = (ax * pz - az * px) / det;
+        if (u < 0 || w < 0 || u + w > 1) continue;
+        const h = T[b + 1] + u * (T[b + 4] - T[b + 1]) + w * (T[b + 7] - T[b + 1]);
+        if (h < y || (best != null && h >= best)) continue;
+        const ay = T[b + 4] - T[b + 1],
+          by = T[b + 7] - T[b + 1],
+          nx = ay * bz - az * by,
+          nz = ax * by - ay * bx;
+        if (Math.abs(nx * ox + nz * oz) > ICE_TOP.lean * Math.hypot(nx, det, nz)) continue;
+        best = h;
+      }
+    return best;
+  }
 
   const cars = new Map();
-  function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
+  function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }, tops = { tris: [], cells: new Map() }) {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); iceW: each tyre's icing, 0 to 1; susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, iceW: [0, 0, 0, 0], waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, iceW: [0, 0, 0, 0], waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
@@ -661,7 +742,7 @@ self.TM = (() => {
   function fxSave(carId) {
     const c = cars.get(carId);
     if (!c) return null;
-    const { zones, cells, spawns, walls, ...own } = c;
+    const { zones, cells, spawns, walls, tops, ...own } = c;
     return structuredClone(own);
   }
   function fxLoad(carId, saved) {
@@ -705,6 +786,27 @@ self.TM = (() => {
     F[v] = x * c0 + cx * s0 + ux * k * (1 - c0);
     F[v + 1] = y * c0 + cy * s0 + uy * k * (1 - c0);
     F[v + 2] = z * c0 + cz * s0 + uz * k * (1 - c0);
+  }
+
+  // Turns the whole car by a (radians, + = left) about its up axis u through its centre of mass: heading, velocity and
+  // spin together, so the tyres see no new slip and push back nothing (no roll, no wobble). Bullet keeps the body's
+  // orientation twice, as the basis of its world transform (+4) and of its interpolated one (+68), rows 16 bytes apart.
+  function turnCar(F, body, v, av, ux, uy, uz, a) {
+    turnVelocity(F, v, ux, uy, uz, -a);
+    turnVelocity(F, av, ux, uy, uz, -a);
+    const c0 = Math.cos(a),
+      s0 = Math.sin(a);
+    for (const b of [(body + 4) >> 2, (body + 68) >> 2])
+      for (let j = 0; j < 3; j++) {
+        // column j of the basis: the car's own axis j in the world
+        const x = F[b + j],
+          y = F[b + 4 + j],
+          z = F[b + 8 + j],
+          k = ux * x + uy * y + uz * z;
+        F[b + j] = x * c0 + (uy * z - uz * y) * s0 + ux * k * (1 - c0);
+        F[b + 4 + j] = y * c0 + (uz * x - ux * z) * s0 + uy * k * (1 - c0);
+        F[b + 8 + j] = z * c0 + (ux * y - uy * x) * s0 + uz * k * (1 - c0);
+      }
   }
 
   function fxStep(carId, heap, stateBuffer) {
@@ -906,6 +1008,8 @@ self.TM = (() => {
     const wheels = U[(U[(car + 32) >> 2] + 144) >> 2],
       V = VEHICLES[c.vehicle],
       normals = [],
+      // the contact points of the same wheels
+      points = [],
       // Wheels on each surface (by part.u), so pushes and drag count each surface by its own share of the wheels.
       on = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     let plasticWheels = 0;
@@ -940,9 +1044,10 @@ self.TM = (() => {
       if (grip > 1) {
         // Extra grip is a fixed amount, sized at the wheel's resting load: it does not grow with load.
         // In a loop the tyres carry many times their resting load, and grip that scaled with it would spin
-        // the car round at the first steering input. Suspension force is at +276.
+        // the car round at the first steering input. Suspension force is at +276. A surface's loadCap sizes it at that
+        // many resting loads instead, so the outer tyres of a hard corner keep it all while a loop still caps it.
         const load = F[g + 69],
-          rest = (9.81 / F[(body + 344) >> 2]) / 4;
+          rest = ((9.81 / F[(body + 344) >> 2]) / 4) * ((surface && surface.loadCap) || 1);
         if (load > rest) grip = 1 + ((grip - 1) * rest) / load;
       }
       if (surface && surface.bounce) {
@@ -954,6 +1059,7 @@ self.TM = (() => {
       if (c.wet > 0) grip *= 1 - (WATER.wetGrip[f == null ? 'road' : f] ?? 0) * c.wet;
       if (c.iceW[w] > 0 && !icy) grip *= 1 - ICING.grip * c.iceW[w];
       normals.push(F[g], F[g + 1], F[g + 2]);
+      points.push(F[g + 4], F[g + 5], F[g + 6]);
       F[g + 57] = c.stockGrip * grip;
       if (icy && V.ices.includes(f)) c.iceW[w] = Math.min(1, c.iceW[w] + ICING.on * 0.001);
       else if (!icy && c.iceW[w] > 0) c.iceW[w] = Math.max(0, c.iceW[w] - ICING.off * 0.001);
@@ -1070,9 +1176,21 @@ self.TM = (() => {
           wz /= wl;
           const up = F[v] * wx + F[v + 1] * wy + F[v + 2] * wz;
           if (up > 0) {
+            // How near the top: by how steep the wall is, but no nearer than the highest wheel's height under the top
+            // of the ice above it says (ICE_TOP). On the plain channel that never holds the car sooner than the
+            // steepness does; a high wall stands straight up for 5 units over the lip, and by steepness alone it
+            // would hold the car from its foot, so its upper part could never be reached.
+            let near = 1 - ay / ice.from;
+            let h = 0;
+            for (let i = 3; i < points.length; i += 3) if (points[i + 1] > points[h + 1]) h = i;
+            const ox = -normals[h],
+              oz = -normals[h + 2],
+              ol = Math.hypot(ox, oz);
+            // A little way into the wall, behind the contact, the top is the first level face above.
+            const top = ol > 0.05 ? iceTop(c.tops, points[h] + (ox / ol) * ICE_TOP.reach, points[h + 1] - ICE_TOP.below, points[h + 2] + (oz / ol) * ICE_TOP.reach, ox / ol, oz / ol) : null;
+            if (top != null) near = Math.min(near, 1 - (top - points[h + 1] - ICE_TOP.hold) / ICE_TOP.band);
             const before = Math.hypot(F[v], F[v + 1], F[v + 2]),
-              steep = 1 - ay / ice.from,
-              d = up * Math.min(1, ice.follow * 0.001 * steep * steep);
+              d = near > 0 ? up * Math.min(1, ice.follow * 0.001 * near * near) : 0;
             F[v] -= wx * d;
             F[v + 1] -= wy * d;
             F[v + 2] -= wz * d;
@@ -1109,6 +1227,46 @@ self.TM = (() => {
       F[v] += fx * a;
       F[v + 1] += fy * a;
       F[v + 2] += fz * a;
+    }
+
+    // Grip that grows with speed (SURFACES turn): the turn the front wheels ask for, forward speed x tan(steering) /
+    // wheelbase, is made stronger by turning the whole car further. Only while the tyres hold (nothing left in a slide of
+    // 20 degrees), less on wet or iced tyres, times the vehicle's own grip there, by the share of wheels on the surface.
+    // The car turns about the ground under it (the wheels' mean contact normal), and only while it sits square on that
+    // ground (turnLevel: in full within the first angle, in degrees, none past the second): with a wheel up on a kerb the
+    // body is tipped against the deck, and turning about its own up would tip its speed up into the air.
+    let gx = 0,
+      gy = 0,
+      gz = 0;
+    for (let i = 0; i < normals.length; i += 3) {
+      gx += normals[i];
+      gy += normals[i + 1];
+      gz += normals[i + 2];
+    }
+    const gl = Math.hypot(gx, gy, gz),
+      square = gl > 0 ? (upx * gx + upy * gy + upz * gz) / gl : 0;
+    for (let u = 0; u < on.length; u++) {
+      const T = SURFACES[u].turn,
+        Lv = SURFACES[u].turnLevel || [3, 8];
+      if (!on[u] || !T || c.bug > 0) continue;
+      const lo = Math.cos((Lv[1] * Math.PI) / 180),
+        hi = Math.cos((Lv[0] * Math.PI) / 180),
+        level = Math.max(0, Math.min(1, (square - lo) / (hi - lo)));
+      if (level == 0) continue;
+      let k = T[T.length - 1][1];
+      for (let i = 1; i < T.length; i++)
+        if (spd < T[i][0]) {
+          k = T[i - 1][1] + ((T[i][1] - T[i - 1][1]) * Math.max(0, spd - T[i - 1][0])) / (T[i][0] - T[i - 1][0]);
+          break;
+        }
+      // steering at +232 (wheels 0 and 1, 284 bytes apart); the wheels' places in the car at +156, z (+164) along the nose
+      const angle = (F[(wheels + 232) >> 2] + F[(wheels + 284 + 232) >> 2]) / 2,
+        base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
+        hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
+        iced = 1 - (ICING.grip * (c.iceW[0] + c.iceW[1] + c.iceW[2] + c.iceW[3])) / 4,
+        wet = 1 - (WATER.wetGrip[u] ?? 0) * c.wet,
+        a = ((fwd * Math.tan(angle)) / base) * k * hold * level * iced * wet * V.grip[u + 1] * (on[u] / 4) * 0.001;
+      if (a != 0 && base > 0.5) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
     }
 
     // Penalty grass: the share of wheels on it, squared, so one or two wheels only drag a little and all four drag fully

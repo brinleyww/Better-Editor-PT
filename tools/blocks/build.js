@@ -166,10 +166,17 @@ const MATERIALS = litAll({
   TechDeck: stockHex(0.2957, 0.2957, 0.2957),
   TechEdgeRed: stockHex(0.8, 0.0323, 0.0127),
   TechEdgeWhite: '#ffffff',
+  // Vehicle sign pictures (catalog.js vehicleSign): the cut-outs in the panel's own colour, each car's frame and details
+  // in its gate's colour. Added last so no older material moves.
+  VehIconDark: '#30343c',
+  VehSnowB: '#9fdcf5',
+  VehRallyB: '#d8572a',
+  VehDesertB: '#e0b04a',
+  VehStadiumB: '#3c7be0',
 }, STOCK_MATS);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
-const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB', 'FxUltraB', 'FxBumperB', 'FxBumper2B', 'VehGlyph'];
+const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB', 'FxUltraB', 'FxBumperB', 'FxBumper2B', 'VehGlyph', 'VehIconDark', 'VehSnowB', 'VehRallyB', 'VehDesertB', 'VehStadiumB'];
 // Materials that drive as their own surface wherever they sit inside a part of another one (part.r regions):
 // penalty grass (2) and dirt verges (5).
 const REGION_U = { Grass: 2, GrassB: 2, DirtVerge: 5, DirtVergeB: 5 };
