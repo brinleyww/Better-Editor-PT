@@ -20,9 +20,12 @@ function apply(file, edits) {
 }
 
 const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
+// The new block categories in part.f order, from the block table (tm_parts.js). The game's PartCategory enum gets them as
+// 9 + f, after its own 0-8. A table from before Dirt and Grass has no list; these five are what it had.
+const FAMILIES = '(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])';
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
@@ -38,7 +41,7 @@ apply('main.bundle.js', [
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
   ['track store hook', '(Bd.add(this),', '(Bd.add(this),\n            (self.__beTrackStore = this),\n            (self.__beTrackData = Ml.A),'],
-  ['categories', '(e[(e.Sign = 8)] = "Sign"));', '(e[(e.Sign = 8)] = "Sign"),\n              (e[(e.Plastic = 9)] = "Plastic"),\n              (e[(e.Wood = 10)] = "Wood"),\n              (e[(e.Stadium = 11)] = "Stadium"),\n              (e[(e.Ice = 12)] = "Ice"),\n              (e[(e.Water = 13)] = "Water"));'],
+  ['categories', '(e[(e.Sign = 8)] = "Sign"));', `(e[(e.Sign = 8)] = "Sign"),\n              ${FAMILIES}.forEach((n, f) => (e[(e[n] = 9 + f)] = n)));`],
   [
     'part class',
     `constructor(e, t, n, i, r, a, s = null, o = null) {
@@ -74,10 +77,10 @@ apply('main.bundle.js', [
               (q) =>
                 new d(
                   null,
-                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice, r.A.Water][q.f],
+                  r.A[${FAMILIES}[q.f]],
                   q.i,
                   [],
-                  self.TM.palette(q),
+                  self.TM.palette(q) ?? self.TM.data.palettes[0],
                   q.c,
                   q.d ?? null,
                   q.o ? new i.Pq0(q.o[0], q.o[1], q.o[2]) : null,
@@ -168,7 +171,14 @@ apply('main.bundle.js', [
               n = this.getPart(iu.A.IceBobCurve2);
               break;
             case ru.A.Water:
-              n = this.getPart(iu.A.StadiumWaterCorner);`,
+              n = this.getPart(iu.A.StadiumWaterCorner);
+              break;
+            // The first of these the block table has, so the icon still draws while a kit lacks its usual piece.
+            case ru.A.Dirt:
+              n = this.getPart(iu.A.DirtRoadCurve2 ?? iu.A.DirtOpenCurve2 ?? iu.A.DirtPlatBase ?? iu.A.PlasticRoadCurve2);
+              break;
+            case ru.A.Grass:
+              n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);`,
   ],
   [
     'codec context',
@@ -466,7 +476,7 @@ apply('112.bundle.js', [
   const file = 'simulation_worker.bundle.js';
   apply(file, [
     ['part ids', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"));', '(t[(t.PlaneCorner = 189)] = "PlaneCorner"),\n          self.TM.addEnum(t));'],
-    ['categories', '(t[(t.Sign = 8)] = "Sign"));', '(t[(t.Sign = 8)] = "Sign"),\n          (t[(t.Plastic = 9)] = "Plastic"),\n          (t[(t.Wood = 10)] = "Wood"),\n          (t[(t.Stadium = 11)] = "Stadium"),\n          (t[(t.Ice = 12)] = "Ice"),\n          (t[(t.Water = 13)] = "Water"));'],
+    ['categories', '(t[(t.Sign = 8)] = "Sign"));', `(t[(t.Sign = 8)] = "Sign"),\n          ${FAMILIES}.forEach((n, f) => (t[(t[n] = 9 + f)] = n)));`],
     [
       'part class',
       `constructor(t, e, i, r, s, n, a = null, o = null) {
@@ -500,10 +510,10 @@ apply('112.bundle.js', [
             (q) =>
               new lo(
                 null,
-                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice, Xa.Water][q.f],
+                Xa[${FAMILIES}[q.f]],
                 q.i,
                 [],
-                self.TM.palette(q),
+                self.TM.palette(q) ?? self.TM.data.palettes[0],
                 q.c,
                 q.d ?? null,
                 q.o ? new R(q.o[0], q.o[1], q.o[2]) : null,

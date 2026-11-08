@@ -61,7 +61,7 @@ The durations, strengths and drag values are this project's own choices. Trackma
 ### Between building and testing
 
 - **Driving line:** every Test run is recorded. Back in the editor, the line you drove is drawn on the track, coloured from blue (slow) to red (your top speed), with a pin where the run ended: green on a finish, red where the car stopped, fell or was reset. Hover the line to see the speed and race time at that point.
-- **Test runs** (bottom left): the runs since the editor opened, with the finish time and gap to the best, or how many checkpoints a run reached. Click a run to show its line; **Go to end** moves the camera to where it ended. Tick **Line** off to hide the line.
+- **Runs** (the tab next to the track name): it shows your last time, and opens a list of the runs since the editor opened, with the finish time and gap to the best, or how many checkpoints a run reached. Click a run to show its line; **Go to end** moves the camera to where it ended. **Line: On/Off** hides or shows the line.
 - **Recovery:** unsaved changes are copied to the browser every few seconds. If the tab closes or crashes before you save, the editor offers them back the next time it opens. Embedded in NSWS, NSWS saves the track instead.
 
 ## Track codes

@@ -26,7 +26,7 @@ for (const steer of [null, 'ArrowLeft']) {
   await c.sleep(5000);
   await key('keyUp', 'ArrowUp', 'ArrowUp', 38);
   // A finish goes back to the editor by itself; otherwise Escape opens the menu that leaves Test.
-  const inEditor = () => c.evaluate('!!document.querySelector(".be-runs:not([hidden])")');
+  const inEditor = () => c.evaluate('!!document.querySelector(".be-runs")?.offsetParent');
   if (!(await inEditor())) {
     await key('keyDown', 'Escape', 'Escape', 27); await key('keyUp', 'Escape', 'Escape', 27); await c.sleep(1200);
     console.log('buttons in test', await visibleButtons());
@@ -34,7 +34,9 @@ for (const steer of [null, 'ArrowLeft']) {
     await c.sleep(3000);
   }
 }
-console.log('panel', await c.evaluate(`(()=>{const p=document.querySelector('.be-runs');return p&&JSON.stringify({hidden:p.hidden,title:p.querySelector('.be-title').textContent,runs:[...p.querySelectorAll('li')].map(l=>l.textContent)})})()`));
+// The Runs tab next to the track name opens the panel.
+await c.evaluate(`(()=>{const p=document.querySelector('.be-runs-panel');if(p.hidden)document.querySelector('.be-runs-tab > .button').click();return 1})()`); await c.sleep(400);
+console.log('panel', await c.evaluate(`JSON.stringify({tab:document.querySelector('.be-runs-tab').innerText.trim(),runs:[...document.querySelectorAll('.be-list > .button')].map(l=>l.textContent)})`));
 console.log('runs', await c.evaluate(`JSON.stringify(self.TM.tools.runs().map(r=>({id:r.id,n:r.pts.length,finish:r.finish,first:r.pts[0],last:r.pts[r.pts.length-1],gaps:r.pts.filter(p=>p.gap).length})))`));
 console.log('drawn', await c.evaluate('JSON.stringify(self.TM.tools.drawn())'));
 await c.shot(T + 'tools_line.png');

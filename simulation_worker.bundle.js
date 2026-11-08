@@ -11026,11 +11026,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
           (t[(t.WallTrack = 6)] = "WallTrack"),
           (t[(t.Pillar = 7)] = "Pillar"),
           (t[(t.Sign = 8)] = "Sign"),
-          (t[(t.Plastic = 9)] = "Plastic"),
-          (t[(t.Wood = 10)] = "Wood"),
-          (t[(t.Stadium = 11)] = "Stadium"),
-          (t[(t.Ice = 12)] = "Ice"),
-          (t[(t.Water = 13)] = "Water"));
+          (self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"]).forEach((n, f) => (t[(t[n] = 9 + f)] = n)));
       })(ja || (ja = {}));
       const Xa = ja;
       var $a;
@@ -15400,10 +15396,10 @@ importScripts("tm_parts.js", "tm_runtime.js");
             (q) =>
               new lo(
                 null,
-                [Xa.Plastic, Xa.Wood, Xa.Stadium, Xa.Ice, Xa.Water][q.f],
+                Xa[(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])[q.f]],
                 q.i,
                 [],
-                self.TM.palette(q),
+                self.TM.palette(q) ?? self.TM.data.palettes[0],
                 q.c,
                 q.d ?? null,
                 q.o ? new R(q.o[0], q.o[1], q.o[2]) : null,

@@ -45,7 +45,7 @@ function overlap(A, B) {
   return sa.some((p) => inside(p, sb)) || sb.some((p) => inside(p, sa)) || inside(ca, sb) || inside(cb, sa);
 }
 
-const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce()];
+const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass')];
 const bad = [];
 for (const p of parts) {
   const tris = [];
@@ -82,7 +82,7 @@ bad.sort((a, b) => b.hits - a.hits);
 console.log('blocks with z-fighting:', bad.length, 'of', parts.length);
 const byKind = new Map();
 for (const b of bad) {
-  const kind = b.name.replace(/^(Plastic|Wood|Stadium)/, '').replace(/\d+/g, '#');
+  const kind = b.name.replace(/^(Plastic|Wood|Stadium|Ice|Dirt|Grass)/, '').replace(/\d+/g, '#');
   byKind.set(kind, (byKind.get(kind) || 0) + 1);
 }
 console.log([...byKind.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, n]) => k + ' x' + n).join('\n'));

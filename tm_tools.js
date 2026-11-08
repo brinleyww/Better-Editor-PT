@@ -185,48 +185,67 @@ self.TM.tools = (() => {
     return m + ':' + s;
   };
 
-  function makeUI() {
-    const css = document.createElement('style');
+  // A stopwatch, drawn like the game's own white button icons.
+  const ICON =
+    'data:image/svg+xml,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><circle cx="12" cy="13.5" r="8.5"/><path d="M12 13.5V8.6M9 2h6M12 2v3M19.2 5.8l1.6-1.6" stroke-linecap="round"/></svg>',
+    );
+
+  let css = null;
+  function addCSS() {
+    css = document.createElement('style');
     css.textContent = `
-.be-runs { position: absolute; left: 198px; bottom: 0; z-index: 3; width: 430px; max-width: calc(100% - 198px - 420px); min-width: 250px; box-sizing: border-box;
-  color: var(--text-color); background-color: var(--surface-transparent-color); pointer-events: auto; font-size: 17px; }
-.be-runs[hidden], .be-runs [hidden], .be-tip[hidden], .be-recover[hidden] { display: none !important; }
-.be-runs .be-head { display: flex; align-items: center; gap: 10px; padding: 4px 8px; }
-.be-runs .be-head > button.be-title { flex: 1; margin: 0; padding: 2px 0; font: inherit; font-size: 19px; text-align: left; color: inherit; background: none; border: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.be-runs label { display: flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; }
-.be-runs label input { margin: 0; accent-color: #6fb8ff; cursor: pointer; }
-.be-runs .be-body { padding: 0 8px 8px 8px; }
-.be-runs .be-legend { display: flex; align-items: center; gap: 6px; margin: 0 0 6px 0; font-size: 14px; opacity: 0.85; }
-.be-runs .be-legend > i { flex: 1; height: 8px; background: linear-gradient(90deg, hsl(240 100% 50%), hsl(180 100% 50%), hsl(120 100% 50%), hsl(60 100% 50%), hsl(0 100% 50%)); }
-.be-runs ol { margin: 0; padding: 0; list-style: none; max-height: 168px; overflow-y: auto; scrollbar-width: thin; }
-.be-runs li { display: flex; gap: 8px; padding: 3px 6px; cursor: pointer; white-space: nowrap; }
-.be-runs li:hover { background-color: var(--button-hover-color); }
-.be-runs li.sel { background-color: var(--button-color); }
-.be-runs li > .be-n { width: 30px; opacity: 0.7; }
-.be-runs li > .be-res { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.be-runs li > .be-gap { opacity: 0.8; }
-.be-runs li > .be-gap.best { color: #ffd84a; opacity: 1; }
-.be-runs .be-empty { padding: 4px 0; font-size: 15px; opacity: 0.75; white-space: normal; }
-.be-runs .be-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
-.be-runs button.be-small { margin: 0; padding: 3px 10px; font: inherit; font-size: 15px; color: inherit; background-color: var(--button-color); border: none; cursor: pointer; }
-.be-runs button.be-small:hover { background-color: var(--button-hover-color); }
-.be-tip { position: fixed; z-index: 20; padding: 3px 8px; font-size: 16px; color: #fff; background: rgba(15, 15, 30, 0.85); pointer-events: none; white-space: nowrap; }
-.be-recover { position: absolute; left: 50%; top: 118px; z-index: 4; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 12px;
-  color: var(--text-color); background-color: var(--surface-color); pointer-events: auto; font-size: 18px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); max-width: calc(100% - 520px); }
-.be-recover > span { flex: 1; }
-.be-recover button { margin: 0; padding: 4px 12px; font: inherit; font-size: 17px; color: var(--text-color); background-color: var(--button-color); border: none; cursor: pointer; white-space: nowrap; }
-.be-recover button:hover { background-color: var(--button-hover-color); }
-@media (max-width: 1000px) { .be-runs { left: 0; bottom: 36px; max-width: calc(100% - 300px); min-width: 0; } .be-recover { max-width: calc(100% - 320px); } }
+.be-runs { display: inline-block; position: relative; vertical-align: top; margin: -1px 0 0 -6px; }
+.be-runs [hidden], .be-tip[hidden], .be-recover[hidden] { display: none !important; }
+.be-runs > .be-runs-tab { padding: 6px 7px 6px 16px; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); background: var(--surface-secondary-color); pointer-events: auto; }
+.be-runs > .be-runs-tab > .button { white-space: nowrap; }
+.be-runs > .be-runs-tab > .button > .be-last { margin-left: 10px; font-size: 24px; opacity: 0.75; }
+.be-runs > .be-runs-tab > .button.open { background-color: var(--button-hover-color); }
+.be-runs > .be-runs-panel { position: absolute; left: 0; top: calc(100% + 6px); box-sizing: border-box; width: 540px; padding: 12px 26px 14px 12px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%); color: var(--text-color); background-color: var(--surface-color); pointer-events: auto; font-size: 22px; }
+.be-runs-panel > .be-runs-head { display: flex; align-items: center; gap: 12px; margin: 0 0 8px 0; }
+.be-runs-panel > .be-runs-head > span { flex: 1; font-size: 26px; }
+.be-runs-panel .button.be-small { padding: 4px 16px; font-size: 20px; }
+.be-runs-panel > .be-legend { display: flex; align-items: center; gap: 8px; margin: 0 0 8px 0; font-size: 17px; }
+.be-runs-panel > .be-legend > i { flex: 1; height: 8px; background: linear-gradient(90deg, hsl(240 100% 55%), hsl(180 100% 50%), hsl(120 100% 45%), hsl(60 100% 50%), hsl(0 100% 55%)); }
+.be-runs-panel > .be-list { max-height: 214px; overflow-y: auto; scrollbar-width: thin; }
+.be-runs-panel > .be-list > .button { display: flex; gap: 12px; box-sizing: border-box; width: calc(100% - 4px); margin: 0 0 4px 0; padding: 5px 20px; font-size: 20px; text-align: left; white-space: nowrap; }
+.be-runs-panel > .be-list > .button.sel { background-color: var(--button-hover-color); }
+.be-runs-panel > .be-list > .button > .be-n { width: 34px; opacity: 0.6; }
+.be-runs-panel > .be-list > .button > .be-res { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.be-runs-panel > .be-list > .button > .be-gap.best { color: #ffd84a; }
+.be-runs-panel > .be-empty { margin: 4px 0 2px 0; font-size: 19px; line-height: 1.35; color: var(--text-color); opacity: 0.8; white-space: normal; }
+.be-runs-panel > .be-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.be-tip { position: fixed; z-index: 20; padding: 4px 14px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); font-size: 18px; color: var(--text-color);
+  background-color: var(--surface-color); pointer-events: none; white-space: nowrap; }
+.be-recover { position: absolute; left: 50%; bottom: 14px; z-index: 4; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 10px 26px 10px 18px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); color: var(--text-color); background-color: var(--surface-color); pointer-events: auto; font-size: 22px; white-space: nowrap; }
+.be-recover > .button { padding: 4px 16px; font-size: 20px; }
 `;
     document.head.appendChild(css);
-    const host = document.getElementById('ui') ?? document.body;
-    const panel = document.createElement('div');
-    panel.className = 'be-runs';
-    panel.innerHTML =
-      '<div class="be-head"><button class="be-title"></button><label title="Draw the line you drove in the selected test run"><input type="checkbox"> Line</label></div>' +
-      '<div class="be-body"><div class="be-legend"><span>0</span><i></i><span class="be-top"></span></div><ol></ol><div class="be-empty">Press Test and drive: the line you take is drawn here, coloured by speed. Hover it for the speed at any point.</div>' +
-      '<div class="be-foot"><button class="be-small be-end" title="Move the camera to where the selected run ended">Go to end</button><button class="be-small be-clear">Clear runs</button></div></div>';
-    host.appendChild(panel);
+    window.addEventListener('mousemove', hover, { passive: true });
+  }
+
+  // Builds the Runs tab next to the track name in this editor's top bar, and its drop-down panel. The tab lives in the
+  // editor's own UI, so it hides with it while testing. Returns null if the editor has no top bar to put it in.
+  function makeUI() {
+    css ?? addCSS();
+    const root = document.querySelector('#ui > .editor-ui') ?? document.querySelector('.editor-ui'),
+      settings = root?.querySelector('.top > .track-settings-container');
+    if (!settings) return null;
+    const box = document.createElement('div');
+    box.className = 'be-runs';
+    box.innerHTML =
+      '<div class="be-runs-tab"><button class="button" title="Your test runs, and the line you drove"><img class="button-icon" src="' + ICON + '"> Runs<span class="be-last"></span></button></div>' +
+      '<div class="be-runs-panel" hidden>' +
+      '<div class="be-runs-head"><span>Test runs</span><button class="button be-small be-line" title="Draw the line you drove on the track"></button></div>' +
+      '<div class="be-legend"><span>0</span><i></i><span class="be-top"></span></div>' +
+      '<div class="be-list"></div>' +
+      '<p class="be-empty">Press Test and drive. The line you take is drawn on the track, coloured by speed, and you can hover it for the speed at any point.</p>' +
+      '<div class="be-foot"><button class="button be-small be-end" title="Move the camera to where the selected run ended">Go to end</button><button class="button be-small be-clear">Clear</button></div>' +
+      '</div>';
+    settings.after(box);
     const tip = document.createElement('div');
     tip.className = 'be-tip';
     tip.hidden = true;
@@ -234,22 +253,22 @@ self.TM.tools = (() => {
     const recover = document.createElement('div');
     recover.className = 'be-recover';
     recover.hidden = true;
-    recover.innerHTML = '<span></span><button class="be-restore">Restore</button><button class="be-discard">Discard</button>';
-    host.appendChild(recover);
+    recover.innerHTML = '<span></span><button class="button be-restore">Restore</button><button class="button be-discard">Discard</button>';
+    root.appendChild(recover);
 
-    const q = (s) => panel.querySelector(s);
-    const u = { panel, tip, recover, title: q('.be-title'), body: q('.be-body'), list: q('ol'), empty: q('.be-empty'), top: q('.be-top'), line: q('input'), legend: q('.be-legend'), clear: q('.be-clear'), end: q('.be-end') };
-    u.line.checked = showLine;
-    u.body.hidden = store.get(PANEL_KEY) == '0';
-    u.title.addEventListener('click', () => {
-      u.body.hidden = !u.body.hidden;
-      store.set(PANEL_KEY, u.body.hidden ? '0' : '1');
+    const q = (s) => box.querySelector(s);
+    const u = { box, tip, recover, tab: q('.be-runs-tab > .button'), last: q('.be-last'), panel: q('.be-runs-panel'), list: q('.be-list'), empty: q('.be-empty'), top: q('.be-top'), line: q('.be-line'), legend: q('.be-legend'), foot: q('.be-foot'), clear: q('.be-clear'), end: q('.be-end') };
+    u.panel.hidden = store.get(PANEL_KEY) != '1';
+    u.tab.addEventListener('click', () => {
+      u.panel.hidden = !u.panel.hidden;
+      store.set(PANEL_KEY, u.panel.hidden ? '0' : '1');
       refresh();
     });
-    u.line.addEventListener('change', () => {
-      showLine = u.line.checked;
+    u.line.addEventListener('click', () => {
+      showLine = !showLine;
       store.set(LINE_KEY, showLine ? '1' : '0');
       drawLine();
+      refresh();
     });
     u.end.addEventListener('click', () => {
       const r = shown(),
@@ -264,9 +283,8 @@ self.TM.tools = (() => {
       drawLine();
       refresh();
     });
-    // Keys typed into the panel (none today) and clicks on it never reach the editor underneath.
-    for (const ev of ['mousedown', 'touchstart', 'wheel']) panel.addEventListener(ev, (e) => e.stopPropagation());
-    window.addEventListener('mousemove', hover, { passive: true });
+    // Clicks and the wheel on the panel stay on the panel instead of building or zooming underneath.
+    for (const ev of ['mousedown', 'touchstart', 'wheel']) box.addEventListener(ev, (e) => e.stopPropagation());
     return u;
   }
 
@@ -276,14 +294,16 @@ self.TM.tools = (() => {
       best = Math.min(...done.filter((r) => r.finish != null).map((r) => r.finish)),
       sel = shown(),
       last = done[done.length - 1];
-    ui.title.textContent =
-      (ui.body.hidden ? '▸ ' : '▾ ') + 'Test runs' + (last ? ':  ' + (last.finish != null ? clock(last.finish) : 'no finish') + (last.finish != null && last.finish == best && done.length > 1 ? ' ★' : '') : '');
+    ui.tab.classList.toggle('open', !ui.panel.hidden);
+    ui.last.textContent = last ? (last.finish != null ? clock(last.finish) + (last.finish == best && done.length > 1 ? ' ★' : '') : 'No finish') : '';
+    ui.line.textContent = 'Line: ' + (showLine ? 'On' : 'Off');
     ui.list.textContent = '';
     for (const r of [...done].reverse()) {
-      const li = document.createElement('li'),
+      const row = document.createElement('button'),
         n = document.createElement('span'),
         res = document.createElement('span'),
         gap = document.createElement('span');
+      row.className = 'button' + (r === sel ? ' sel' : '');
       n.className = 'be-n';
       res.className = 'be-res';
       gap.className = 'be-gap';
@@ -294,24 +314,21 @@ self.TM.tools = (() => {
           gap.textContent = '★ best';
           gap.classList.add('best');
         } else gap.textContent = '+' + ((r.finish - best) / 1000).toFixed(3);
-      } else res.textContent = 'No finish  ·  ' + (r.total ? 'checkpoint ' + r.cp + '/' + r.total + '  ·  ' : '') + clock(r.last);
-      li.append(n, res, gap);
-      if (r === sel) li.className = 'sel';
-      li.title = 'Show this run’s line';
-      li.addEventListener('click', () => {
+      } else res.textContent = 'No finish  ·  ' + (r.total ? 'CP ' + r.cp + '/' + r.total + '  ·  ' : '') + clock(r.last);
+      row.append(n, res, gap);
+      row.title = 'Show this run’s line';
+      row.addEventListener('click', () => {
         picked = r.id;
-        if (!showLine) {
-          showLine = ui.line.checked = true;
-          store.set(LINE_KEY, '1');
-        }
+        showLine = true;
+        store.set(LINE_KEY, '1');
         drawLine();
         refresh();
       });
-      ui.list.appendChild(li);
+      ui.list.appendChild(row);
     }
     ui.empty.hidden = done.length > 0;
-    ui.legend.hidden = !sel;
-    ui.clear.hidden = ui.end.hidden = done.length == 0;
+    ui.legend.hidden = !sel || !showLine;
+    ui.foot.hidden = done.length == 0;
     if (sel) ui.top.textContent = Math.round(topOf(sel)) + ' km/h';
   }
 
@@ -367,13 +384,12 @@ self.TM.tools = (() => {
     // look(x, y, z): points the editor camera at a spot.
     open(ctx, three, camera, look) {
       ed = { ctx, three, camera, look };
-      ui ??= makeUI();
-      ui.panel.hidden = false;
+      ui = makeUI();
       runs = [];
       picked = null;
       current = null;
       refresh();
-      if (standalone) {
+      if (standalone && ui) {
         wasDirty = false;
         offerRecovery();
         saver = setInterval(autosave, 4000);
@@ -382,8 +398,9 @@ self.TM.tools = (() => {
     close() {
       removeLine();
       clearInterval(saver);
-      if (ui) ui.panel.hidden = ui.recover.hidden = true;
       hideTip();
+      ui?.tip.remove();
+      ui = null; // the tab and the recovery bar go with the editor's own UI
       ed = null;
       testing = false;
     },
@@ -399,7 +416,7 @@ self.TM.tools = (() => {
       }
       removeLine();
       hideTip();
-      if (ui) ui.panel.hidden = ui.recover.hidden = true;
+      if (ui) ui.recover.hidden = true;
     },
     testEnd() {
       testing = false;
@@ -409,7 +426,6 @@ self.TM.tools = (() => {
       const last = runs[runs.length - 1];
       if (last) runs = runs.filter((r) => Math.hypot(r.pts[0].x - last.pts[0].x, r.pts[0].y - last.pts[0].y, r.pts[0].z - last.pts[0].z) < 30);
       picked = null;
-      if (ui) ui.panel.hidden = false;
       drawLine();
       refresh();
     },
