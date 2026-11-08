@@ -318,6 +318,21 @@
         return { ok: true, name: track ? track.meta.name : null };
     }
 
+    // NSWS's settings each time it shows the editor again: the frame stays loaded between uses, so a setting changed in
+    // NSWS meanwhile (Wheel info, say) would otherwise wait for a page reload. In memory only, as nsws_prefs.js's first
+    // copy is what the editor saves.
+    function applySettings(list) {
+        const s = self.__beSettings;
+        if (!s || !Array.isArray(list)) return;
+        const low = list.some((p) => Array.isArray(p) && p[0] === "LowPerformanceMode" && p[1] === "true");
+        const out = [];
+        for (const p of list) {
+            if (!Array.isArray(p) || p.length !== 2 || typeof p[1] !== "string" || !Object.hasOwn(s.names, p[0]) || typeof s.names[p[0]] !== "number") continue;
+            out.push([s.names[p[0]], p[0] === "ScreenPixelDensity" && low ? "false" : p[1]]);
+        }
+        if (out.length) s.manager.updateSettings(out);
+    }
+
     window.addEventListener("message", (e) => {
         const msg = e.data;
         if (e.source !== window.parent || !msg || msg.nsws !== "be" || !ORIGIN.test(e.origin)) return;
@@ -352,6 +367,12 @@
         } else if (msg.type === "pause") {
             setPaused(!!msg.paused);
             reply({ ok: true });
+        } else if (msg.type === "settings") {
+            try {
+                applySettings(msg.settings);
+            } catch (err) {
+                console.warn("NSWS settings:", err);
+            }
         } else if (msg.type === "mode") {
             mode = ["rocket", "royale"].includes(msg.mode) ? msg.mode : "normal";
             reply({ ok: true });

@@ -62376,6 +62376,7 @@
             (0, R.GG)(this, lf, e, "f"));
           const t = e.loadSettings();
           null != t && this.updateSettings(t);
+          self.__beSettings = { manager: this, names: P.A };
           const n = e.loadKeyBindings();
           null != n && (0, R.gn)(this, of, "m", df).call(this, n);
         }

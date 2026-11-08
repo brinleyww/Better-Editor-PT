@@ -81,6 +81,7 @@ apply('main.bundle.js', [
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
+  ['settings hook', "          const t = e.loadSettings();\n          null != t && this.updateSettings(t);\n", "          const t = e.loadSettings();\n          null != t && this.updateSettings(t);\n          self.__beSettings = { manager: this, names: P.A };\n"],
   ['track store hook', '(Bd.add(this),', '(Bd.add(this),\n            (self.__beTrackStore = this),\n            (self.__beTrackData = Ml.A),'],
   ['categories', '(e[(e.Sign = 8)] = "Sign"));', `(e[(e.Sign = 8)] = "Sign"),\n              ${FAMILIES}.forEach((n, f) => (e[(e[n] = 9 + f)] = n)));`],
   [
