@@ -7,6 +7,7 @@
 // node tools/test/tmphys.mjs feel [label]                  catching drifts, turned bumpers, icing through checkpoints, respawns
 // node tools/test/tmphys.mjs tyres [label] [a,b,c1,c2,d,cp]   wet, iced and muddy tyres: which surface undoes which (TYRES)
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
+// node tools/test/tmphys.mjs reactor [label]               reactor boosts: climb, hover, air steering, down plates, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -432,6 +433,88 @@ if (section == 'feel') {
   }
 }
 
+if (section == 'reactor') {
+  // Reactor boosts (tm_runtime.js REACTOR): gravity, then per plate type on a wide stock floor (Plane): gas held all the
+  // way, gas let go 0.3 s after the plate, hovering by feathering the gas (test bot: TEST.hover), steering in the air,
+  // down plates pressing the car and off a jump, the ends (reset plate, respawn key) and an R20 loop.
+  // Heights are of the car's origin over its ride height before the plate. TMTYPES=ReactorUp,... picks the plates.
+  const lane = (items, y = 0) => { let z = 0; return items.map((n) => { const o = typeof n == 'string' ? { n } : { ...n }; const p = { x: 0, y, z, ...o }; z -= 4; return p; }); };
+  const field = (piece, from, rows, y = 0) => { const p = []; for (let j = from; j < from + rows; j++) for (const x of [-16, -12, -8, -4, 0, 4, 8, 12, 16]) p.push({ n: piece, x, y, z: -4 * j }); return p; };
+  const tilt = (q) => Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (q[0] * q[0] + q[2] * q[2])))) * 57.2958; // car up against world up, deg
+  const vy = (l, i) => { const a = l[Math.max(0, i - 5)], b = l[Math.min(l.length - 1, i + 5)]; return (b.y - a.y) / ((b.f - a.f) / 1000); };
+  results.reactor = {};
+  // Gravity: off the end of a lane 30 units up, the vertical acceleration over 0.4 s of free fall.
+  {
+    // gas let go at the edge, so nothing but gravity (and the game's drag) acts; per 200 ms window, and the fall speed
+    const l0 = (await run(lane(['PlaneStart', 'Plane', 'Plane', 'WoodPlatBase'], 6), null, [{ id: 1, rec: { up: [0] }, frames: 5000 }]))[1], edge = first(l0, (q) => q.z < -3 * 20 - 10);
+    const l = (await run(lane(['PlaneStart', 'Plane', 'Plane', 'WoodPlatBase'], 6), null, [{ id: 1, rec: { up: [0, edge] }, frames: 5000 }]))[1];
+    const off = first(l, (q) => q.w == 0, edge), win = [];
+    for (let a = off + 100; a + 200 < l.length && l[a + 200].w == 0; a += 200) win.push([+vy(l, a).toFixed(1), +(-(vy(l, a + 200) - vy(l, a)) / 0.2).toFixed(3)]);
+    results.reactor.gravity = win.length ? win[0][1] : null;
+    console.log('gravity (units/s^2) per 200 ms of free fall [fall speed, acceleration]:', JSON.stringify(win));
+  }
+  const types = (process.env.TMTYPES || 'ReactorUp,ReactorDown,Reactor2Up,Reactor2Down,ReactorOriented,Reactor2Oriented').split(',').filter((t) => has('WoodFx' + t + 'Plat'));
+  // Stock floor (Plane) round the plate, so only the plate is new.
+  const P = [...lane(['PlaneStart', 'Plane', 'Plane']), ...field('Plane', 3, 1).filter((p) => p.x != 0), { n: 'PLATE', x: 0, y: 0, z: -12 }, ...field('Plane', 4, 70)];
+  const plateAt = (l) => first(l, (q) => q.z < -12 * 5 + 6); // the car's origin enters the plate's box (12 long)
+  for (const type of types) {
+    const parts = P.map((p) => (p.n == 'PLATE' ? { ...p, n: 'WoodFx' + type + 'Plat' } : p));
+    const R = (results.reactor[type] = {});
+    const A = await run(parts, { trace: 100 }, [{ id: 1, rec: { up: [0] }, frames: 11000 }]), l = A[1], i0 = plateAt(l), ride = l[i0 - 50].y;
+    const on = A.probes.filter((q) => q.reactor), later = A.probes.filter((q) => q.fr > i0 + 6500);
+    const h = (i) => +(l[Math.min(l.length - 1, i)].y - ride).toFixed(2);
+    const up = (k) => first(l, (q) => q.y - ride >= k, i0);
+    R.gasHeld = { plateFrame: i0, kmhAtPlate: +l[i0].v.toFixed(0), zoneType: on[0]?.reactor ?? null, activeMs: on.length ? on[on.length - 1].fr - on[0].fr + 100 : 0, after1s: h(i0 + 1000), after2s: h(i0 + 2000), after3s: h(i0 + 3000), after6s: h(i0 + 6000), peak: +(Math.max(...l.slice(i0).map((q) => q.y)) - ride).toFixed(2), msTo10: up(10) != null ? up(10) - i0 : null, vyAt5s: +vy(l, i0 + 5000).toFixed(2), maxTilt: +Math.max(...l.slice(i0, i0 + 6000).map((q) => tilt(q.q))).toFixed(1), airMs: l.slice(i0, i0 + 6000).filter((q) => q.w == 0).length, kmhAt6s: +l[i0 + 6000].v.toFixed(0), after6_5s: later.length ? later[0].reactor : 'n/a' };
+    // The lowest the car sits on its springs in the first 3 s (a down boost presses it), against its ride height.
+    R.gasHeld.lowest = +(Math.min(...l.slice(i0, i0 + 3000).map((q) => q.y)) - ride).toFixed(3);
+    const B = (await run(parts, null, [{ id: 1, rec: { up: [0, i0 + 300] }, frames: i0 + 6000 }]))[1];
+    R.gasOff300 = { after1s: +(B[i0 + 1000].y - ride).toFixed(2), after3s: +(B[i0 + 3000].y - ride).toFixed(2), peak: +(Math.max(...B.slice(i0).map((q) => q.y)) - ride).toFixed(2) };
+    if (/Down/.test(type)) continue;
+    // Hovering: the bot holds the gas while the car is under 8 units over its ride height (by height + 0.25 s of climb).
+    const H = (await run(parts, { hover: { y: ride + 8, lead: 0.25 } }, [{ id: 1, rec: { up: [0] }, frames: i0 + 6500 }]))[1];
+    const hs = H.slice(i0 + 2500, i0 + 5500).map((q) => q.y - ride);
+    R.hover8 = { mean: +(hs.reduce((a, b) => a + b, 0) / hs.length).toFixed(2), min: +Math.min(...hs).toFixed(2), max: +Math.max(...hs).toFixed(2), maxTilt: +Math.max(...H.slice(i0, i0 + 6000).map((q) => tilt(q.q))).toFixed(1) };
+    // Steering left in the air: from 1.5 s after the plate, held 2 s. Yaw rate and the most the car tips.
+    const s0 = i0 + 1500, S = (await run(parts, null, [{ id: 1, rec: { up: [0], left: [s0, s0 + 2000] }, frames: i0 + 6000 }]))[1];
+    R.airSteer = { airborne: S[s0].w == 0, yawDegPerSec: rate(S, s0 + 500, s0 + 1500), maxTilt: +Math.max(...S.slice(s0, s0 + 2500).map((q) => tilt(q.q))).toFixed(1), tiltAt2s: +tilt(S[s0 + 2000].q).toFixed(1) };
+    console.log(type, JSON.stringify(R));
+  }
+  for (const type of types.filter((t) => /Down/.test(t))) console.log(type, JSON.stringify(results.reactor[type]));
+  // Down boosts off a jump: a lane 30 units up with the plate on its last platform, gas held; the fall acceleration.
+  for (const type of types.filter((t) => /Down/.test(t))) {
+    const l = (await run(lane(['PlaneStart', 'Plane', 'Plane', 'WoodFx' + type + 'Plat'], 6), null, [{ id: 1, rec: { up: [0] }, frames: 6000 }]))[1];
+    const off = first(l, (q) => q.w == 0, 500), a = off + 100, b = off + 400;
+    results.reactor[type].fallAccel = +(-(vy(l, b) - vy(l, a)) / ((b - a) / 1000)).toFixed(2);
+    console.log(type, 'fall acceleration off a jump, gas held:', results.reactor[type].fallAccel);
+  }
+  // Ends: a reset plate after the reactor plate, and the respawn key after a checkpoint.
+  if (types.includes('Reactor2Up')) {
+    const T0 = lane(['WoodStartPlat', 'WoodPlatBase', 'WoodPlatBase', 'WoodFxReactor2UpPlat', 'WoodPlatBase', 'WoodFxResetPlat', ...Array(20).fill('WoodPlatBase')]);
+    // gas let go after the reactor plate so the car stays on the deck and reaches the reset plate
+    const l0 = (await run(T0, null, [{ id: 1, rec: { up: [0] }, frames: 3000 }]))[1], p0 = first(l0, (q) => q.z < -3 * 20 + 6) - 20;
+    const r1 = await run(T0, { trace: 20 }, [{ id: 1, rec: { up: [0, p0] }, frames: p0 + 4000 }]), rz = first(r1[1], (q) => q.z < -5 * 20 + 6);
+    results.reactor.resetPlate = { reactorProbes: r1.probes.filter((q) => q.reactor).length, resetPlateFrame: rz, activeAfterReset: r1.probes.filter((q) => rz != null && q.fr > rz + 20 && q.reactor).length };
+    const T1 = lane(['WoodStartPlat', 'WoodPlatBase', { n: 'WoodCheckpointPlat', cp: 0 }, 'WoodPlatBase', 'WoodFxReactor2UpPlat', ...Array(20).fill('WoodPlatBase')]);
+    const l1 = (await run(T1, null, [{ id: 1, rec: { up: [0] }, frames: 4000 }]))[1], p = first(l1, (q) => q.z < -4 * 20 + 6);
+    const r2 = await run(T1, { trace: 50 }, [{ id: 1, rec: { up: [0], reset: [p + 800, p + 801] }, frames: p + 1500 }]);
+    results.reactor.respawnKey = { plateFrame: p, keyFrame: p + 800, activeBeforeKey: r2.probes.filter((q) => q.fr > p + 50 && q.fr < p + 800 && q.reactor).length, activeAfterKey: r2.probes.filter((q) => q.fr > p + 850 && q.reactor).length };
+    console.log('reset plate:', JSON.stringify(results.reactor.resetPlate), 'respawn key:', JSON.stringify(results.reactor.respawnKey));
+  }
+  // Oriented against legacy through an R20 offset loop, gas held: the plate just before the loop.
+  {
+    const r = 20, run0 = 8, z0 = -run0 * 4, name = (q) => 'WoodRoadLoop' + r + 'OffsetRQ' + q;
+    for (const type of ['none', ...types.filter((t) => !/Down/.test(t))]) {
+      const parts = lane(['WoodStartRoad', ...Array(run0 - 2).fill('WoodRoadStraight'), type == 'none' ? 'WoodRoadStraight' : 'WoodFx' + type + 'Road']);
+      parts.push({ n: name(1), x: 0, y: 0, z: z0 }, { n: name(2), x: 0, y: r / 5, z: z0 }, { n: name(3), x: 0, y: r / 5, z: z0 + 4 }, { n: name(4), x: 0, y: 0, z: z0 + 4 });
+      let z = z0; for (let k = 0; k < 40; k++) { parts.push({ n: 'WoodRoadStraight', x: 4, y: 0, z }); z -= 4; }
+      const l = (await run(parts, null, [{ id: 1, rec: { up: [0] }, frames: 9000 }]))[1], peak = Math.max(...l.map((q) => q.y)), e = l[l.length - 1];
+      const inLoop = l.filter((q) => q.y > 3 && q.y < 2 * r + 2), air = inLoop.filter((q) => q.w == 0).length;
+      (results.reactor.loop ??= {})[type] = { peak: +peak.toFixed(1), madeIt: peak > 2 * r - 3 && Math.abs(e.x - 20) < 7 && e.y < 3, airMsInLoop: air, msInLoop: inLoop.length, endX: +e.x.toFixed(1), kmh: +e.v.toFixed(0) };
+    }
+    console.log('R20 loop, gas held:', JSON.stringify(results.reactor.loop));
+  }
+}
+
 if (section == 'verify') {
   // The game's own verifier on a track with the new things: it accepts a run only if the car finishes on exactly that
   // frame. Found by an exact run first, then 21 frames round it are checked, twice.
@@ -450,6 +533,8 @@ if (section == 'verify') {
   mixed.forEach((n, i) => { const o = typeof n == 'string' ? { n } : n; tracks.mixed.push({ x: 0, y: 0, z: -4 * i, ...o }); for (const x of [-16, -12, -8, -4, 4, 8, 12, 16]) tracks.mixed.push(/Checkpoint|Finish/.test(o.n) ? { ...o, x, y: 0, z: -4 * i } : { n: /Grass/.test(o.n) ? 'GrassPlatBase' : 'DirtPlatBase', x, y: 0, z: -4 * i }); });
   // Tyre states on the way: water, dirt (mud), a checkpoint, tech, ice (icing), wood, the finish on wood.
   tracks.tyres = L(['DirtStartPlat', 'DirtPlatBase', 'StadiumShallowWater', 'StadiumShallowWater', 'DirtPlatBase', 'DirtPlatBase', { n: 'DirtCheckpointPlat', cp: 0 }, 'Plane', 'Plane', 'IcePlatBase', 'IcePlatBase', 'WoodPlatBase', 'WoodPlatBase', 'WoodFinishPlat', 'WoodPlatBase', 'WoodPlatBase']);
+  // Reactor boosts: a super down plate pressing the car, a checkpoint, an oriented plate lifting it, the finish 2 on.
+  tracks.reactor = L(['WoodStartPlat', 'WoodPlatBase', 'WoodFxReactor2DownPlat', 'WoodPlatBase', { n: 'WoodCheckpointPlat', cp: 0 }, 'WoodFxReactorOrientedPlat', 'WoodPlatBase', 'WoodFinishPlat', 'WoodPlatBase', 'WoodPlatBase']);
   // Stock road onto bump road through its connector, then a checkpoint, the bumper and the finish on the crown.
   for (const r of [0, 2]) tracks['bump' + r] = L(['Start', 'Straight', 'Straight', { n: 'StadiumBumpFromRoad', r }, 'StadiumBumpStraight', 'StadiumBumpStraight', { n: 'StadiumCheckpointBump', cp: 0 }, 'StadiumBumpStraight', 'StadiumFxUltraBump', 'StadiumBumpStraight', 'StadiumBumpStraight', 'StadiumFinishBump', 'StadiumBumpStraight', 'StadiumBumpStraight']);
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];

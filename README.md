@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,369 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,401 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -92,7 +92,7 @@ States in between count in proportion, and states together multiply, but never b
 | Turbo roulette | Turbo, super or ultra, picked by the exact frame you cross it. |
 | Bumper, super bumper | One sideways kick as you enter, about 50 km/h (super: 85), away from the line through the plate's centre along the way you are going, plus a small hop. |
 | Vehicle gates | Snow, Rally, Desert and Stadium car gates (the Stadium car gate gives back the stock car). See Vehicles. |
-| Reactor boost, super reactor boost (up or down) | 6 s of thrust along the car's own up axis. Up stretches jumps; down presses the car onto any surface. In the air, the gas pushes along the nose and steering turns the car. |
+| Reactor boost, super reactor boost (up, down or oriented) | For 6 s from the plate every wheel is a jet that pushes only while you hold the gas, so you feather it to hold a height; the time runs out whether you use it or not, and a later reactor plate starts it again. Up and down push along world up or down whatever the car's angle (down presses the car onto the track or drops it); oriented pushes along the car's own up, so it follows walls and loops. A reactor boost pushes about 1.3 times the game's gravity (it climbs 10 units in about 1.9 s), a super one about 2.2 times (about 1.0 s). In the air steering turns the car and it stays steady instead of tumbling: up and down level it out, oriented keeps its angle. On the ground the car drives as normal with the push added. The jets glow cyan (super: purple), burn big on the gas, lean and flare with the steering and die away at the end. The numbers are estimates. |
 | Slow motion | The car runs at half speed while the race clock keeps counting, until reset or respawn. |
 | No engine, no brakes, no steering, cruise control | Lock out that input until reset. |
 | Fragile | A hard hit sends you back to the last checkpoint. |
@@ -162,7 +162,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | TrackData writer: two-byte ids and the catalogue version when a track has an id above 255; `~BE1` save-string prefix; `PolyTrackBE1` export prefix | The format. Tracks with only stock parts still write the stock format byte for byte. |
 | `fromSaveString` and `fromExportString` try `TM.fromSave` / `TM.fromExport` first | Reading the format. See the `tmCtx` block in `patch.js` for the context object. |
 | Track ids of tracks with new blocks go into `TM.extTrackIds`; the leaderboard upload returns early for them | Never send unverifiable runs to Kodub. |
-| Full scene rebuild only visits parts that are placed | 2,369 more parts would make every rebuild slow. |
+| Full scene rebuild only visits parts that are placed | 2,401 more parts would make every rebuild slow. |
 | The car's visuals call `TM.water.track`, `TM.water.update` and `TM.water.dispose` | Water splashes, vehicle looks and tyres (`tm_water.js`, `tm_vehicles.js`). |
 
 **Editor bundle (`112.bundle.js`)**
@@ -224,7 +224,7 @@ These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A 
 
 | Field | Meaning |
 |---|---|
-| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (index into `families`), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone (`type`: Turbo, Super, Ultra, Roulette, the reactors, Bumper, Bumper2, CarSnow, CarRally, CarDesert, CarStadium, Water and the rest), `p` proxy id, `u` physics surface, `r` surface boxes |
+| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (index into `families`), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone (`type`: Turbo, Super, Ultra, Roulette, ReactorUp, ReactorDown, Reactor2Up, Reactor2Down, ReactorOriented, Reactor2Oriented, Bumper, Bumper2, CarSnow, CarRally, CarDesert, CarStadium, Water and the rest), `p` proxy id, `u` physics surface, `r` surface boxes |
 | `families` | Category names in `f` order: 0 Plastic, 1 Wood, 2 Stadium, 3 Ice, 4 Water, 5 Dirt, 6 Grass. The game's category enum value is `f + 9`. |
 | `materials`, `materialNames` | Default colour per material index |
 | `palettes[f]` | Colour slots per category: environments 1-3 and custom 32-40, as `{ id, colors: { material: hex } }` |

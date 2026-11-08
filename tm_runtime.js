@@ -312,13 +312,31 @@ self.TM = (() => {
   // All of this runs per physics frame (1 ms) around updateCarModel, so ghosts and verification see the same thing.
   // Turbos push hardest the moment you cross them and fade to nothing. accel is the average over `frames`.
   const TURBO = { Turbo: { accel: 28, frames: 1000 }, Super: { accel: 42, frames: 1400 }, Ultra: { accel: 52, frames: 1800 } };
-  // Reactor boosts: thrust along the car's own up axis (down boosts press it onto any surface), and air control.
+  // Reactor boosts, after TM2020's ReactorBoost(2)_Legacy and _Oriented: every wheel turns into a jet that thrusts only
+  // while the gas is held (let go and it stops, so drivers feather the gas to hold a height), with the same push the whole
+  // time, for `frames` from the plate whether it is used or not. A later reactor plate replaces it with a fresh timer.
+  // frame 'world' (legacy up and down): along world up (dir 1) or world down (dir -1) whatever the car's angle; 'car'
+  // (oriented): along the car's own up, so it follows walls and loops. thrust: units/s^2, as a multiple of the game's
+  // gravity G (tools/test/tmphys.mjs reactor: in free fall the car gains 15.5 units/s^2 at 2 units/s, less the faster it
+  // falls, as the game damps all velocity by about 0.17 per second: 16 at rest, not 9.81). level: 1 reactor, 2 super.
+  // TM2020's numbers sit in encrypted packs; 1.3 g and 2.2 g are this project's estimates: a reactor climbs gently, a
+  // super one clearly faster (the damping caps the climb near 28 and 110 units/s), and down boosts press the car
+  // down, or drop it, as hard.
+  const G = 16;
   const REACTOR = {
-    ReactorUp: { dir: 1, push: 6, air: 7, frames: 6000 },
-    ReactorDown: { dir: -1, push: 12, air: 7, frames: 6000 },
-    Reactor2Up: { dir: 1, push: 11, air: 10, frames: 6000 },
-    Reactor2Down: { dir: -1, push: 22, air: 10, frames: 6000 },
+    ReactorUp: { level: 1, frame: 'world', dir: 1, thrust: 1.3 * G, frames: 6000 },
+    ReactorDown: { level: 1, frame: 'world', dir: -1, thrust: 1.3 * G, frames: 6000 },
+    Reactor2Up: { level: 2, frame: 'world', dir: 1, thrust: 2.2 * G, frames: 6000 },
+    Reactor2Down: { level: 2, frame: 'world', dir: -1, thrust: 2.2 * G, frames: 6000 },
+    ReactorOriented: { level: 1, frame: 'car', dir: 1, thrust: 1.3 * G, frames: 6000 },
+    Reactor2Oriented: { level: 2, frame: 'car', dir: 1, thrust: 2.2 * G, frames: 6000 },
   };
+  // ReactorAirControl: with all four wheels off the ground while a reactor is on, steering yaws the car about its own up
+  // (towards yaw rad/s, pull: share of the gap per frame) and the car is held steady instead of tumbling: its pitch and
+  // roll spin is pulled (calm per frame) towards level x its tilt (rad/s per rad, towards world-flat) on a legacy boost,
+  // or towards none on an oriented one, which keeps its attitude. On the ground (TM2020's IsReactorGroundMode) the car
+  // drives as always and only the thrust is added.
+  const REACTOR_AIR = { yaw: 2, pull: 0.02, calm: 0.01, level: 3 };
   // Water, after Trackmania 2020. How deep the car is decides how much it counts (k, 0 to 1: deep water counts fully once
   // the car's underside is `depth` units under). Drag grows with speed, lin x v + quad x v^2 (units/s^2), so it bleeds
   // speed away without setting a top speed; the engine only pulls (1 - engine x k) as hard; lift holds the car up against
@@ -734,6 +752,8 @@ self.TM = (() => {
       c.bug = c.catchRamp = c.turnRamp = 0;
       c.justReset = true;
     }
+    // Test rigs only: holds the gas while a reactor is on and the car is under hover.y (by its height lead seconds on).
+    if (TEST && TEST.hover && c.reactorLeft > 0 && c.last) out.up = c.last.y + c.last.vy * TEST.hover.lead < TEST.hover.y;
     if (c.noEngine) out.up = false;
     if (c.noBrake) out.down = false;
     if (c.noSteer) out.left = out.right = false;
@@ -1011,6 +1031,8 @@ self.TM = (() => {
         case 'ReactorDown':
         case 'Reactor2Up':
         case 'Reactor2Down':
+        case 'ReactorOriented':
+        case 'Reactor2Oriented':
           c.reactor = REACTOR[q.type];
           c.reactorLeft = c.reactor.frames;
           break;
@@ -1574,32 +1596,49 @@ self.TM = (() => {
       }
     }
 
-    // Reactor boost: thrust along the car's own up axis for the whole effect; in the air the gas pushes along the nose
-    // and steering turns the car about its up axis.
+    // Reactor boost (REACTOR): thrust only while the gas is held, and air control (REACTOR_AIR) off the ground.
     if (c.reactorLeft > 0) {
       c.reactorLeft--;
-      const R = c.reactor,
-        ux = 2 * (qx * qy - qw * qz),
-        uy = 1 - 2 * (qx * qx + qz * qz),
-        uz = 2 * (qy * qz + qw * qx),
-        k = R.dir * R.push * 0.001;
-      F[v] += ux * k;
-      F[v + 1] += uy * k;
-      F[v + 2] += uz * k;
-      if (contacts == 0 && c.ctl) {
-        if (c.gas) {
-          const t = R.air * 0.001;
-          F[v] += fx * t;
-          F[v + 1] += fy * t;
-          F[v + 2] += fz * t;
+      const R = c.reactor;
+      if (c.gas) {
+        const k = R.dir * R.thrust * 0.001;
+        if (R.frame == 'car') {
+          F[v] += upx * k;
+          F[v + 1] += upy * k;
+          F[v + 2] += upz * k;
+        } else F[v + 1] += k;
+      }
+      if (contacts == 0) {
+        const A = REACTOR_AIR,
+          w = av,
+          yaw = F[w] * upx + F[w + 1] * upy + F[w + 2] * upz,
+          dy = (steer * A.yaw - yaw) * A.pull;
+        // Pitch and roll spin: what is left of the spin once its part about the car's up is taken out.
+        let px = F[w] - upx * yaw,
+          py = F[w + 1] - upy * yaw,
+          pz = F[w + 2] - upz * yaw,
+          tx = 0,
+          ty = 0,
+          tz = 0;
+        if (R.frame != 'car') {
+          // Towards level: about car up x world up, as fast as level x the tilt.
+          const ax = -upz,
+            az = upx,
+            n = Math.hypot(ax, az);
+          if (n > 1e-6) {
+            const a = (Math.atan2(n, upy) * A.level) / n;
+            tx = ax * a;
+            tz = az * a;
+          }
+          // only the part square to the car's up (turning about up is the steering's)
+          const k2 = tx * upx + ty * upy + tz * upz;
+          tx -= upx * k2;
+          ty -= upy * k2;
+          tz -= upz * k2;
         }
-        const w = (body + 328) >> 2,
-          want = ((c.ctl.left ? 1 : 0) - (c.ctl.right ? 1 : 0)) * 2.4,
-          now = F[w] * ux + F[w + 1] * uy + F[w + 2] * uz,
-          d = (want - now) * 0.02;
-        F[w] += ux * d;
-        F[w + 1] += uy * d;
-        F[w + 2] += uz * d;
+        F[w] += upx * dy + (tx - px) * A.calm;
+        F[w + 1] += upy * dy + (ty - py) * A.calm;
+        F[w + 2] += upz * dy + (tz - pz) * A.calm;
       }
     }
 
@@ -1689,7 +1728,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, gas: c.gas, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 
@@ -1833,6 +1872,8 @@ self.TM = (() => {
     // new car (start over) is the Stadium car.
     VEHICLES,
     vehicleGates: GATES,
+    // The reactor boosts (the page's HUD and wheel jets work out the same effect from the car's states).
+    REACTOR,
     WATER,
     ICING,
     TYRES,

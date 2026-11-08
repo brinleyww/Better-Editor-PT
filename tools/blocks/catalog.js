@@ -1219,6 +1219,9 @@ const FX = [
   { key: 'ReactorDown', label: 'Reactor boost, down', mat: 'FxReactor', glyph: (m, y) => arrowGlyph(m, 'FxReactorB', y, -1) },
   { key: 'Reactor2Up', label: 'Super reactor boost', mat: 'FxReactor2', glyph: (m, y) => arrowGlyph(m, 'FxReactor2B', y, 1) },
   { key: 'Reactor2Down', label: 'Super reactor boost, down', mat: 'FxReactor2', glyph: (m, y) => arrowGlyph(m, 'FxReactor2B', y, -1) },
+  // Oriented reactor boosts thrust along the car's own up (TM2020's ReactorBoost_Oriented): an arrow standing on a bar.
+  { key: 'ReactorOriented', label: 'Reactor boost, oriented', mat: 'FxReactor', glyph: (m, y) => orientedGlyph(m, 'FxReactorB', y) },
+  { key: 'Reactor2Oriented', label: 'Super reactor boost, oriented', mat: 'FxReactor2', glyph: (m, y) => orientedGlyph(m, 'FxReactor2B', y) },
   { key: 'Reset', label: 'Reset effects', mat: 'FxReset', glyph: (m, y) => ringGlyph(m, 'FxResetB', y) },
   { key: 'NoEngine', label: 'No engine', mat: 'FxNoEngine', glyph: (m, y) => crossGlyph(m, 'FxNoEngineB', y) },
   { key: 'NoBrake', label: 'No brakes', mat: 'FxNoBrake', glyph: (m, y) => barGlyph(m, 'FxNoBrakeB', y) },
@@ -1328,6 +1331,12 @@ function arrowGlyph(m, mat, y, dir) {
     base = -1 * dir;
   m.triFacing(mat, [0, y, tip], [-3.2, y, base], [3.2, y, base], [0, 1, 0]);
   m.quadFacing(mat, [-1.2, y, base], [1.2, y, base], [1.2, y, base + 5.5 * dir], [-1.2, y, base + 5.5 * dir], [0, 1, 0]);
+}
+// The normal of a surface seen from the driver: an arrow pointing ahead from the middle of a bar across the plate.
+function orientedGlyph(m, mat, y) {
+  m.triFacing(mat, [0, y, -5], [-3.2, y, -1.6], [3.2, y, -1.6], [0, 1, 0]);
+  m.quadFacing(mat, [-1.1, y, -1.6], [1.1, y, -1.6], [1.1, y, 2.6], [-1.1, y, 2.6], [0, 1, 0]);
+  m.quadFacing(mat, [-4.4, y, 2.6], [4.4, y, 2.6], [4.4, y, 4.4], [-4.4, y, 4.4], [0, 1, 0]);
 }
 function rouletteGlyph(m, y) {
   const mats = ['FxTurboB', 'FxSuperB', 'FxReactor2B'];

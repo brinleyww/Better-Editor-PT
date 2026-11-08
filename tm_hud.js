@@ -10,10 +10,10 @@
 self.TM.hud = (() => {
   const TM = self.TM;
   const W = TM.water;
-  // The runtime's own tables where it exports them (tm_runtime.js), so the page and the physics agree. TURBO and REACTOR
-  // are not exported (yet): these copies are its effect lengths in physics frames (1 ms).
+  // The runtime's own tables where it exports them (tm_runtime.js), so the page and the physics agree. TURBO is not
+  // exported (yet), and an older runtime has no REACTOR: these copies are the effect lengths in physics frames (1 ms).
   const TURBO = TM.TURBO ?? { Turbo: { frames: 1000 }, Super: { frames: 1400 }, Ultra: { frames: 1800 } };
-  const REACTOR = TM.REACTOR ?? { ReactorUp: { frames: 6000 }, ReactorDown: { frames: 6000 }, Reactor2Up: { frames: 6000 }, Reactor2Down: { frames: 6000 } };
+  const REACTOR = TM.REACTOR ?? { ReactorUp: { frames: 6000 }, ReactorDown: { frames: 6000 }, Reactor2Up: { frames: 6000 }, Reactor2Down: { frames: 6000 }, ReactorOriented: { frames: 6000 }, Reactor2Oriented: { frames: 6000 } };
   const GATES = TM.vehicleGates ?? { CarSnow: 'Snow', CarRally: 'Rally', CarDesert: 'Desert', CarStadium: 'Stadium' };
   const VEHICLES = TM.VEHICLES ?? {};
   const SURFACES = TM.surfaces ?? [];
@@ -49,6 +49,8 @@ self.TM.hud = (() => {
     ReactorDown: 'REACTOR BOOST DOWN',
     Reactor2Up: 'SUPER REACTOR BOOST',
     Reactor2Down: 'SUPER REACTOR BOOST DOWN',
+    ReactorOriented: 'REACTOR BOOST ORIENTED',
+    Reactor2Oriented: 'SUPER REACTOR BOOST ORIENTED',
     Bumper: 'BUMPER',
     Bumper2: 'SUPER BUMPER',
     Snow: 'SNOW CAR',
@@ -82,6 +84,7 @@ self.TM.hud = (() => {
       boostLeft: 0,
       reactor: null,
       reactorLeft: 0,
+      thrust: false, // the reactor is pushing (the gas is held)
       slow: false,
       noEngine: false,
       noBrake: false,
@@ -190,6 +193,8 @@ self.TM.hud = (() => {
         case 'ReactorDown':
         case 'Reactor2Up':
         case 'Reactor2Down':
+        case 'ReactorOriented':
+        case 'Reactor2Oriented':
           c.reactor = q.type;
           c.reactorLeft = REACTOR[q.type].frames;
           break;
@@ -232,6 +237,8 @@ self.TM.hud = (() => {
     tyres(c, s, water);
     if (c.boostLeft > 0) c.boostLeft--;
     if (c.reactorLeft > 0) c.reactorLeft--;
+    // The reactor only pushes while the gas is held (the runtime's c.gas, from the controls the car got).
+    c.thrust = c.reactorLeft > 0 && !!s.controls?.up && !s.controls?.down;
     c.x = p.x;
     c.y = p.y;
     c.z = p.z;
@@ -324,6 +331,7 @@ self.TM.hud = (() => {
 .be-hud-chip.good { --be-hud-c: #5f5; }
 .be-hud-chip.bad { --be-hud-c: #f55; }
 .be-hud-chip.info { --be-hud-c: var(--text-color); }
+.be-hud-chip.idle > p > i { opacity: 0.35; }
 @keyframes be-hud-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 0.9; transform: none; } }
 .be-hud-wheels { position: absolute; right: var(--safe-area-horizontal); bottom: 100px; display: none; grid-template-columns: auto auto; gap: 4px; margin: 0; padding: 8px 10px; background-color: var(--surface-color); opacity: 0.9; clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%); pointer-events: none; }
 .be-hud-wheels.on { display: grid; }
@@ -384,7 +392,7 @@ self.TM.hud = (() => {
         p = el('p', '', chip),
         text = document.createTextNode('');
       p.appendChild(text);
-      chips.push({ el: chip, text, bar: el('i', '', p), label: null, step: -1 });
+      chips.push({ el: chip, text, bar: el('i', '', p), label: null, step: -1, idle: false });
     }
     panel = el('div', 'be-hud-wheels');
     for (const w of WHEEL_ORDER) {
@@ -428,6 +436,9 @@ self.TM.hud = (() => {
     const on = c && !c.done;
     setChip(BOOST, on && c.boostLeft > 0 ? LABEL[c.boost] : null, on && c.boost ? c.boostLeft / TURBO[c.boost].frames : 0);
     setChip(REACT, on && c.reactorLeft > 0 ? LABEL[c.reactor] : null, on && c.reactor ? c.reactorLeft / REACTOR[c.reactor].frames : 0);
+    // Off the gas the reactor's bar dims: the boost is still on, but not pushing.
+    const idle = !!(on && c.reactorLeft > 0 && !c.thrust);
+    if (idle != chips[REACT].idle) chips[REACT].el.classList.toggle('idle', (chips[REACT].idle = idle));
     setChip(SLOW, on && c.slow ? FIXED[SLOW] : null, -1);
     setChip(CRUISE, on && c.cruise ? FIXED[CRUISE] : null, -1);
     setChip(NO_ENGINE, on && c.noEngine ? FIXED[NO_ENGINE] : null, -1);
@@ -638,6 +649,7 @@ self.TM.hud = (() => {
         vehicle: c.vehicle,
         boost: c.boostLeft > 0 ? c.boost : null,
         reactor: c.reactorLeft > 0 ? c.reactor : null,
+        reactorThrust: c.thrust,
         slow: c.slow,
         noEngine: c.noEngine,
         noBrake: c.noBrake,
