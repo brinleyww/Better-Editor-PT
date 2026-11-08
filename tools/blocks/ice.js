@@ -1,6 +1,6 @@
 // Ice: bobsleigh channels and flat ice platforms. Platform ice is physics surface 3, bobsleigh ice is 4 (tm_runtime.js).
 const { Mesh } = require('./geom');
-const { DECK, TILT, DEG, smooth, platProfile, roadPart, gateArch, paintBand, arcStepFor, FX, VEHICLES, vehicleArch, loopSet, stockGate, hoopGate } = require('./catalog');
+const { DECK, TILT, DEG, smooth, platProfile, roadPart, gateArch, paintBand, arcStepFor, FX, VEHICLES, vehicleArch, loopSet, stockGate, hoopGate, putFinishBoxes } = require('./catalog');
 
 const ICE = {
   surface: 'Ice',
@@ -246,7 +246,8 @@ function buildIce() {
       const det = kind == 'Start' ? { startOffset: [0, 0.35, 1.35] } : { detector: { type: kind == 'Checkpoint' ? 0 : 1, center: [0, 2.2, 0], size: [18.25, 3.8, kind == 'Finish' ? 2 : 1] } };
       plat(kind + 'Plat', label + ', ice platform', TG, label, m, det);
     }
-    for (let n = 1; n <= 4; n++) plat('FinishHoopPlat' + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ice platform', TG, 'Finish hoop', hoopGate(st, 'Plat', n), { detector: { type: 1, center: [0, 2.2, 0], size: [18.25, 3.8, 2] } });
+    for (let n = 1; n <= 4; n++) plat('FinishHoopPlat' + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ice platform', TG, 'Finish hoop', hoopGate(st, 'Plat', n), { detector: { type: 1, center: [0, 2.2, 0], size: [18.25, 3.8, 2] }, hidden: true });
+    putFinishBoxes(plat, TG);
     for (const fx of FX) {
       const m = roadPart(st, platProfile(st, (ring, isLine) => (isLine ? st.line(ring) : fx.mat)), [{ line: 20 }], { step: 5 });
       fx.glyph(m, DECK + 0.04);

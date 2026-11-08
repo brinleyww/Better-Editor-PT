@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,321 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,277 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -27,12 +27,12 @@ Seven new categories sit near the top of the editor's block column, under the er
 
 | Category | Tabs |
 |---|---|
-| Plastic, Wood (541 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
-| Stadium (212) | Penalty grass, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
-| Ice (151) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Vehicle gates |
+| Plastic, Wood (522 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Stadium (200) | Penalty grass, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
+| Ice (143) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Vehicle gates |
 | Water (9) | Pools, Shallow water |
-| Dirt (581) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
-| Grass (334) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Dirt (559) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Grass (322) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
 
 The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates. Every kit has vehicle gates. The bump road is Trackmania's sausage road: a rounded crown with the stock road's kerbs.
 
@@ -97,11 +97,13 @@ States in between count in proportion, and states together multiply, but never b
 | Fragile | A hard hit sends you back to the last checkpoint. |
 | Reset | Clears every effect. |
 
-The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. They are among the 2,401 parts in the table (80 of them hidden).
+The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. The round finish hoops are hidden the same way. All of these are among the 2,413 parts in the table (136 of them hidden).
 
 Trackmania 2020 keeps its car and surface tunings in encrypted packs, so every number here is this project's own estimate, set relative to how Trackmania's Stadium car drives on its Tech road (PolyTrack's stock car on the stock road) and measured with `tools/test/tmphys.mjs`. A Trackmania install was read only for its catalogue: the surface materials, the gameplay effect ids, the per-wheel states the car keeps (wetness, icing) and the editor's block styles and categories.
 
 **Box gates** (Stadium, Box gates) come one per block, with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
+
+**Finish boxes** (Gates in Plastic, Wood, Dirt and Grass, Box gates in Stadium, Ice gates in Ice) are see-through red blocks of finish trigger, one block wide and one block tall (or half as tall), as deep as the stock finish line. Stand one on any road or platform, beside another or on top of one: boxes that touch join into one bigger finish, drawn as one red sheet with an outline round the outside, and their triggers meet with no gap. The car drives straight through them. A box leaves its bottom layer free, so it goes onto a road or platform without replacing it. They replace the round finish hoops, which are no longer in the browser; tracks that use hoops still load and finish as before.
 
 ### Between building and testing
 
@@ -127,7 +129,7 @@ This section is for anyone running a modified PolyTrack (a fork, a site or a pri
 | `models/tm_blocks.bin` | All block geometry. Generated; must match `tm_parts.js` (its size is checked). |
 | `tm_runtime.js` | Loads geometry, reads and writes BE1 codes, feeds physics, runs surfaces and effects. Defines `self.TM`. |
 | `tm_menu.js` | The block browser in the editor. Optional if you build your own menu. |
-| `tm_water.js` | Page only: water's see-through material, splashes and spray, and the per-car hooks (`TM.water.track` / `update` / `dispose`). |
+| `tm_water.js` | Page only: the see-through materials for water and finish boxes (touching blocks drawn as one), splashes and spray, and the per-car hooks (`TM.water.track` / `update` / `dispose`). |
 | `tm_vehicles.js` | Page only, after `tm_water.js`: the Snow, Rally and Desert car looks and the wet, icy and muddy tyres. It rides on `tm_water.js`'s car hooks and works the vehicle and tyres out from the car's state (with the runtime's own `TYRES`), so nothing comes back from the worker. |
 
 The page loads them before the game bundles:
@@ -163,7 +165,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | TrackData writer: two-byte ids and the catalogue version when a track has an id above 255; `~BE1` save-string prefix; `PolyTrackBE1` export prefix | The format. Tracks with only stock parts still write the stock format byte for byte. |
 | `fromSaveString` and `fromExportString` try `TM.fromSave` / `TM.fromExport` first | Reading the format. See the `tmCtx` block in `patch.js` for the context object. |
 | Track ids of tracks with new blocks go into `TM.extTrackIds`; the leaderboard upload returns early for them | Never send unverifiable runs to Kodub. |
-| Full scene rebuild only visits parts that are placed | 2,401 more parts would make every rebuild slow. |
+| Full scene rebuild only visits parts that are placed | 2,413 more parts would make every rebuild slow. |
 | The car's visuals call `TM.water.track`, `TM.water.update` and `TM.water.dispose` | Water splashes, vehicle looks and tyres (`tm_water.js`, `tm_vehicles.js`). |
 
 **Editor bundle (`112.bundle.js`)**
@@ -192,7 +194,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | `isTM(id)`, `addEnum(enum)` | New-part test (`id >= 1000`); adds names and ids to an enum object. |
 | `palette(part)`, `ranges(part)` | Colour slots and tile ranges for a part definition. |
 | `load()` | Page side: fetches `models/tm_blocks.bin` once, returns a promise. |
-| `renderArrays(id, slotColors, toRgb)` | Non-indexed positions and colours for one colour slot. `toRgb(hex)` returns linear `[r,g,b]`. Pass THREE.Color values so they match stock vertex colours. |
+| `renderArrays(id, slotColors, toRgb)` | Non-indexed positions and colours for one colour slot. `toRgb(hex)` returns linear `[r,g,b]`. Pass THREE.Color values so they match stock vertex colours. For water and finish boxes it also returns `groups` (`[first vertex, count, material]`): material 1 is drawn with `TM.water.material(three)`, asked for straight after, which gives the water or the finish box material (`renderArrays.seeThrough` says which). |
 | `prepareCar(carId, mountainVertices, mountainOffset, track, rotatedTiles)` | Worker side. Returns `{ vertices, records }`: the mountain mesh with new-block collision appended, and how many part records the physics will get. |
 | `physicsId(id)` | The one-byte id to write into the physics record, or `null` to leave the part out. |
 | `proxyConfigs()` | Extra part configurations for the physics Init message. |
@@ -225,11 +227,11 @@ These offsets are for the 0.6.2 engine, whose wasm is the same file as 0.6.0. A 
 
 | Field | Meaning |
 |---|---|
-| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (index into `families`), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone (`type`: Turbo, Super, Ultra, Roulette, ReactorUp, ReactorDown, Reactor2Up, Reactor2Down, ReactorOriented, Reactor2Oriented, Bumper, Bumper2, CarSnow, CarRally, CarDesert, CarStadium, Water and the rest), `p` proxy id, `u` physics surface, `r` surface boxes, `h` hidden: still loads and works on tracks, but the editor's menu no longer offers it (the turbo roulette and the old reactor down and oriented plates) |
+| `parts[]` | `n` name, `i` id, `l` label, `t` tab, `s` section, `f` category (index into `families`), `b` bounds, `c` tile ranges `[[min],[max]]`, `m` render meshes, `ph` collision mesh, `d` trigger box, `o` start offset, `x` effect zone (`type`: Turbo, Super, Ultra, Roulette, ReactorUp, ReactorDown, Reactor2Up, Reactor2Down, ReactorOriented, Reactor2Oriented, Bumper, Bumper2, CarSnow, CarRally, CarDesert, CarStadium, Water and the rest), `p` proxy id, `u` physics surface, `r` surface boxes, `h` hidden: still loads and works on tracks, but the editor's menu no longer offers it (the turbo roulette, the old reactor down and oriented plates and the round finish hoops) |
 | `families` | Category names in `f` order: 0 Plastic, 1 Wood, 2 Stadium, 3 Ice, 4 Water, 5 Dirt, 6 Grass. The game's category enum value is `f + 9`. |
 | `materials`, `materialNames` | Default colour per material index |
 | `palettes[f]` | Colour slots per category: environments 1-3 and custom 32-40, as `{ id, colors: { material: hex } }` |
-| `noPhysics` | Material indices that are drawn but never collide (water) |
+| `noPhysics` | Material indices that are drawn but never collide (water, finish boxes) |
 | `rotations[axis][rotation]` | 3x3 integer matrices, row-major |
 | `proxies` | Proxy ids with their trigger box and start offset |
 | `binBytes`, `hash`, `version`, `tabs` | Integrity, catalogue version, menu tab order |

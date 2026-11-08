@@ -66,8 +66,10 @@ self.TM = (() => {
   // Render geometry for one colour slot: non-indexed positions and a matching colour array.
   // `toRgb(hex)` must return linear [r,g,b] (the page passes THREE.Color so it matches stock vertex colours).
   // Water is drawn last, surface before sides, and `groups` ([first vertex, count, material 1]) marks it for the
-  // see-through water material; it is null for parts without water.
-  const WATER_ORDER = { Water: 1, WaterSide: 2 };
+  // see-through water material; it is null for parts without water. Finish boxes use the same group (material 1) for
+  // their own see-through material: renderArrays.seeThrough says which one the last call's group is ('water' or
+  // 'finish'), and tm_water.js's material() reads it, since every caller asks for that material straight after.
+  const WATER_ORDER = { Water: 1, WaterSide: 2, FinishBox: 3 };
   function renderArrays(id, slotColors, toRgb) {
     const p = byId.get(id);
     let tris = 0;
@@ -98,6 +100,7 @@ self.TM = (() => {
         col[o + 2] = rgb[2];
       }
     }
+    renderArrays.seeThrough = !groups.length ? null : groups[0][3] == 3 ? 'finish' : 'water';
     if (!groups.length) return { pos, col, groups: null };
     groups.unshift([0, groups[0][0], 0]);
     return { pos, col, groups: groups.map((g) => g.slice(0, 3)) };

@@ -102,9 +102,13 @@ self.TM.water = (() => {
     s.n = Math.min(data.length / 8, SEAM_MAX);
     s.tex = null;
     if (!s.n) return;
-    // A float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
+    s.tex = floatTexture(data.slice(0, s.n * 8), s.n * 2);
+  }
+
+  // A one-row RGBA float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
+  function floatTexture(data, width) {
     const t = new three3.gPd();
-    t.image = { data: new Float32Array(data.slice(0, s.n * 8)), width: s.n * 2, height: 1 };
+    t.image = { data: new Float32Array(data), width, height: 1 };
     t.isDataTexture = true;
     t.format = 1023; // RGBAFormat
     t.type = 1015; // FloatType
@@ -113,7 +117,7 @@ self.TM.water = (() => {
     t.flipY = false;
     t.unpackAlignment = 1;
     t.needsUpdate = true;
-    s.tex = t;
+    return t;
   }
 
   // Runs before each water draw. renderer.info.render.frame counts render() calls, so a new value means the scene's last
@@ -191,6 +195,170 @@ self.TM.water = (() => {
     };
     // Its own program, so it never shares a compiled shader with the plain block material.
     m.customProgramCacheKey = () => 'be-water';
+    return m;
+  }
+
+  // ---- finish boxes ------------------------------------------------------------------------------------------------
+  // A finish box (catalog.js finishBox) is a see-through red block of finish trigger. Boxes that touch are drawn as one:
+  // the water seams' idea with whole boxes in 3D. A face is dropped where a point just outside it is inside another
+  // box, and the bright outline runs only along edges with no box beyond them, so a wall of boxes reads as one red
+  // sheet with one outline round it. A block's box stays axis-aligned however it is turned (rotations are exact), so
+  // each is kept as its world min and max.
+  let finishMat = null;
+  const finTex = { value: null },
+    finCount = { value: 0 };
+  const finScenes = new WeakMap(); // scene -> what it drew last frame and the boxes built from that
+  const finLocal = new WeakMap(); // geometry -> [min, max] of its finish box in the part frame, or null
+
+  function finBoxOf(geo, mats) {
+    if (finLocal.has(geo)) return finLocal.get(geo);
+    const P = geo.attributes.position.array,
+      I = geo.index ? geo.index.array : null,
+      lo = [Infinity, Infinity, Infinity],
+      hi = [-Infinity, -Infinity, -Infinity];
+    for (const g of geo.groups) {
+      if (mats[g.materialIndex] !== finishMat) continue;
+      for (let k = g.start; k < g.start + g.count; k++) {
+        const v = (I ? I[k] : k) * 3;
+        for (let a = 0; a < 3; a++) {
+          lo[a] = Math.min(lo[a], P[v + a]);
+          hi[a] = Math.max(hi[a], P[v + a]);
+        }
+      }
+    }
+    const out = lo[0] <= hi[0] ? [lo, hi] : null;
+    finLocal.set(geo, out);
+    return out;
+  }
+
+  // World boxes of everything drawn, two texels each: (minX, minY, minZ, 0), (maxX, maxY, maxZ, 0).
+  function buildFinish(s) {
+    const data = [],
+      W = new Float32Array(16);
+    for (const o of s.drawn) {
+      const local = Array.isArray(o.material) ? finBoxOf(o.geometry, o.material) : null;
+      if (!local) continue;
+      const w = o.matrixWorld.elements,
+        n = o.isInstancedMesh ? o.count : 1,
+        c = [0, 1, 2].map((a) => (local[0][a] + local[1][a]) / 2),
+        e = [0, 1, 2].map((a) => (local[1][a] - local[0][a]) / 2);
+      for (let i = 0; i < n && data.length < SEAM_MAX * 8; i++) {
+        const m = o.isInstancedMesh ? o.instanceMatrix.array.subarray(i * 16, i * 16 + 16) : null;
+        for (let q = 0; q < 4; q++)
+          for (let r = 0; r < 4; r++)
+            W[q * 4 + r] = m ? w[r] * m[q * 4] + w[4 + r] * m[q * 4 + 1] + w[8 + r] * m[q * 4 + 2] + w[12 + r] * m[q * 4 + 3] : w[q * 4 + r];
+        const lo = [],
+          hi = [];
+        for (let r = 0; r < 3; r++) {
+          const mid = W[r] * c[0] + W[4 + r] * c[1] + W[8 + r] * c[2] + W[12 + r],
+            half = Math.abs(W[r]) * e[0] + Math.abs(W[4 + r]) * e[1] + Math.abs(W[8 + r]) * e[2];
+          lo.push(mid - half);
+          hi.push(mid + half);
+        }
+        data.push(lo[0], lo[1], lo[2], 0, hi[0], hi[1], hi[2], 0);
+      }
+    }
+    if (s.tex) s.tex.dispose();
+    s.n = data.length / 8;
+    s.tex = s.n ? floatTexture(data, s.n * 2) : null;
+  }
+
+  // Runs before each finish box draw, the way seams() does for water.
+  function finishSeams(renderer, scene, camera, geometry, object) {
+    let s = finScenes.get(scene);
+    if (!s) finScenes.set(scene, (s = { frame: -1, drawn: [], key: '', tex: null, n: 0 }));
+    const f = renderer.info.render.frame;
+    if (s.frame != f) {
+      s.frame = f;
+      const key = s.drawn.map(seamKey).join('|');
+      if (key != s.key) {
+        s.key = key;
+        buildFinish(s);
+      }
+      s.drawn = [];
+    }
+    if (!s.drawn.includes(object)) s.drawn.push(object);
+    finTex.value = s.tex;
+    finCount.value = s.n;
+  }
+
+  // The fragment's own box is the one whose surface it is nearest (it may sit a little off it at a polygon's edge, where
+  // the position is extrapolated); the face's outward normal is the axis it is nearest a side on. Until the boxes are
+  // known (a box's first frame) the face draws plain.
+  const FINISH = `
+    {
+      vec3 beLo = vec3(0.0), beHi = vec3(0.0);
+      float beBest = 1e9;
+      for (int i = 0; i < beFinCount; i++) {
+        vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+        vec3 o = max(max(lo - vBeWorld, vBeWorld - hi), 0.0), d = min(vBeWorld - lo, hi - vBeWorld);
+        float s = max(o.x, max(o.y, o.z)) > 0.0 ? length(o) : min(d.x, min(d.y, d.z));
+        if (s < beBest) {
+          beBest = s;
+          beLo = lo;
+          beHi = hi;
+        }
+      }
+      float beLine = 0.0;
+      if (beBest < 0.75) {
+        vec3 beP = clamp(vBeWorld, beLo, beHi);
+        vec3 beD0 = beP - beLo, beD1 = beHi - beP, beD = min(beD0, beD1);
+        // n: the face's outward normal.
+        vec3 beN = beD.x <= beD.y && beD.x <= beD.z ? vec3(1.0, 0.0, 0.0) : beD.y <= beD.z ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        if (dot(beD0, beN) < dot(beD1, beN)) beN = -beN;
+        // Another box right outside this face: the face is inside the joined shape.
+        if (beFinInside(beP + beN * 0.3)) discard;
+        vec3 beIn = beP - beN * 0.3; // a point inside the box, under this face
+        for (int a = 0; a < 3; a++) {
+          if (abs(beN[a]) > 0.5) continue;
+          float beW = max(0.14, 1.5 * fwidth(vBeWorld[a]));
+          for (int sd = 0; sd < 2; sd++) {
+            float dist = sd == 0 ? beP[a] - beLo[a] : beHi[a] - beP[a];
+            if (dist > beW) continue;
+            // An edge with another box beyond it is a join, not an outer edge.
+            vec3 q = beIn;
+            q[a] = sd == 0 ? beLo[a] - 0.3 : beHi[a] + 0.3;
+            if (!beFinInside(q)) beLine = max(beLine, 1.0 - smoothstep(beW * 0.5, beW, dist));
+          }
+        }
+      }
+      diffuseColor.rgb = mix(diffuseColor.rgb * 0.85, min(diffuseColor.rgb * 1.8 + 0.12, vec3(1.0)), beLine);
+      diffuseColor.a = mix(0.2, 0.7, beLine);
+    }
+  `;
+
+  // Unlit, so it reads the same from every side; no depth writes, so faces behind it and other boxes show through and
+  // the order they draw in does not matter; pushed back a little, so a face flush with a solid block loses to it.
+  function makeFinish(three) {
+    const m = new three.V9B({ vertexColors: true, transparent: true, depthWrite: false, side: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    three3 = three;
+    m.onBeforeRender = finishSeams;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.beFin = finTex;
+      sh.uniforms.beFinCount = finCount;
+      sh.vertexShader = 'centroid varying vec3 vBeWorld;\n' + sh.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 beW = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          beW = instanceMatrix * beW;
+        #endif
+        vBeWorld = (modelMatrix * beW).xyz;`,
+      );
+      sh.fragmentShader =
+        `uniform highp sampler2D beFin;
+        uniform int beFinCount;
+        centroid varying vec3 vBeWorld;
+        bool beFinInside(vec3 q) {
+          for (int i = 0; i < beFinCount; i++) {
+            vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+            if (all(greaterThan(q, lo - 0.001)) && all(lessThan(q, hi + 0.001))) return true;
+          }
+          return false;
+        }
+        ` + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + FINISH);
+    };
+    m.customProgramCacheKey = () => 'be-finish';
     return m;
   }
 
@@ -378,7 +546,9 @@ self.TM.water = (() => {
   }
 
   return {
+    // The see-through material for group 1 of the part TM.renderArrays just built: water, or a finish box's.
     material(three) {
+      if (self.TM.renderArrays?.seeThrough == 'finish') return (finishMat ??= makeFinish(three));
       if (!material) material = makeMaterial(three);
       if (!ticking && typeof requestAnimationFrame == 'function') {
         ticking = true;

@@ -303,6 +303,27 @@ function hoopGate(st, key, n) {
   return m;
 }
 
+// Finish boxes replace the hoops in the menu (the hoops stay, hidden, for old tracks). A box is a see-through red block
+// of finish trigger, one block wide, standing on the part's floor, as deep as the stock finish line's trigger (2), so
+// it can stand on any road or platform. Boxes placed side by side or stacked meet with no gap and are drawn as one
+// (tm_water.js drops the faces and outline where they touch). No collision: the car drives through.
+// It claims no tiles in its bottom layer, so it goes on a road or platform without replacing it; it still claims the
+// layers above, so boxes cannot be placed into each other.
+function finishBox(h) {
+  const m = new Mesh(),
+    tiles = new Mesh();
+  m.box('FinishBox', [-10, 0, -1], [10, h, 1]);
+  tiles.box('FinishBox', [-10, 5, -1], [10, h, 1]);
+  return { mesh: m, extra: { detector: { type: 1, center: [0, h / 2, 0], size: [20, h, 2] }, tileMesh: tiles, u: null } };
+}
+// put(name, label, tab, sub, mesh, extra) for each finish box: a full block (20 high) and a half one (10 high).
+function putFinishBoxes(put, tab) {
+  for (const [key, label, h] of [['', 'Finish box', 20], ['Half', 'Finish box, half height', 10]]) {
+    const { mesh, extra } = finishBox(h);
+    put('FinishBox' + key, label, tab, 'Finish box', mesh, extra);
+  }
+}
+
 function railPoly(st, side, top) {
   // side -1 left, +1 right. Stock outline, but with its own top so it can fade to nothing in a connector.
   const a = HALF_ROAD,
@@ -1100,9 +1121,11 @@ function buildSurface(surface) {
     }
     // A checkpoint on a wall, climbing straight up: the stock platform gate stood on its end.
     put('CheckpointWall', 'Checkpoint on a wall', T, 'Checkpoint on wall', stockGate(st, 'Checkpoint', 'Wall'), { detector: { type: 0, center: [0, 10, -7.6], size: [18.25, 1, 3.8] } });
-    // Finish hoops, 1 to 4 blocks across, on each road width. The trigger is the stock finish line's.
+    // Finish hoops, 1 to 4 blocks across, on each road width. The trigger is the stock finish line's. Hidden from the
+    // menu (finish boxes replace them); old tracks still load and finish with them.
     for (const W of widths.filter((W) => W.key != 'Narrow'))
-      for (let n = 1; n <= 4; n++) put('FinishHoop' + W.key + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ' + W.fam, T, 'Finish hoop', hoopGate(st, W.gate, n), detector('Finish', W.det));
+      for (let n = 1; n <= 4; n++) put('FinishHoop' + W.key + n, 'Finish hoop, ' + n + ' block' + (n > 1 ? 's' : '') + ' wide, ' + W.fam, T, 'Finish hoop', hoopGate(st, W.gate, n), { ...detector('Finish', W.det), hidden: true });
+    putFinishBoxes(put, T);
   }
 
   // ---- gameplay plates: effects run in the physics worker (see tm_runtime.js) -------------------------------------
@@ -1722,4 +1745,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { hoopRing, hoopGate, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, DECAL, RAIL_TOP, TILT, DEG, smooth, hermite, every, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, DIRT_VERGE, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, VEHICLES, vehicleArch, chevrons, loopSet, stockGate };
+module.exports = { hoopRing, hoopGate, putFinishBoxes, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, DECAL, RAIL_TOP, TILT, DEG, smooth, hermite, every, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, DIRT_VERGE, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, VEHICLES, vehicleArch, chevrons, loopSet, stockGate };
