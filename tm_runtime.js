@@ -459,11 +459,12 @@ self.TM = (() => {
     // turns only as tightly as its front wheels point and its tyres never reach their limit on flat ground (tmphys.mjs:
     // wood at grip 1, 1.8 and 5 turns the same). So on wood the turn the steering asks for is made stronger: `turn` lists
     // [speed (units/s), extra share of that turn], in between straight lines, past the last one its value. Measured as
-    // sideways pull at full lock against the stock car at the same speed (tmphys.mjs steer): x3.2 to x3.3 at every speed
-    // from 40 km/h to 480 (x2.6 at 30). The bump round 12 units/s is there because the same share turns less at low
-    // speed (a 250 ms tap at 300 km/h turns the car 30 degrees, stock 9).
+    // sideways pull at full lock against the stock car at the same speed (tmphys.mjs steer): x2.45 to x2.5 from 30 km/h
+    // to 120, gliding to x2.4 at 160 and x2.35 from 200 to 480. The bump round 8 to 11 units/s is there because the same
+    // share turns less at low speed (the tyres slide more). At speed the extra turn builds up while the steering is held
+    // (TURN_BUILD), so a 250 ms tap at 300 km/h turns the car about 16 degrees (stock 9) and full lock still gets x2.35.
     // loadCap 2: the extra tyre grip holds up to twice the resting load (a hard corner, a compression), not a loop.
-    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [6, 2.2], [9, 4.3], [12, 5.34], [14, 4.45], [16, 3.6], [18.5, 3.2], [21.5, 2.9], [25, 2.75], [33, 2.6], [44, 2.5], [57, 2.42], [73, 2.37], [91, 2.33], [113, 2.3]], turnLevel: [3, 8], loadCap: 2 },
+    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [6, 2.5], [8.2, 3.47], [10.7, 3.42], [14.1, 2.88], [18.4, 2.13], [24.3, 1.85], [32.9, 1.7], [44.3, 1.585], [57.3, 1.51], [73.6, 1.465], [91.8, 1.44], [114, 1.405], [127, 1.38]], turnLevel: [3, 8], loadCap: 2 },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
     // Platform ice: the tyres barely hold, so the car slides; steering turns the car itself (ice.yaw, rad/s) and the
@@ -552,6 +553,12 @@ self.TM = (() => {
   // eased off to at most maxRate (rad/s). Both build up over rampIn frames of countersteer and fade over `hold` frames
   // after it, so catching a big slide swings the car round over about half a second instead of snapping it.
   const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
+  // The extra turn of a surface's `turn` builds up while the steering is held one way: in full after `frames` frames
+  // (eased in), and it drops `fade` times as fast when the steering is let go or turned the other way. Only above `from`
+  // (units per second), in full from `full` up, so a tap or a flick at speed does not snap the car round while slow tight
+  // turns bite at once. Off the steering (once it has faded) the wheels' own turn, as in a loop, gets all of it.
+  const TURN_BUILD = { frames: 250, fade: 3, from: 25, full: 55 };
+  if (TEST && TEST.turnBuild) Object.assign(TURN_BUILD, TEST.turnBuild);
   // Bugslides: start above minSpeed (units per second) and minSlip (radians) on a landing after `air` frames off the
   // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
   // speed kept at keep per frame (about 2% a second lost); over below endSlip.
@@ -698,7 +705,7 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
@@ -724,7 +731,7 @@ self.TM = (() => {
     if (out.reset) {
       // The car it was at the checkpoint comes back in fxStep (justReset), however near the checkpoint it already was.
       clear(c);
-      c.bug = c.catchRamp = 0;
+      c.bug = c.catchRamp = c.turnRamp = 0;
       c.justReset = true;
     }
     if (c.noEngine) out.up = false;
@@ -1078,6 +1085,10 @@ self.TM = (() => {
     // How far into the catch the car is, 0 to 1 (see SLIDE).
     c.catchRamp = counter ? Math.min(1, c.catchRamp + 1 / SLIDE.rampIn) : Math.max(0, c.catchRamp - 1 / SLIDE.hold);
     const ease = c.catchRamp * c.catchRamp * (3 - 2 * c.catchRamp);
+    // How far the extra turn has built up (TURN_BUILD), 0 to 1, and the way the steering is held.
+    if (steer != 0 && steer == c.turnSide) c.turnRamp = Math.min(1, c.turnRamp + 1 / TURN_BUILD.frames);
+    else if (c.turnRamp > 0) c.turnRamp = Math.max(0, c.turnRamp - TURN_BUILD.fade / TURN_BUILD.frames);
+    else c.turnSide = steer;
 
     // A bumper kicks the car sideways, once, as it enters (see BUMPER). R: the car's right in the plate's plane
     // (velocity x plate up).
@@ -1369,6 +1380,9 @@ self.TM = (() => {
         hi = Math.cos((Lv[0] * Math.PI) / 180),
         level = Math.max(0, Math.min(1, (square - lo) / (hi - lo)));
       if (level == 0) continue;
+      const r = c.turnRamp,
+        atSpeed = steer != 0 || r > 0 ? Math.max(0, Math.min(1, (spd - TURN_BUILD.from) / (TURN_BUILD.full - TURN_BUILD.from))) : 0,
+        build = 1 - atSpeed * (1 - r * r * (3 - 2 * r));
       let k = T[T.length - 1][1];
       for (let i = 1; i < T.length; i++)
         if (spd < T[i][0]) {
@@ -1380,7 +1394,7 @@ self.TM = (() => {
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
         hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
         tyres = tyreOn[u] / on[u],
-        a = ((fwd * Math.tan(angle)) / base) * k * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * 0.001;
+        a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * 0.001;
       if (a != 0 && base > 0.5) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
     }
 
