@@ -58,6 +58,12 @@ The durations, strengths and drag values are this project's own choices. Trackma
 
 **Box gates** (Stadium, Box gates) come one per block, with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
 
+### Between building and testing
+
+- **Driving line:** every Test run is recorded. Back in the editor, the line you drove is drawn on the track, coloured from blue (slow) to red (your top speed), with a pin where the run ended: green on a finish, red where the car stopped, fell or was reset. Hover the line to see the speed and race time at that point.
+- **Test runs** (bottom left): the runs since the editor opened, with the finish time and gap to the best, or how many checkpoints a run reached. Click a run to show its line; **Go to end** moves the camera to where it ended. Tick **Line** off to hide the line.
+- **Recovery:** unsaved changes are copied to the browser every few seconds. If the tab closes or crashes before you save, the editor offers them back the next time it opens. Embedded in NSWS, NSWS saves the track instead.
+
 ## Track codes
 
 A track with only stock blocks still exports as a normal `PolyTrack2…` code with the same track id as before. A track with new blocks exports as `PolyTrackBE1…`: the same layering as PolyTrack2, but with two-byte part ids and a catalogue version. The byte layout is in [docs/TRACK_CODE_FORMAT.md](docs/TRACK_CODE_FORMAT.md).
@@ -196,7 +202,7 @@ cd tools && npm install
 node build-all.js
 ```
 
-This formats `_original/app` into `_original/formatted`, copies the assets to the root, generates the blocks, then applies `tools/patch.js`. `tm_runtime.js` and `tm_menu.js` are edited by hand and are not regenerated.
+This formats `_original/app` into `_original/formatted`, copies the assets to the root, generates the blocks, then applies `tools/patch.js`. `tm_runtime.js`, `tm_menu.js`, `tm_water.js` and `tm_tools.js` are edited by hand and are not regenerated.
 
 ## Repository layout
 

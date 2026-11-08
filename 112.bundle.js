@@ -3709,6 +3709,11 @@
         isEnabled() {
           return (0, i.gn)(this, ae, "f");
         }
+        beLook(t, e, n) {
+          const s = new w.Pq0(t, e, n),
+            o = (0, i.gn)(this, qe, "f").position.clone().sub((0, i.gn)(this, De, "f").target);
+          ((0, i.gn)(this, qe, "f").position.copy(s).add(o), (0, i.gn)(this, De, "f").target.copy(s), (0, i.gn)(this, De, "f").update());
+        }
         resetView(t, e, n) {
           (0, i.GG)(this, Kt, e, "a", ei);
           const s = new w.Pq0(t * W.A.partSize, e * W.A.partSize, n * W.A.partSize);
@@ -4036,16 +4041,18 @@
             (0, i.gn)(this, pi, "f").setPart(0, 0, 0, rt.A.Start, 0, ht.A.YPositive, at.A.Default, null, 0),
             (0, i.gn)(this, pi, "f").refreshMeshes(),
             h.setCamera((0, i.gn)(this, bi, "f").camera),
+            self.TM.tools.open(h, w, () => (0, i.gn)(this, bi, "f")?.camera, (t, e, n) => (0, i.gn)(this, bi, "f")?.beLook(t, e, n)),
             (0, i.gn)(this, bi, "f").setTestCallback(() => {
               (0, i.gn)(this, bi, "f").disable();
+              self.TM.tools.testStart((0, i.gn)(this, pi, "f"));
               const t = (0, i.gn)(this, bi, "f").getTrackMetadata();
               v(t, (0, i.gn)(this, pi, "f").getTrackData(), () => {
-                ((0, i.gn)(this, bi, "f").enable(), h.setCamera((0, i.gn)(this, bi, "f").camera));
+                ((0, i.gn)(this, bi, "f").enable(), h.setCamera((0, i.gn)(this, bi, "f").camera), self.TM.tools.testEnd());
               });
             }));
         }
         dispose() {
-          ((0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());
+          (self.TM.tools.close(), (0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());
         }
         update(t) {
           (ki.ip() || (0, i.gn)(this, bi, "f").update(t),

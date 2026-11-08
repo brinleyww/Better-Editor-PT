@@ -22,7 +22,7 @@ function apply(file, edits) {
 const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
@@ -32,7 +32,7 @@ apply('main.bundle.js', [
   ['editor starter', '            J = (t, i, a, c, h) => {', '            beStart = (self.__beStartEditor = Q),\n            J = (t, i, a, c, h) => {'],
   // tm_water.js: splashes and spray where a car meets water.
   ['water splashes know the track', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"));', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"), self.TM.water.track(this, h));'],
-  ['water splashes each frame', '(0, l.gn)(this, Ne, "f")?.update(e),', '(0, l.gn)(this, Ne, "f")?.update(e),\n              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),'],
+  ['water splashes each frame', '(0, l.gn)(this, Ne, "f")?.update(e),', '(0, l.gn)(this, Ne, "f")?.update(e),\n              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),\n              self.TM.tools.car(this, (0, l.gn)(this, te, "f")),'],
   ['water splashes end with the car', '(0, l.gn)(this, Ne, "f")?.dispose());', '(0, l.gn)(this, Ne, "f")?.dispose(),\n              self.TM.water.dispose(this));'],
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],
   ['single instance check off when embedded', 'if (void 0 !== window.BroadcastChannel) {', 'if (void 0 !== window.BroadcastChannel && window.parent === window) {'],
@@ -286,6 +286,40 @@ apply('main.bundle.js', [
 ]);
 
 apply('112.bundle.js', [
+  // tm_tools.js: the driving line and test runs panel, and unsaved-work recovery.
+  [
+    'editor tools open with the editor and follow each test',
+    `h.setCamera((0, i.gn)(this, bi, "f").camera),
+            (0, i.gn)(this, bi, "f").setTestCallback(() => {
+              (0, i.gn)(this, bi, "f").disable();
+              const t = (0, i.gn)(this, bi, "f").getTrackMetadata();
+              v(t, (0, i.gn)(this, pi, "f").getTrackData(), () => {
+                ((0, i.gn)(this, bi, "f").enable(), h.setCamera((0, i.gn)(this, bi, "f").camera));
+              });
+            }));`,
+    `h.setCamera((0, i.gn)(this, bi, "f").camera),
+            self.TM.tools.open(h, w, () => (0, i.gn)(this, bi, "f")?.camera, (t, e, n) => (0, i.gn)(this, bi, "f")?.beLook(t, e, n)),
+            (0, i.gn)(this, bi, "f").setTestCallback(() => {
+              (0, i.gn)(this, bi, "f").disable();
+              self.TM.tools.testStart((0, i.gn)(this, pi, "f"));
+              const t = (0, i.gn)(this, bi, "f").getTrackMetadata();
+              v(t, (0, i.gn)(this, pi, "f").getTrackData(), () => {
+                ((0, i.gn)(this, bi, "f").enable(), h.setCamera((0, i.gn)(this, bi, "f").camera), self.TM.tools.testEnd());
+              });
+            }));`,
+  ],
+  // tm_tools.js moves the camera to a point (the end of a test run) without changing the editing height.
+  [
+    'editor camera look',
+    '        resetView(t, e, n) {',
+    `        beLook(t, e, n) {
+          const s = new w.Pq0(t, e, n),
+            o = (0, i.gn)(this, qe, "f").position.clone().sub((0, i.gn)(this, De, "f").target);
+          ((0, i.gn)(this, qe, "f").position.copy(s).add(o), (0, i.gn)(this, De, "f").target.copy(s), (0, i.gn)(this, De, "f").update());
+        }
+        resetView(t, e, n) {`,
+  ],
+  ['editor tools close with the editor', 'dispose() {\n          ((0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());', 'dispose() {\n          (self.TM.tools.close(), (0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());'],
   // nsws_bridge.js opens saved tracks straight into the editor.
   ['exit goes back to NSWS when embedded', '        (Un = function (t) {\n          const e = () => {', '        (Un = function (t) {\n          if (self.__beExitHook?.()) return;\n          const e = () => {'],
   ['editor test hook and current track', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x));', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), self.__beTestHook?.() || (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x),\n            (self.__beEditorCurrent = () => {\n              const t = (0, i.gn)(this, un, "f"),\n                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") };\n              return { name: t, author: e.author, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) };\n            }));'],

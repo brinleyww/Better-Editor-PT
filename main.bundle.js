@@ -1136,6 +1136,7 @@
               ((0, l.gn)(this, D, "m", Qe).call(this),
               (0, l.gn)(this, Ne, "f")?.update(e),
               self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),
+              self.TM.tools.car(this, (0, l.gn)(this, te, "f")),
               null != (0, l.gn)(this, ve, "f"))
             ) {
               const e = this.getPosition(),
