@@ -3,9 +3,7 @@
 // Keeps the game's own look: its navy surfaces, button colours, font and section headings.
 (() => {
   const TABS = self.TM.data.tabs;
-  // The new block kits in part.f order; their categories are 9 + f in the game's enum. Older tables had these five.
-  const FAMILIES = self.TM.data.families ?? ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water'];
-  const ROAD = 'road'; // the stock blocks' browser; not a number, so it never meets a kit's f
+  const ROAD = 5; // the stock blocks' browser, after the surfaces and water in SURFACE_NAMES
   // The stock blocks, by their enum names: [tab, heading, [[name, label], ...]]. Tabs are the game's old categories.
   const ROAD_LAYOUT = [
     ['Gates', 'Start', [['Start', 'Start'], ['StartWide', 'Start, wide'], ['PlaneStart', 'Start on plane'], ['PlaneStartWide', 'Start on plane, wide']]],
@@ -187,9 +185,7 @@
       if (t != 'Recent') b.classList.add('empty');
       tabs.appendChild(b);
       state.tabButtons.set(t, b);
-      return b;
     };
-    state.tabButton = tabButton;
     tabButton('Recent');
     for (const t of tabList) tabButton(t);
     list.appendChild(none);
@@ -310,10 +306,9 @@
     g.appendChild(grid);
   }
 
-  const SURFACE_NAMES = { ...FAMILIES, [ROAD]: 'Road' };
-  // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser, kits from 9.
-  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs' };
-  FAMILIES.forEach((n, f) => (CATEGORY_NAMES[9 + f] = n));
+  const SURFACE_NAMES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water', 'Road'];
+  // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser.
+  const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs', 9: 'Plastic', 10: 'Wood', 11: 'Stadium', 12: 'Ice', 13: 'Water' };
   const describe = (p) => {
     if (!p.b) return SURFACE_NAMES[p.f] + ': ' + p.l;
     const size = (a) => Math.round((p.b[1][a] - p.b[0][a]) / 5) || 1;
@@ -329,8 +324,7 @@
       const state = panels.get(panel) ?? build(panel, part.f);
       if (!state.title.textContent) state.title.textContent = SURFACE_NAMES[part.f] + ' blocks';
       const s = group(state, part.t, part.s);
-      // A tab the table's list does not name still gets a button, at the end, so its blocks can be reached.
-      (state.tabButtons.get(part.t) ?? state.tabButton(part.t)).classList.remove('empty');
+      state.tabButtons.get(part.t)?.classList.remove('empty');
       const label = describe(part);
       const entry = { part, button, image, label, hay: (part.l + ' ' + part.s + ' ' + part.t).toLowerCase() };
       button.__tm = entry;

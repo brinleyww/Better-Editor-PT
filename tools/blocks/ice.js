@@ -1,6 +1,6 @@
 // Ice: bobsleigh channels and flat ice platforms. Platform ice is physics surface 3, bobsleigh ice is 4 (tm_runtime.js).
 const { Mesh } = require('./geom');
-const { DECK, TILT, DEG, smooth, platProfile, roadPart, gateArch, paintBand, arcStepFor, FX, VEHICLES, vehicleArch, loopSet, stockGate, hoopGate } = require('./catalog');
+const { DECK, TILT, DEG, smooth, platProfile, roadPart, gateArch, paintBand, arcStepFor, FX, loopSet, stockGate, hoopGate } = require('./catalog');
 
 const ICE = {
   surface: 'Ice',
@@ -206,12 +206,6 @@ function buildIce() {
       m.merge(onFloor(glyph));
       bob('Fx' + fx.key + 'Bob', fx.label + ', bobsleigh', 'Bobsleigh effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [17, 5, 12] } });
     }
-    // Vehicle gates: the gate's colour across the floor like the bobsleigh gates, the posts on the wall tops.
-    for (const V of VEHICLES) {
-      const m = roadPart(st, bobProfile(st, paintBand(st, 9, 11, V.mat)), [{ line: 20 }], { step: 2.5, marks: [9, 11] });
-      vehicleArch(m, 9.2, TOP - 0.1, V, TOP - 0.1 + 4.7);
-      bob('Car' + V.key + 'Bob', V.label + ', bobsleigh', 'Vehicle gates', V.label, m, { fx: { type: 'Car' + V.key, center: [0, 2.5, 0], size: [17, 5, 3] } });
-    }
   }
 
   // ---- ice platforms ------------------------------------------------------------------------------------------------
@@ -251,11 +245,6 @@ function buildIce() {
       const m = roadPart(st, platProfile(st, (ring, isLine) => (isLine ? st.line(ring) : fx.mat)), [{ line: 20 }], { step: 5 });
       fx.glyph(m, DECK + 0.04);
       plat('Fx' + fx.key + 'Plat', fx.label + ', ice platform', 'Ice effects', fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [19.5, 5, 12] } });
-    }
-    for (const V of VEHICLES) {
-      const m = roadPart(st, platProfile(st, (ring) => (ring.s >= 9 - 1e-6 && ring.s < 11 - 1e-6 ? V.mat : null)), [{ line: 20 }], { marks: [9, 11] });
-      vehicleArch(m, 9.6, DECK - 0.05, V);
-      plat('Car' + V.key + 'Plat', V.label + ', ice platform', 'Vehicle gates', V.label, m, { fx: { type: 'Car' + V.key, center: [0, 2.6, 0], size: [19.5, 5, 3] } });
     }
   }
   return parts;

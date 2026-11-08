@@ -5,18 +5,6 @@ self.TM = (() => {
   const FIRST_ID = 1000;
   const byId = new Map(D.parts.map((p) => [p.i, p]));
   const proxyParts = D.proxies;
-  // Test rigs only (tools/test/tmphys.mjs): a worker started as simulation_worker.bundle.js?tmtest=<json> can give parts
-  // another surface ({u: {PartName: u}}), start its cars as another vehicle ({vehicle}) or drive them with a circling
-  // bot ({bot}), try other surface settings ({surf}, below SURFACES) or post each car's tyres every {trace} frames. The game always starts its worker without a query, so none of this runs in play.
-  const TEST = (() => {
-    try {
-      const m = /[?&]tmtest=([^&]*)/.exec(self.location.search);
-      return m ? JSON.parse(decodeURIComponent(m[1])) : null;
-    } catch (e) {
-      return null;
-    }
-  })();
-  if (TEST && TEST.u) for (const p of D.parts) if (p.n in TEST.u) p.u = TEST.u[p.n];
 
   // ---- part table --------------------------------------------------------------------------------------------
   const isTM = (id) => id >= FIRST_ID;
@@ -186,7 +174,14 @@ self.TM = (() => {
                 }
           }
         }
-      addCells(cells, p, x, y, z, M, rotatedTiles(id, rot, axis));
+      if (p.u != null || p.r) {
+        const entry = { u: p.u ?? null, r: p.r ? { x: wx, y: wy, z: wz, M, boxes: p.r } : null };
+        rotatedTiles(id, rot, axis).forEach((tx, ty, tz) => {
+          const k = cellKey(x + tx, y + ty, z + tz),
+            l = cells.get(k);
+          l ? l.push(entry) : cells.set(k, [entry]);
+        });
+      }
       if (p.sd && p.d) {
         // A gate whose road is not square to the grid: remember where it is and which way its road runs.
         const c = rotate(M, p.d.center[0], p.d.center[1], p.d.center[2]);
@@ -196,18 +191,7 @@ self.TM = (() => {
     });
     return { vertices: out, records };
   }
-  // The surface cells of one placed part (tile coordinates x, y, z; tiles: its rotated footprint).
-  function addCells(cells, p, x, y, z, M, tiles) {
-    if (p.u == null && !p.r) return;
-    const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r } : null };
-    tiles.forEach((tx, ty, tz) => {
-      const k = cellKey(x + tx, y + ty, z + tz),
-        l = cells.get(k);
-      l ? l.push(entry) : cells.set(k, [entry]);
-    });
-  }
-  // A placed part's effect box in world space. fwd, right and up are the part's own +z, +x and +y turned the way it
-  // is placed (bumpers kick along right), centre the middle of the box.
+  // A placed part's effect box in world space.
   function zoneOf(p, wx, wy, wz, M) {
     const c = rotate(M, p.x.center[0], p.x.center[1], p.x.center[2]),
       s = rotate(M, p.x.size[0] / 2, p.x.size[1] / 2, p.x.size[2] / 2);
@@ -216,13 +200,9 @@ self.TM = (() => {
       min: [wx + c[0] - Math.abs(s[0]), wy + c[1] - Math.abs(s[1]), wz + c[2] - Math.abs(s[2])],
       max: [wx + c[0] + Math.abs(s[0]), wy + c[1] + Math.abs(s[1]), wz + c[2] + Math.abs(s[2])],
       surface: p.x.surface != null ? wy + rotate(M, 0, p.x.surface, 0)[1] : null, // water level
-      centre: [wx + c[0], wy + c[1], wz + c[2]],
-      fwd: rotate(M, 0, 0, 1),
-      right: rotate(M, 1, 0, 0),
-      up: rotate(M, 0, 1, 0),
     };
   }
-  // Every effect box on a track, for the page (water splashes, vehicle gates, bumpers).
+  // Every effect box on a track, for the page (water splashes).
   function zones(track) {
     const out = [];
     track.forEachPart((x, y, z, id, rot, axis) => {
@@ -231,40 +211,6 @@ self.TM = (() => {
     });
     return out;
   }
-  // A part's footprint turned the way it is placed, in tiles: the game's own TrackPart tiles.rotated, for the page,
-  // which has no worker to ask (axis: 0 +y, 1 -y, 2 +x, 3 -x, 4 +z, 5 -z).
-  function tilesOf(p, rot, axis) {
-    const out = [];
-    for (const [a, b] of p.c)
-      for (let i = a[0]; i <= b[0]; i++)
-        for (let j = a[1]; j <= b[1]; j++)
-          for (let k = a[2]; k <= b[2]; k++) {
-            let t = i,
-              e = j,
-              n = k;
-            if (axis == 1 || axis == 3 || axis == 5) [t, n] = rot == 1 ? [-n - 1, t] : rot == 2 ? [-t - 1, -n - 1] : rot == 3 ? [n, -t - 1] : [t, n];
-            else [t, n] = rot == 1 ? [n, -t - 1] : rot == 2 ? [-t - 1, -n - 1] : rot == 3 ? [-n - 1, t] : [t, n];
-            if (axis == 1) [t, e] = [-t - 1, -e - 1];
-            else if (axis == 2) [t, e] = [e, -t - 1];
-            else if (axis == 3) [t, e] = [-e - 1, t];
-            else if (axis == 4) [e, n] = [-n - 1, e];
-            else if (axis == 5) [e, n] = [n, -e - 1];
-            out.push([t, e, n]);
-          }
-    return { forEach: (f) => out.forEach((q) => f(q[0], q[1], q[2])) };
-  }
-  // For the page (tyre looks): the same surface cells the physics builds for a car, without loading any geometry.
-  // surfaceAt(index, x, y, z) is the surface index (part.u) at that world point, or null for stock road; ask a little
-  // way under a wheel's contact point (contact - 0.1 x normal), as the physics does.
-  function surfaceIndex(track) {
-    const cells = new Map();
-    track.forEachPart((x, y, z, id, rot, axis) => {
-      const p = isTM(id) ? byId.get(id) : null;
-      if (p) addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis));
-    });
-    return cells;
-  }
-  const surfaceAt = (index, x, y, z) => cellAt(index, x, y, z);
   // id written into the wasm's one-byte part record, or null when the part has no record there.
   const physicsId = (id) => (isTM(id) ? (byId.get(id).p ?? null) : id);
 
@@ -294,11 +240,8 @@ self.TM = (() => {
   // water (units/s), falling no steeper than maxSlope (fall speed / speed along), upright at least `upright`. It comes back
   // up at rebound x its fall speed (at least minUp), keeps `keep` of its speed and has its pitch and roll spin x calm.
   // Steering never adds speed to a bounce. guard: frames before another bounce can start.
-  // Wet tyres (TM2020's WetnessValue01, kept per wheel here): water soaks a tyre at soak per second while its bottom is
-  // under the surface; on the ground it dries at dry per second (not on ice, not in the air).
-  // A wet tyre's grip is x (1 - wetGrip x wetness), by the surface under it ('road': stock road). After TM2020's wet
-  // materials: wet wood is SlidingWood (nearly ice), wet dirt and grass turn to mud (WetDirtRoad, WetGrass), and wet
-  // tech road (WetAsphalt) loses little. Ice and bobsleigh are already as slippery as wet gets.
+  // Wet tyres: water soaks them at soak per second; on the ground they dry at dry per second (not on ice, not in the air).
+  // A wet tyre's grip is x (1 - wetGrip x wetness), by the surface under it: stock road, then plastic, wood, grass.
   const WATER = {
     deep: { lin: 0.02, quad: 0.0008, engine: 0.6, lift: 6.4, sink: 1.5, right: 4, depth: 1 },
     shallow: { lin: 0.01, quad: 0.0003, engine: 0.4, lift: 0, sink: 0, right: 0, depth: 0.5 },
@@ -306,19 +249,10 @@ self.TM = (() => {
     under: 0.45, // car origin to its underside
     soak: 0.6,
     dry: 0.1,
-    wetGrip: { road: 0.15, 0: 0.3, 1: 0.75, 2: 0.3, 3: 0, 4: 0, 5: 0.4, 6: 0.4, 7: 0.1, 8: 0.15 },
+    wetGrip: { road: 0.15, 0: 0.3, 1: 0.75, 2: 0.3 },
   };
-  // Iced tyres (TM2020's per-wheel Icing01): a tyre on ice, bobsleigh or snow ices up at on per second and thaws at off
-  // per second on any other ground; an iced tyre's grip off the ice is x (1 - grip x icing), so leaving the ice the car
-  // slides for a moment before the tyres bite again.
-  const ICING = { surfaces: [3, 4, 7], on: 0.8, off: 0.4, grip: 0.5 };
 
-  // What each new surface does to a wheel touching it. Index = part.u (null: stock road, TM2020's Tech).
-  // The newer surfaces also use: engine, the share of what the engine gains along the nose each frame that the surface
-  // takes back (the tyres cannot put it down); brake, the share of the braking it takes back; roll, rolling drag (share of
-  // the speed lost per second); slide, the share of the speed lost per second per sin^2(slip) while sliding; settle, see
-  // the slide settling in fxStep.
-  // All by the share of wheels on the surface.
+  // What each new surface does to a wheel touching it. Index = part.f, 0 plastic, 1 wood.
   const SURFACES = [
     // Plastic: almost no grip, very strong acceleration at low speed, and it throws the car back when hit side-on or roof-first.
     { gripFront: 0.45, gripRear: 0.36, launch: 34, launchUntil: 45, bounce: true },
@@ -340,52 +274,7 @@ self.TM = (() => {
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
     { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5 } },
-    // The four below are this project's estimates of TM2020's surfaces relative to its Tech road (= PolyTrack's stock road);
-    // TM2020's own tunings sit in encrypted packs and were not read. Targets: grip as the share of stock cornering
-    // grip, times as multiples of the stock car's 0-100 / 0-200 / 120-0 braking distance (tools/test/tmphys.mjs).
-    // Dirt (TM DirtRoad): about 0.65 of the grip (cornering speed on a circle x0.8), the rear lets go first so it drifts,
-    // but the drift settles when you let go of the steering; slower to accelerate (measured x1.17 to 100, x1.31 to 200)
-    // and to brake (x1.6 the distance); rolling drag costs about 8% of the speed a second and slides scrub speed.
-    { gripFront: 0.7, gripRear: 0.6, launch: 0, launchUntil: 0, bounce: false, engine: 0.08, brake: 0.22, roll: 0.08, slide: 0.5, settle: 0.004 },
-    // Grass (TM's drivable grass, not the penalty verges): about half the grip (x0.7 cornering speed), x1.4 to 100, about
-    // x2 to 200 and x2 the braking distance; heavy drag (20% a second) that holds it well under the road's top end.
-    { gripFront: 0.55, gripRear: 0.48, launch: 0, launchUntil: 0, bounce: false, engine: 0, brake: 0.28, roll: 0.2, slide: 0.6, settle: 0.004 },
-    // Snow: about 0.4 of the grip (x0.6 cornering speed), x1.3 to 100 (a small launch push makes up for tyres that
-    // spin from rest), x2.5 the braking distance, little drag: between dirt and platform ice.
-    { gripFront: 0.43, gripRear: 0.38, launch: 3, launchUntil: 50, bounce: false, engine: 0, brake: 0.18, roll: 0.005, slide: 0.2, settle: 0.003 },
-    // Tech: the stock road itself, for blocks that need their own entry (its wet grip, the vehicles' tables).
-    { gripFront: 1, gripRear: 1, launch: 0, launchUntil: 0, bounce: false },
   ];
-  // Test rigs only: {surf: {u: {setting: value}}} tries other settings for a surface.
-  if (TEST && TEST.surf) for (const k in TEST.surf) Object.assign(SURFACES[k], TEST.surf[k]);
-  // TM2020's cars. The Stadium car is PolyTrack's own; the others change how it drives, after TM2020's Snow, Rally and
-  // Desert cars. Every number here is this project's estimate of how TM2020's cars relate to the Stadium car (their
-  // tunings are in encrypted packs that were not read).
-  // grip: multiplies the tyres' grip by surface, in the order stock road, plastic, wood, penalty grass, platform ice,
-  //   bobsleigh, dirt, grass, snow (tech road counts as stock road).
-  // iceAssist: how much of the ice's steering and slide help the car still gets (the Snow car's tyres hold on ice).
-  // accel: multiplies what the engine gains per frame, [up to units/s, factor] in order; topSpeed (units/s) and topDrag:
-  //   above it a drag of topDrag x (speed over)^2 units/s^2 holds the car near its top end.
-  // susp: stiff multiplies the springs, damp both dampers, roll the body roll, rest is added to the spring's rest length
-  //   (units; the car rides that much higher). See suspension() for how the springs are softened.
-  // air: in the air, steering yaws the car and the gas / brake pitch it, this much harder than nothing (1: no help).
-  // ices: whether its tyres ice up. look: hints for the page's car (tint of the body, how much higher it sits).
-  const VEHICLES = {
-    Stadium: { grip: [1, 1, 1, 1, 1, 1, 1, 1, 1], iceAssist: 1, accel: null, topSpeed: 0, topDrag: 0, susp: null, air: 1, ices: true, look: { tint: null, lift: 0 } },
-    // Snow: x3.5 on ice still slid like plastic and spun when let go (tmphys.mjs), so its studded tyres hold more,
-    // the rear most (rearGrip: the rear tyres' own multipliers where given).
-    Snow: { grip: [0.85, 0.85, 0.95, 1, 4.5, 3.5, 1.1, 1.1, 2.4], rearGrip: [0.85, 0.85, 0.95, 1, 5.5, 4.2, 1.1, 1.1, 2.4], iceAssist: 0.3, accel: [[1e9, 0.9]], topSpeed: 230 / 3.6, topDrag: 0.012, susp: { stiff: 0.7, damp: 1, roll: 1, rest: 0.08 }, air: 1.2, ices: false, look: { tint: '#e9eef4', lift: 0.08 } },
-    Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, roll: 1.5, rest: 0.03 }, air: 1, ices: true, look: { tint: '#c94a2a', lift: 0.03 } },
-    Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.45, damp: 0.6, roll: 1.2, rest: 0.06 }, air: 1.8, ices: true, look: { tint: '#d6a24a', lift: 0.06 } },
-  };
-  const GATES = { CarSnow: 'Snow', CarRally: 'Rally', CarDesert: 'Desert', CarStadium: 'Stadium' };
-  // Air control for the cars that have it (air > 1): after `after` frames off the ground, steering pulls the yaw rate
-  // towards yaw x steer and the gas / brake the pitch rate towards pitch (rad/s), by pull x (air - 1) per frame.
-  const AIR = { after: 20, yaw: 1.2, pitch: 1.5, pull: 0.01 };
-  // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per entry along the plate's own right axis, away from
-  // its centre line (inside `centre` units of it: the way the car already drifts sideways, if faster than `drift`
-  // units/s, else to the right), plus a hop (units/s).
-  const BUMPER = { Bumper: { side: 14, up: 2.5 }, Bumper2: { side: 24, up: 4 }, centre: 0.25, drift: 0.1 };
   // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
   // window: longest collision in frames), then judged as a whole.
   // The bounce mirrors the car's velocity off the surface: the part along it is kept, the part into it comes back at
@@ -407,8 +296,7 @@ self.TM = (() => {
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
-  // Surface under a point: regions inside a part win (each box [lo, hi, u]; a box without u is penalty grass), then the
-  // part's own surface.
+  // Surface under a point: grass regions inside a part win, then the part's own surface.
   const cellAt = (cells, x, y, z) => {
     const l = cells.get(cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5)));
     if (!l) return null;
@@ -422,7 +310,7 @@ self.TM = (() => {
         lx = M[0] * dx + M[3] * dy + M[6] * dz,
         ly = M[1] * dx + M[4] * dy + M[7] * dz,
         lz = M[2] * dx + M[5] * dy + M[8] * dz;
-      for (const [a, b, u] of e.r.boxes) if (lx >= a[0] && lx <= b[0] && ly >= a[1] && ly <= b[1] && lz >= a[2] && lz <= b[2]) return u ?? 2;
+      for (const [a, b] of e.r.boxes) if (lx >= a[0] && lx <= b[0] && ly >= a[1] && ly <= b[1] && lz >= a[2] && lz <= b[2]) return 2;
     }
     for (const e of l) if (e.u != null) return e.u;
     return null;
@@ -506,13 +394,9 @@ self.TM = (() => {
 
   const cars = new Map();
   function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }) {
-    // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
-    // to that); wetW / iceW: each tyre's wetness and icing, 0 to 1; susp0: the stock suspension, read on the first frame.
-    const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wetW: [0, 0, 0, 0], iceW: [0, 0, 0, 0], waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, wet: 0, waterGuard: 0, overWater: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0 });
   }
-  // Every effect on the car ends: effect blocks, wet and iced tyres. On a Reset block, a checkpoint and a respawn.
-  // The vehicle stays (TM2020 keeps the car through effect resets).
+  // Every effect on the car ends: effect blocks, wet tyres. On a Reset block, a checkpoint and a respawn.
   const clear = (c) => {
     c.boostLeft = 0;
     c.boost = null;
@@ -520,13 +404,11 @@ self.TM = (() => {
     c.reactor = null;
     c.slow = false;
     c.noEngine = c.noBrake = c.noSteer = c.cruise = c.fragile = false;
-    c.wetW.fill(0);
-    c.iceW.fill(0);
+    c.wet = 0;
   };
   // Filters the controls going into the car. Always returns a fresh object; stock tracks pass straight through.
   function fxControls(carId, r) {
     const c = cars.get(carId);
-    if (TEST && TEST.bot && c) r = testBot(c, r);
     if (!c || !c.active) return r;
     const out = { up: r.up, right: r.right, down: r.down, left: r.left, reset: r.reset };
     if (c.pulseReset) {
@@ -534,8 +416,6 @@ self.TM = (() => {
       c.pulseReset = false;
     }
     if (out.reset) {
-      // The car it was at the checkpoint comes back in fxStep, once the car has really moved there (with no
-      // checkpoint yet the respawn key does nothing).
       clear(c);
       c.bug = c.catchRamp = 0;
       c.justReset = true;
@@ -549,39 +429,6 @@ self.TM = (() => {
     }
     c.gas = out.up && !out.down;
     c.ctl = out;
-    return out;
-  }
-  // Test rigs only: holds a car on a circle of radius r round (x, z). It steers the car's path towards the circle's
-  // tangent bent in or out by how far off the line it is (full bend at `band` units), catches slides of more than
-  // `catch` radians by steering out, and lifts off the gas while more than `slack` units outside the line.
-  function testBot(c, r) {
-    const B = TEST.bot,
-      out = { up: true, right: false, down: false, left: false, reset: false };
-    if (!c.botAt || !c.botPrev) return out;
-    const [x, z, nx, nz] = c.botAt,
-      vx = (x - c.botPrev[0]) * 1000,
-      vz = (z - c.botPrev[1]) * 1000,
-      ex = x - B.x,
-      ez = z - B.z,
-      d = Math.hypot(ex, ez) || 1,
-      ix = -ex / d,
-      iz = -ez / d;
-    // tangent along the way the car goes; a > 0 bends the wanted path inwards
-    let tx = -iz,
-      tz = ix;
-    if (tx * vx + tz * vz < 0) ((tx = -tx), (tz = -tz));
-    const a = Math.max(-1, Math.min(1, (d - B.r) / B.band)) * 0.6,
-      wx = tx * Math.cos(a) + ix * Math.sin(a),
-      wz = tz * Math.cos(a) + iz * Math.sin(a),
-      sp = Math.hypot(vx, vz) || 1,
-      // + when the wanted path / the nose is to the left of the way the car is going (yaw + turns left)
-      want = (vz * wx - vx * wz) / sp,
-      nose = (vz * nx - vx * nz) / sp / (Math.hypot(nx, nz) || 1);
-    let steer = Math.abs(want) > 0.01 ? Math.sign(want) : 0;
-    if (Math.abs(nose) > Math.sin(B.catch) && Math.sign(nose) == steer) steer = -steer;
-    if (steer > 0) out.left = true;
-    if (steer < 0) out.right = true;
-    out.up = d < B.r + B.slack;
     return out;
   }
   // Finds the C++ Car object in the wasm's unordered_map<int, Car*> (bucket array at 18848, bucket count at 18852).
@@ -598,53 +445,10 @@ self.TM = (() => {
     }
     return 0;
   }
-  // The vehicle's suspension, written just before the physics step (fxSkip runs right before updateCarModel).
-  // Checked headless (tools/test/tmphys.mjs probe): the wheels' rest length (+204), damping (+220, +224) and roll
-  // influence (+244) are read by the step and keep what is written; the spring stiffness (+216) is set again by the
-  // game before every step, so a softer spring is made from the rest length instead: with the wheel compressed to
-  // length L, a rest length of R - (1 - stiff) x (R - L) gives exactly stiff x the spring force. Travel is left alone:
-  // the stock car's is 10 units, which never limits it. Stock values are read on the car's first frame and written
-  // back when it turns into the Stadium car again.
-  function suspension(c, heap, carId) {
-    const V = VEHICLES[c.vehicle];
-    if (!V.susp && !c.suspSet) return;
-    const U = new Uint32Array(heap.buffer),
-      F = new Float32Array(heap.buffer),
-      car = carPointer(U, carId);
-    if (!car) return;
-    const wheels = U[(U[(car + 32) >> 2] + 144) >> 2];
-    if (!c.susp0) {
-      c.susp0 = [];
-      for (let w = 0; w < 4; w++) {
-        const g = (wheels + w * 284) >> 2;
-        c.susp0.push([F[g + 51], F[g + 55], F[g + 56], F[g + 61]]);
-      }
-    }
-    for (let w = 0; w < 4; w++) {
-      const a = wheels + w * 284,
-        g = a >> 2,
-        s0 = c.susp0[w];
-      if (!V.susp) {
-        F[g + 51] = s0[0];
-        F[g + 55] = s0[1];
-        F[g + 56] = s0[2];
-        F[g + 61] = s0[3];
-        continue;
-      }
-      const S = V.susp,
-        rest = s0[0] + S.rest;
-      F[g + 51] = heap[a + 84] && F[g + 8] < rest ? rest - (1 - S.stiff) * (rest - F[g + 8]) : rest;
-      F[g + 55] = s0[1] * S.damp;
-      F[g + 56] = s0[2] * S.damp;
-      F[g + 61] = s0[3] * S.roll;
-    }
-    c.suspSet = !!V.susp;
-  }
   // Slow motion: the car only gets every other physics frame while the race clock keeps counting, so it moves at half speed.
   // Returns the held state for a skipped frame, or null to run the frame normally.
   function fxSkip(carId, heap) {
     const c = cars.get(carId);
-    if (c && c.active) suspension(c, heap, carId);
     if (!c || !c.slow || !c.lastState) return null;
     c.slowTick ^= 1;
     if (!c.slowTick) return null;
@@ -664,16 +468,6 @@ self.TM = (() => {
 
   function fxStep(carId, heap, stateBuffer) {
     const c = cars.get(carId);
-    if (TEST && TEST.bot && c) {
-      const S = new DataView(stateBuffer),
-        p = 12 + (S.getUint8(11) & 2 ? 3 : 0) + 2;
-      c.botPrev = c.botAt;
-      const qx = S.getFloat32(p + 12, true),
-        qy = S.getFloat32(p + 16, true),
-        qz = S.getFloat32(p + 20, true),
-        qw = S.getFloat32(p + 24, true);
-      c.botAt = [S.getFloat32(p, true), S.getFloat32(p + 8, true), 2 * (qx * qz + qw * qy), 1 - 2 * (qx * qx + qy * qy)];
-    }
     if (!c || !c.active) return;
     // Car state layout: id u32, frames u24, speed f32, flags u8, [finish u24], next checkpoint u16, position, quaternion.
     const s = new DataView(stateBuffer),
@@ -687,16 +481,10 @@ self.TM = (() => {
     c.lastState = c.slow ? stateBuffer.slice(0) : null;
     let water = null; // the water the car is in or just above
 
-    // A respawn moves the car further in one frame than it can drive. It comes back as the car it was at the checkpoint.
-    if (c.last && Math.abs(x - c.last.x) + Math.abs(y - c.last.y) + Math.abs(z - c.last.z) > 5) {
-      clear(c);
-      c.vehicle = c.cpVehicle;
-    }
+    // A respawn moves the car further in one frame than it can drive.
+    if (c.last && Math.abs(x - c.last.x) + Math.abs(y - c.last.y) + Math.abs(z - c.last.z) > 5) clear(c);
     const cp = s.getUint16(pos - 2, true);
-    if (cp > c.lastCp) {
-      clear(c);
-      c.cpVehicle = c.vehicle;
-    }
+    if (cp > c.lastCp) clear(c);
 
     // Passing a diagonal checkpoint: the physics just saved a respawn point facing along the grid. Turn it to face
     // along the diagonal road, the way the car was going, and move it to just behind the gate on that line.
@@ -734,7 +522,6 @@ self.TM = (() => {
     c.lastCp = cp;
 
     const inside = c.inside;
-    let kick = null; // a bumper's kick, applied below once the car's velocity is at hand
     for (let i = 0; i < c.zones.length; i++) {
       const q = c.zones[i],
         hit = x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2];
@@ -748,7 +535,6 @@ self.TM = (() => {
       switch (q.type) {
         case 'Turbo':
         case 'Super':
-        case 'Ultra':
           c.boost = TURBO[q.type];
           c.boostLeft = c.boost.frames;
           break;
@@ -786,16 +572,6 @@ self.TM = (() => {
           break;
         case 'Fragile':
           c.fragile = true;
-          break;
-        case 'Bumper':
-        case 'Bumper2':
-          kick = q;
-          break;
-        case 'CarSnow':
-        case 'CarRally':
-        case 'CarDesert':
-        case 'CarStadium':
-          c.vehicle = GATES[q.type];
           break;
       }
     }
@@ -836,46 +612,32 @@ self.TM = (() => {
     c.catchRamp = counter ? Math.min(1, c.catchRamp + 1 / SLIDE.rampIn) : Math.max(0, c.catchRamp - 1 / SLIDE.hold);
     const ease = c.catchRamp * c.catchRamp * (3 - 2 * c.catchRamp);
 
-    // A bumper kicks the car sideways off the plate's centre line, once, as it enters.
-    if (kick) {
-      const K = BUMPER[kick.type],
-        R = kick.right,
-        off = (x - kick.centre[0]) * R[0] + (y - kick.centre[1]) * R[1] + (z - kick.centre[2]) * R[2],
-        drift = F[v] * R[0] + F[v + 1] * R[1] + F[v + 2] * R[2],
-        side = Math.abs(off) > BUMPER.centre ? Math.sign(off) : Math.abs(drift) > BUMPER.drift ? Math.sign(drift) : 1;
-      for (let i = 0; i < 3; i++) F[v + i] += R[i] * side * K.side + kick.up[i] * K.up;
-    }
-
     // Tyres: each wheel gets the grip of the surface under it for the next frame.
-    // Wheels are btWheelInfo structs: normal at +0, contact point at +16, in contact at +84, wheel centre at +140,
-    // radius at +212, friction slip at +228.
+    // Wheels are btWheelInfo structs: normal at +0, contact point at +16, in contact at +84, friction slip at +228.
     const wheels = U[(U[(car + 32) >> 2] + 144) >> 2],
-      V = VEHICLES[c.vehicle],
-      normals = [],
-      // Wheels on each surface (by part.u), so pushes and drag count each surface by its own share of the wheels.
-      on = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+      normals = [];
     let plasticWheels = 0;
     if (c.stockGrip == null) c.stockGrip = F[(wheels + 228) >> 2];
-    let iceWheels = 0,
+    let launchWheels = 0,
+      launch = 0,
+      launchUntil = 0,
+      dragWheels = 0,
+      drag = 0,
+      expoWheels = 0,
+      expo = null,
+      iceWheels = 0,
+      ice = null,
       contacts = 0;
     for (let w = 0; w < 4; w++) {
       const a = wheels + w * 284,
-        g = a >> 2,
-        touching = heap[a + 84] != 0;
-      // A tyre whose bottom is under the water soaks up; one on dry ground dries (see WATER).
-      const soaking = water != null && F[g + 36] - F[g + 53] < water.surface;
-      if (soaking) c.wetW[w] = Math.min(1, c.wetW[w] + WATER.soak * 0.001);
-      if (!touching) continue;
+        g = a >> 2;
+      if (!heap[a + 84]) continue;
       contacts++;
       // A little way under the contact point is inside the deck, whichever way the deck faces.
       const f = cellAt(c.cells, F[g + 4] - F[g] * 0.1, F[g + 5] - F[g + 1] * 0.1, F[g + 6] - F[g + 2] * 0.1),
-        surface = f == null ? null : SURFACES[f],
-        icy = f != null && ICING.surfaces.includes(f);
-      if (f != null) on[f]++;
+        surface = f == null ? null : SURFACES[f];
       let grip = surface ? (w < 2 ? surface.gripFront : surface.gripRear) : 1; // wheels 0 and 1 steer
       if (surface && surface.brakeGrip && c.ctl && c.ctl.down) grip = Math.min(grip, surface.brakeGrip);
-      const vg = (w >= 2 && V.rearGrip ? V.rearGrip : V.grip)[f == null || f == 8 ? 0 : f + 1];
-      if (vg != 1) grip *= vg;
       if (grip > 1) {
         // Extra grip is a fixed amount, sized at the wheel's resting load: it does not grow with load.
         // In a loop the tyres carry many times their resting load, and grip that scaled with it would spin
@@ -889,24 +651,25 @@ self.TM = (() => {
         if (w < 2) grip *= 1 + (SLIDE.frontGrip - 1) * ease;
       }
       if (c.bug > 0) grip *= BUG.grip;
-      if (c.wetW[w] > 0) grip *= 1 - (WATER.wetGrip[f == null ? 'road' : f] ?? 0) * c.wetW[w];
-      if (c.iceW[w] > 0 && !icy) grip *= 1 - ICING.grip * c.iceW[w];
+      if (c.wet > 0) grip *= 1 - (WATER.wetGrip[f == null ? 'road' : f] ?? 0) * c.wet;
       normals.push(F[g], F[g + 1], F[g + 2]);
       F[g + 57] = c.stockGrip * grip;
-      if (surface && surface.ice) iceWheels++;
-      if (!soaking && c.wetW[w] > 0 && !(surface && surface.ice)) c.wetW[w] = Math.max(0, c.wetW[w] - WATER.dry * 0.001);
-      if (icy && V.ices) c.iceW[w] = Math.min(1, c.iceW[w] + ICING.on * 0.001);
-      else if (!icy && c.iceW[w] > 0) c.iceW[w] = Math.max(0, c.iceW[w] - ICING.off * 0.001);
-    }
-    // The ice the car is on: one kind's own settings, or, with wheels on both kinds, each setting by its share of them.
-    let ice = null;
-    if (iceWheels >= 2) {
-      const kinds = [];
-      for (let u = 0; u < on.length; u++) if (on[u] && SURFACES[u].ice) kinds.push(u);
-      if (kinds.length == 1) ice = SURFACES[kinds[0]].ice;
-      else {
-        ice = { yaw: 0, pull: 0, spin: 0, align: 0, loss: 0, stick: 0, follow: 0, from: 0.5 };
-        for (const u of kinds) for (const k in ice) if (k != 'from') ice[k] += (SURFACES[u].ice[k] * on[u]) / iceWheels;
+      if (surface && surface.drag) {
+        dragWheels++;
+        drag = surface.drag;
+      }
+      if (surface && surface.expo) {
+        expoWheels++;
+        expo = surface.expo;
+      }
+      if (surface && surface.ice) {
+        iceWheels++;
+        ice = surface.ice;
+      }
+      if (surface && surface.launch > 0) {
+        launchWheels++;
+        launch = surface.launch;
+        launchUntil = surface.launchUntil;
       }
     }
 
@@ -955,17 +718,13 @@ self.TM = (() => {
     // Ice: the tyres alone can hardly turn the car, so steering turns it directly, and the slide straightens out slowly
     // by swinging the velocity round to the nose without losing its length.
     if (iceWheels >= 2) {
-      // A car whose tyres hold on ice (the Snow car) gets only iceAssist of the steering and slide help; the spin still
-      // dies away off the steering.
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
-        help = V.iceAssist,
-        d0 = steer != 0 ? (steer * ice.yaw * Math.min(1, spd / 15) - yaw) * ice.pull : -yaw * ice.spin,
-        d = help != 1 && steer != 0 ? d0 * help : d0;
+        d = steer != 0 ? (steer * ice.yaw * Math.min(1, spd / 15) - yaw) * ice.pull : -yaw * ice.spin;
       F[av] += upx * d;
       F[av + 1] += upy * d;
       F[av + 2] += upz * d;
       const sn = Math.sin(Math.abs(slip)),
-        turn = Math.sign(slip) * Math.min(Math.abs(slip), (help != 1 ? help : 1) * ice.align * sn * 0.001 * (iceWheels / 4));
+        turn = Math.sign(slip) * Math.min(Math.abs(slip), ice.align * sn * 0.001 * (iceWheels / 4));
       if (spd > 1 && turn != 0 && Math.abs(slip) < 1.4) {
         // Rotate the velocity about the car's up axis, towards the nose (slip > 0: moving to the left of the nose).
         const c0 = Math.cos(-turn),
@@ -1035,111 +794,36 @@ self.TM = (() => {
       }
     }
 
-    // Each surface below counts by its own share of the wheels (n: wheels on it), so a car half on one surface and half
-    // on another gets half of each; with every wheel on one surface this is exactly that surface's own effect.
-    for (let u = 0; u < on.length; u++) {
-      const n = on[u],
-        S = SURFACES[u];
-      if (!n) continue;
-      // Plastic launch: strongest from a standstill, gone by launchUntil (units per second). Measured on the real speed:
-      // the game's own speed turns negative once a slide passes 90 degrees, which would switch the push on full.
-      if (c.gas && S.launch > 0) {
-        const now = spd,
-          fade = 1 - now / S.launchUntil;
-        if (fade > 0) {
-          // On ice it stands in for tyres that cannot grip, so a car whose tyres do (iceAssist < 1) does without it.
-          const launch = S.ice && V.iceAssist != 1 ? 0 : S.launch,
-            dv = launch * fade * (n / 4) * 0.001;
-          F[v] += fx * dv;
-          F[v + 1] += fy * dv;
-          F[v + 2] += fz * dv;
-        }
-      }
-      // Wood: extra push that grows exponentially with speed while the gas is down.
-      if (c.gas && S.expo) {
-        const expo = S.expo,
-          now = Math.abs(speed) / 3.6,
-          fade = Math.min(1, Math.max(0, (expo.end - now) / (expo.end - expo.peak))),
-          a = Math.min(expo.max, expo.push * (Math.exp(now / expo.scale) - 1)) * fade * (n / 4) * 0.001;
-        F[v] += fx * a;
-        F[v + 1] += fy * a;
-        F[v + 2] += fz * a;
-      }
-      // Penalty grass: the share of wheels on it, squared, so one or two wheels only drag a little and all four drag fully
-      // (per second: 1 wheel about 7%, 2 about 24%, 3 about 46%, 4 about 67% of the speed).
-      if (S.drag) {
-        const k = 1 - S.drag * 0.001 * (n / 4) ** 2;
-        F[v] *= k;
-        F[v + 1] *= k;
-        F[v + 2] *= k;
-      }
-      // Rolling drag, and the speed a slide scrubs off (sin^2 of the slip: nothing driving straight).
-      if (S.roll || S.slide) {
-        const sn = Math.sin(Math.min(Math.abs(slip), Math.PI / 2)),
-          k = 1 - ((S.roll || 0) + (S.slide || 0) * sn * sn) * (n / 4) * 0.001;
-        F[v] *= k;
-        F[v + 1] *= k;
-        F[v + 2] *= k;
+    // Plastic launch: strongest from a standstill, gone by launchUntil (units per second). Measured on the real speed:
+    // the game's own speed turns negative once a slide passes 90 degrees, which would switch the push on full.
+    if (c.gas && launchWheels > 0) {
+      const now = spd,
+        fade = 1 - now / launchUntil;
+      if (fade > 0) {
+        const dv = launch * fade * (launchWheels / 4) * 0.001;
+        F[v] += fx * dv;
+        F[v + 1] += fy * dv;
+        F[v + 2] += fz * dv;
       }
     }
 
-    // Loose surfaces let the rear go, but off the steering the spin dies away (settle: share of the yaw rate lost per
-    // frame, by the share of wheels), so a drift straightens out when you let go instead of spinning the car round.
-    let settle = 0;
-    for (let u = 0; u < on.length; u++) if (on[u] && SURFACES[u].settle) settle += (SURFACES[u].settle * on[u]) / 4;
-    if (settle && steer == 0) {
-      const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz;
-      F[av] -= upx * yaw * settle;
-      F[av + 1] -= upy * yaw * settle;
-      F[av + 2] -= upz * yaw * settle;
+    // Wood: extra push that grows exponentially with speed while the gas is down.
+    if (c.gas && expoWheels > 0) {
+      const now = Math.abs(speed) / 3.6,
+        fade = Math.min(1, Math.max(0, (expo.end - now) / (expo.end - expo.peak))),
+        a = Math.min(expo.max, expo.push * (Math.exp(now / expo.scale) - 1)) * fade * (expoWheels / 4) * 0.001;
+      F[v] += fx * a;
+      F[v + 1] += fy * a;
+      F[v + 2] += fz * a;
     }
 
-    // What the engine and the brakes do this frame, as the change of speed along the nose since the last frame: the
-    // surfaces' engine and brake shares and the vehicle's accel take part of it back (or add to it).
-    if (c.last && contacts > 0) {
-      const gain = fwd - (c.last.vx * fx + c.last.vy * fy + c.last.vz * fz);
-      let cut = 0;
-      if (c.gas && gain > 0 && gain < 0.05) {
-        let keep = 1;
-        for (let u = 0; u < on.length; u++) if (on[u] && SURFACES[u].engine) keep -= (SURFACES[u].engine * on[u]) / 4;
-        if (V.accel) for (const [until, k] of V.accel) if (spd < until) { keep *= k; break; }
-        if (keep != 1) cut = gain * (1 - keep);
-      } else if (c.ctl && c.ctl.down && fwd > 0 && gain < 0 && gain > -0.2) {
-        let back = 0;
-        for (let u = 0; u < on.length; u++) if (on[u] && SURFACES[u].brake) back += (SURFACES[u].brake * on[u]) / 4;
-        if (back) cut = gain * back;
-      }
-      if (cut) {
-        F[v] -= fx * cut;
-        F[v + 1] -= fy * cut;
-        F[v + 2] -= fz * cut;
-      }
-    }
-
-    // The vehicle's top end: a drag that grows with the square of the speed over topSpeed.
-    if (V.topSpeed && spd > V.topSpeed) {
-      const k = 1 - Math.min(spd, V.topDrag * (spd - V.topSpeed) ** 2 * 0.001) / spd;
+    // Penalty grass: the share of wheels on it, squared, so one or two wheels only drag a little and all four drag fully
+    // (per second: 1 wheel about 7%, 2 about 24%, 3 about 46%, 4 about 67% of the speed).
+    if (dragWheels > 0) {
+      const k = 1 - drag * 0.001 * (dragWheels / 4) ** 2;
       F[v] *= k;
       F[v + 1] *= k;
       F[v + 2] *= k;
-    }
-    // The vehicle's air control (see AIR): not while a reactor boost steers the car in the air itself.
-    if (V.air > 1 && contacts == 0 && c.air > AIR.after && c.reactorLeft == 0 && c.ctl) {
-      const pull = AIR.pull * (V.air - 1),
-        yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
-        dy = (steer * AIR.yaw - yaw) * pull;
-      F[av] += upx * dy;
-      F[av + 1] += upy * dy;
-      F[av + 2] += upz * dy;
-      // Spin about the car's left axis: + dips the nose. Gas dips it, the brake lifts it.
-      const pitchWant = (c.ctl.up ? 1 : 0) - (c.ctl.down ? 1 : 0);
-      if (pitchWant != 0) {
-        const pitch = F[av] * lx + F[av + 1] * ly + F[av + 2] * lz,
-          dp = (pitchWant * AIR.pitch - pitch) * pull;
-        F[av] += lx * dp;
-        F[av + 1] += ly * dp;
-        F[av + 2] += lz * dp;
-      }
     }
 
     // Water (see WATER).
@@ -1192,7 +876,8 @@ self.TM = (() => {
         F[av] += (ax / n) * t;
         F[av + 2] += (az / n) * t;
       }
-    }
+      c.wet = Math.min(1, c.wet + WATER.soak * 0.001);
+    } else if (c.wet > 0 && contacts > 0 && iceWheels == 0) c.wet = Math.max(0, c.wet - WATER.dry * 0.001);
 
     // Reactor boost: thrust along the car's own up axis for the whole effect; in the air the gas pushes along the nose
     // and steering turns the car about its up axis.
@@ -1305,10 +990,6 @@ self.TM = (() => {
       F[v + 2] += fz * dv;
     }
     c.last = { x, y, z, vx: F[v], vy: F[v + 1], vz: F[v + 2] };
-    if (TEST && TEST.trace) {
-      const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, wet: c.wetW.map((q) => +q.toFixed(3)), ice: c.iceW.map((q) => +q.toFixed(3)) } });
-    }
   }
 
   // ---- PolyTrackBE1 track code ------------------------------------------------------------------------------------
@@ -1436,20 +1117,10 @@ self.TM = (() => {
     physicsId,
     proxyConfigs,
     zones,
-    fxZones: zones,
-    surfaceIndex,
-    surfaceAt,
     fxControls,
     fxStep,
     fxSkip,
     surfaces: SURFACES,
-    // For the page: the cars (VEHICLES[name].look has the hints for drawing them), which gate gives which car, wet and
-    // icing rates. The page works out the car the same way: a Car* zone entered switches it, a checkpoint keeps it for
-    // respawns, a respawn or the respawn key goes back to it, a new car (start over) is the Stadium car.
-    VEHICLES,
-    vehicleGates: GATES,
-    WATER,
-    ICING,
     fromSave,
     fromExport,
     SAVE_PREFIX,

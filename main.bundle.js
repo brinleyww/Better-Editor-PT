@@ -8608,10 +8608,10 @@
               (q) =>
                 new d(
                   null,
-                  r.A[(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])[q.f]],
+                  [r.A.Plastic, r.A.Wood, r.A.Stadium, r.A.Ice, r.A.Water][q.f],
                   q.i,
                   [],
-                  self.TM.palette(q) ?? self.TM.data.palettes[0],
+                  self.TM.palette(q),
                   q.c,
                   q.d ?? null,
                   q.o ? new i.Pq0(q.o[0], q.o[1], q.o[2]) : null,
@@ -31322,7 +31322,11 @@
               (e[(e.WallTrack = 6)] = "WallTrack"),
               (e[(e.Pillar = 7)] = "Pillar"),
               (e[(e.Sign = 8)] = "Sign"),
-              (self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"]).forEach((n, f) => (e[(e[n] = 9 + f)] = n)));
+              (e[(e.Plastic = 9)] = "Plastic"),
+              (e[(e.Wood = 10)] = "Wood"),
+              (e[(e.Stadium = 11)] = "Stadium"),
+              (e[(e.Ice = 12)] = "Ice"),
+              (e[(e.Water = 13)] = "Water"));
           })(i || (i = {})));
         const r = i;
       },
@@ -60487,13 +60491,6 @@
               break;
             case ru.A.Water:
               n = this.getPart(iu.A.StadiumWaterCorner);
-              break;
-            // The first of these the block table has, so the icon still draws while a kit lacks its usual piece.
-            case ru.A.Dirt:
-              n = this.getPart(iu.A.DirtRoadCurve2 ?? iu.A.DirtOpenCurve2 ?? iu.A.DirtPlatBase ?? iu.A.PlasticRoadCurve2);
-              break;
-            case ru.A.Grass:
-              n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);
           }
           switch (t) {
             case wl.A.Summer:

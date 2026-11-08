@@ -33,7 +33,7 @@ const litAll = (o, keep = []) => Object.fromEntries(Object.entries(o).map(([m, h
 // Stock gate colours, straight from road.glb. The game hands a glb colour factor and a hex colour's raw bytes to the
 // renderer the same way, so the factor x 255 as hex, unlit, looks exactly like the stock gate.
 const stockHex = (...f) => '#' + f.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
-const STOCK_MATS = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack', 'RoadBarrier', 'TechDeck', 'TechEdgeRed', 'TechEdgeWhite'];
+const STOCK_MATS = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack', 'RoadBarrier'];
 const MATERIALS = litAll({
   PlasticDeck: '#f2c230',
   PlasticDeckB: '#e4b222',
@@ -118,58 +118,11 @@ const MATERIALS = litAll({
   IceUnder: '#5f7487',
   Pillar: '#7a7d84',
   PillarEdge: '#3f4249',
-  // Dirt kit (TM2020 dirt): packed earth, dark ruts, wooden kerbs, soft earth banks.
-  DirtDeck: '#a8774a',
-  DirtDeckB: '#9b6c42',
-  DirtSeam: '#6a4629',
-  DirtLine: '#7d5534',
-  DirtRail: '#5e3c20',
-  DirtKerb: '#b99c6b',
-  DirtUnder: '#4a3220',
-  DirtBerm: '#b4834f',
-  DirtBermB: '#a87a49',
-  // Dirt borders on other surfaces' penalty pieces; drive as dirt (REGION_U).
-  DirtVerge: '#a27346',
-  DirtVergeB: '#97693f',
-  // Grass kit (TM2020 grass): mown stripes a little fresher than penalty grass, hedge kerbs, brown soil.
-  GrassDeck: '#79b244',
-  GrassDeckB: '#70a83d',
-  GrassSeam: '#5a8f31',
-  GrassLine: '#8fc25a',
-  GrassKerb: '#3f6f2a',
-  GrassKerbB: '#e6e8de',
-  GrassSoil: '#5b4630',
-  Hay: '#d9b54f',
-  HayB: '#c39a3c',
-  Rock: '#8e8a84',
-  Leaf: '#4f8f35',
-  Bush: '#3e7a2d',
-  Trunk: '#5b3d24',
-  // TM2020 ultra turbo is purple; bumpers are dark rubber pads with a bright glyph.
-  FxUltra: '#a52fd8',
-  FxUltraB: '#f3d9ff',
-  FxBumper: '#2a2c33',
-  FxBumperB: '#ffd23a',
-  FxBumper2B: '#ff4f6a',
-  // Vehicle gates: each car its own colour, the car drawn white on a dark sign.
-  VehSnow: '#9fdcf5',
-  VehRally: '#d8572a',
-  VehDesert: '#e0b04a',
-  VehStadium: '#3c7be0',
-  VehFrame: '#30343c',
-  VehPanel: '#1c1f26',
-  VehGlyph: '#ffffff',
-  // Bump road: the stock road's own grey and kerb colours (road.glb Road, RoadEdgeRed, RoadEdgeWhite).
-  TechDeck: stockHex(0.2957, 0.2957, 0.2957),
-  TechEdgeRed: stockHex(0.8, 0.0323, 0.0127),
-  TechEdgeWhite: '#ffffff',
 }, STOCK_MATS);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
-const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB', 'FxUltraB', 'FxBumperB', 'FxBumper2B', 'VehGlyph'];
-// Materials that drive as their own surface wherever they sit inside a part of another one (part.r regions):
-// penalty grass (2) and dirt verges (5).
-const REGION_U = { Grass: 2, GrassB: 2, DirtVerge: 5, DirtVergeB: 5 };
+const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB'];
+const GRASS_MATS = ['Grass', 'GrassB'];
 // Gate banners and finish hoops are poles, not walls: the plastic bounce leaves them out, like deco and the soft boxes.
 const NO_BOUNCE = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack'];
 
@@ -178,14 +131,12 @@ const CUSTOM_IDS = [32, 33, 34, 35, 36, 37, 38, 39, 40];
 const PLASTIC_CUSTOM = ['#25262c', '#b9302a', '#e0762b', '#f6e04a', '#2f9e4f', '#1f9d9d', '#2f5fc9', '#7d3fb8', '#7a5230'];
 const WOOD_CUSTOM = ['#2a2320', '#6e2a22', '#a85c28', '#c9a048', '#4a6a3a', '#3a6a66', '#3a4a70', '#5a3a66', '#4a2f1a'];
 const woodSet = (a) => ({ WoodDeckA: a, WoodDeckB: shade(a, 0.89), WoodDeckC: shade(a, 1.07), WoodDeckD: shade(a, 0.81) });
-const dirtSet = (a) => ({ DirtDeck: a, DirtDeckB: shade(a, 0.93), DirtSeam: shade(a, 0.64), DirtBerm: shade(a, 1.06), DirtBermB: shade(a, 1.0) });
 const lighten = (hex, k) => {
   const n = parseInt(hex.slice(1), 16),
     c = (sh) => Math.round(((n >> sh) & 255) + (255 - ((n >> sh) & 255)) * k);
   return '#' + [16, 8, 0].map((sh) => c(sh).toString(16).padStart(2, '0')).join('');
 };
 const plasticSet = (a) => ({ PlasticDeck: a, PlasticDeckB: shade(a, 0.93), PlasticSeam: lighten(a, 0.45) });
-const grassSet = (a) => ({ GrassDeck: a, GrassDeckB: shade(a, 0.93), GrassSeam: shade(a, 0.76), GrassLine: lighten(a, 0.2) });
 const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors, STOCK_MATS) }));
 // Stock barriers recolour with the season the way stock roads do (main.bundle.js environment colours).
 const BARRIER = { 2: { RoadBarrier: '#898989' }, 3: { RoadBarrier: '#211001' } };
@@ -216,26 +167,8 @@ const PALETTES = {
     { id: 3, colors: { ...BARRIER[3], IceRim: '#d13a2c' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: { IceRim: PLASTIC_CUSTOM[i] } })),
   ]),
-  // Dirt: winter is frozen grey earth, the sand set is desert dust; custom slots tint the earth with wood's colours.
-  Dirt: litSlots([
-    { id: 1, colors: {} },
-    { id: 2, colors: { ...BARRIER[2], ...dirtSet('#b3a597'), DirtRail: '#6f655c', DirtKerb: '#e6eaee' } },
-    { id: 3, colors: { ...BARRIER[3], ...dirtSet('#d3a462'), DirtRail: '#8a5a2b', DirtKerb: '#efd9a8' } },
-    ...CUSTOM_IDS.map((id, i) => ({ id, colors: dirtSet(WOOD_CUSTOM[i]) })),
-  ]),
-  // Grass: frosted in winter, dry and gold in the sand set, the leaves turning with it.
-  Grass: litSlots([
-    { id: 1, colors: {} },
-    { id: 2, colors: { ...BARRIER[2], ...grassSet('#cfdcd2'), Leaf: '#e3ecee', Bush: '#c9d8d2' } },
-    { id: 3, colors: { ...BARRIER[3], ...grassSet('#b9a650'), Leaf: '#c8782a', Bush: '#9a6a2a' } },
-    ...CUSTOM_IDS.map((id, i) => ({ id, colors: grassSet(PLASTIC_CUSTOM[i]) })),
-  ]),
 };
-// part.f: the editor category, in TM_DATA.families order.
-const FAMILIES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water', 'Dirt', 'Grass'];
-const SURFACE_INDEX = Object.fromEntries(FAMILIES.map((n, i) => [n, i]));
-// part.u when a part does not set its own: the kit's physics surface (tm_runtime.js SURFACES).
-const KIT_U = { Plastic: 0, Wood: 1, Dirt: 5, Grass: 6 };
+const SURFACE_INDEX = { Plastic: 0, Wood: 1, Stadium: 2, Ice: 3, Water: 4 };
 
 // Every (axis, rotation) as an exact integer matrix, derived from the game's own rotation quaternions.
 const S = Math.SQRT1_2;
@@ -255,43 +188,15 @@ const mat3 = ([x, y, z, w]) =>
   });
 const ROTATIONS = Q.map((row) => row.map(mat3));
 
-// Joins boxes that are the same on two axes and meet or overlap on the third: the union is exactly one box, so the
-// covered space does not change. Keeps the region list short for parts with long verges.
-function mergeBoxes(list) {
-  const B = list.map((b) => [b[0].slice(), b[1].slice(), b[2] ?? 2]);
-  for (let joined = true; joined; ) {
-    joined = false;
-    for (let i = 0; i < B.length && !joined; i++)
-      for (let j = i + 1; j < B.length && !joined; j++) {
-        const [a, b] = [B[i], B[j]];
-        if (a[2] != b[2]) continue;
-        const same = [0, 1, 2].filter((k) => a[0][k] == b[0][k] && a[1][k] == b[1][k]),
-          k = [0, 1, 2].find((q) => !same.includes(q));
-        if (same.length == 3 || (same.length == 2 && b[0][k] <= a[1][k] && a[0][k] <= b[1][k])) {
-          if (same.length == 2) {
-            a[0][k] = Math.min(a[0][k], b[0][k]);
-            a[1][k] = Math.max(a[1][k], b[1][k]);
-          }
-          B.splice(j, 1);
-          joined = true;
-        }
-      }
-  }
-  return B.map(([lo, hi, u]) => (u == 2 ? [lo, hi] : [lo, hi, u]));
-}
-
 function main() {
   const reg = fs.existsSync(idsFile) ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : {};
   let nextId = Math.max(FIRST_ID - 1, ...Object.values(reg)) + 1;
-  // Parts that shipped before this build: their data stays exactly as it was (regions, proxy slots).
-  const shipped = new Set(Object.keys(reg));
-  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass')];
+  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce()];
   // Collision meshes: the same blocks built again without the surface patterns. The pattern strips are coplanar,
   // so they only cost the physics time; the plain mesh has the same shape with far fewer triangles.
   process.env.BE_PLAIN = '1';
   for (const k of Object.keys(require.cache)) if (k.includes(path.sep + 'blocks' + path.sep)) delete require.cache[k];
-  const C = require('./catalog');
-  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass')].map((q) => [q.name, q.mesh]));
+  const plain = new Map([...require('./catalog').buildSurface('Plastic'), ...require('./catalog').buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce()].map((q) => [q.name, q.mesh]));
   delete process.env.BE_PLAIN;
   const seen = new Set();
   const matNames = Object.keys(MATERIALS),
@@ -299,16 +204,9 @@ function main() {
 
   const chunks = [];
   let offset = 0;
-  // Identical chunks are stored once: kits drawn on the same lattice (Dirt and Grass on plastic's) and the plain
-  // collision meshes repeat a lot of geometry. Returns the chunk's byte offset.
-  const stored = new Map();
   const push = (typed) => {
-    const b = Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength),
-      key = crypto.createHash('sha1').update(b).digest('base64') + b.length;
-    if (stored.has(key)) return stored.get(key);
-    const at = offset;
-    stored.set(key, at);
     // keep every chunk 4-byte aligned so the runtime can use typed-array views
+    const b = Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength);
     chunks.push(b);
     offset += b.length;
     const pad = (4 - (b.length % 4)) % 4;
@@ -316,12 +214,10 @@ function main() {
       chunks.push(Buffer.alloc(pad));
       offset += pad;
     }
-    return at;
   };
 
   const proxies = new Map();
-  const table = [],
-    gates = [];
+  const table = [];
   let physTris = 0,
     totalTris = 0,
     worst = { tris: 0 };
@@ -350,8 +246,10 @@ function main() {
         ind.push(i);
       }
       if (pos.length / 3 > 65535) throw new Error('too many vertices in ' + p.name);
-      const po = push(new Float32Array(pos)),
-        io = push(new Uint16Array(ind));
+      const po = offset;
+      push(new Float32Array(pos));
+      const io = offset;
+      push(new Uint16Array(ind));
       mats.push([matIndex.get(m), po, pos.length, io, ind.length]);
     }
     {
@@ -388,10 +286,16 @@ function main() {
         }
       }
       if (pos.length / 3 > 65535) throw new Error('too many collision vertices in ' + p.name);
-      const po = push(new Float32Array(pos)),
-        io = push(new Uint16Array(ind));
+      const po = offset;
+      push(new Float32Array(pos));
+      const io = offset;
+      push(new Uint16Array(ind));
       p.ph = [-1, po, pos.length, io, ind.length];
-      if (skipped) p.bw = [-1, po, pos.length, push(new Uint16Array(bounce)), bounce.length];
+      if (skipped) {
+        const bo = offset;
+        push(new Uint16Array(bounce));
+        p.bw = [-1, po, pos.length, bo, bounce.length];
+      }
       physTris += ind.length / 3;
     }
     totalTris += p.mesh.tris;
@@ -404,37 +308,32 @@ function main() {
     if (p.fx) e.x = p.fx;
     if (p.spawnDir) e.sd = p.spawnDir;
     if (p.ph[4]) e.ph = p.ph;
-    // Physics surface for the whole part (tm_runtime.js SURFACES): 0 plastic, 1 wood, 2 penalty grass, 3 ice,
-    // 4 bobsleigh, 5 dirt, 6 grass, 8 tech; absent = stock physics.
-    const u = p.u !== undefined ? p.u : (KIT_U[p.surface] ?? null);
+    // Physics surface for the whole part: 0 plastic, 1 wood, 2 penalty grass, 3 ice, 4 bobsleigh; absent = stock physics.
+    const u = p.u !== undefined ? p.u : f < 2 ? f : null;
     if (u != null) e.u = u;
     if (p.bw && u === 0) e.bw = p.bw;
-    // Another surface inside this part (grass or dirt verges): boxes around its faces, in the part's own frame.
-    // [lo, hi] is penalty grass, as it always was; any other surface is [lo, hi, u].
-    const boxes = new Map();
-    for (const [m, ru] of Object.entries(REGION_U)) {
-      const l = p.mesh.byMat.get(m);
-      if (!l || ru == u) continue;
-      for (let i = 0; i < l.length; i += 3) {
-        const lo = [0, 1, 2].map((k) => +(Math.min(l[i][k], l[i + 1][k], l[i + 2][k]) - 0.35).toFixed(2)),
-          hi = [0, 1, 2].map((k) => +(Math.max(l[i][k], l[i + 1][k], l[i + 2][k]) + 0.35).toFixed(2));
-        boxes.set(lo.join() + '|' + hi.join() + '|' + ru, ru == 2 ? [lo, hi] : [lo, hi, ru]);
+    // Grass inside a part of another surface: boxes around its grass faces, in the part's own frame.
+    if (u != 2) {
+      const boxes = new Map();
+      for (const m of GRASS_MATS) {
+        const l = p.mesh.byMat.get(m);
+        if (!l) continue;
+        for (let i = 0; i < l.length; i += 3) {
+          const lo = [0, 1, 2].map((k) => +(Math.min(l[i][k], l[i + 1][k], l[i + 2][k]) - 0.35).toFixed(2)),
+            hi = [0, 1, 2].map((k) => +(Math.max(l[i][k], l[i + 1][k], l[i + 2][k]) + 0.35).toFixed(2));
+          boxes.set(lo.join() + '|' + hi.join(), [lo, hi]);
+        }
       }
+      if (boxes.size) e.r = [...boxes.values()];
     }
-    // New parts get their boxes merged; shipped parts keep theirs box for box, so their physics cannot move.
-    if (boxes.size) e.r = shipped.has(p.name) ? [...boxes.values()] : mergeBoxes([...boxes.values()]);
-    table.push(e);
-    if (p.detector || p.startOffset) gates.push([p, e]);
-  }
-  // The wasm only takes one-byte part ids, so gates share proxy slots keyed by what the wasm needs from them.
-  // Shipped gates take their slots first, so a new gate's trigger never moves an old gate to another slot.
-  for (const old of [true, false])
-    for (const [p, e] of gates) {
-      if (shipped.has(p.name) != old) continue;
+    if (p.detector || p.startOffset) {
+      // The wasm only takes one-byte part ids, so gates share proxy slots keyed by what the wasm needs from them.
       const key = JSON.stringify([p.detector ?? null, p.startOffset ?? null]);
       if (!proxies.has(key)) proxies.set(key, { id: FIRST_PROXY + proxies.size, detector: p.detector ?? null, startOffset: p.startOffset ?? null });
       e.p = proxies.get(key).id;
     }
+    table.push(e);
+  }
   if (FIRST_PROXY + proxies.size > 256) throw new Error('out of proxy slots: ' + proxies.size);
 
   const bin = Buffer.concat(chunks);
@@ -448,20 +347,19 @@ function main() {
     binBytes: bin.length,
     materials: matNames.map((m) => MATERIALS[m]),
     materialNames: matNames,
-    families: FAMILIES,
-    palettes: FAMILIES.map((n) => PALETTES[n == 'Water' ? 'Stadium' : n]), // water pools recolour like Stadium
+    palettes: [PALETTES.Plastic, PALETTES.Wood, PALETTES.Stadium, PALETTES.Ice, PALETTES.Stadium], // water pools recolour like Stadium
     noPhysics: NO_PHYSICS.map((m) => matIndex.get(m)),
     rotations: ROTATIONS,
     proxies: [...proxies.values()],
     // Tabs in menu order; any tab a block uses that is not listed goes at the end, in the order blocks use it.
-    tabs: [...new Set(['Road', 'Dirt road', 'Open road', 'Narrow road', 'Platform', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', ...table.map((p) => p.t)])],
+    tabs: [...new Set(['Road', 'Open road', 'Platform', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', ...table.map((p) => p.t)])],
     parts: table,
   };
   fs.writeFileSync(path.join(site, 'tm_parts.js'), '// Generated by tools/blocks/build.js. Do not edit by hand.\nself.TM_DATA = ' + JSON.stringify(data) + ';\n');
 
   // A readable list of everything in the catalogue, by surface, tab and section.
   const lines = ['# Block list', '', 'Generated by tools/blocks/build.js. ' + table.length + ' blocks.', ''];
-  for (const [f, surface] of FAMILIES.entries()) {
+  for (const [f, surface] of ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water'].entries()) {
     const own = table.filter((p) => p.f == f);
     lines.push('## ' + surface + ' (' + own.length + ')', '');
     for (const tab of data.tabs) {
