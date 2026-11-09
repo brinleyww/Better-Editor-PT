@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,277 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,457 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -27,12 +27,12 @@ Seven new categories sit near the top of the editor's block column, under the er
 
 | Category | Tabs |
 |---|---|
-| Plastic, Wood (522 each) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
-| Stadium (200) | Penalty grass, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
-| Ice (143) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Vehicle gates |
-| Water (9) | Pools, Shallow water |
-| Dirt (559) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
-| Grass (322) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Plastic (568), Wood (534) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Pipes (plastic only), Gates, Effects, Vehicle gates, Connectors, Deco |
+| Stadium (237) | Penalty grass, Pipes, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
+| Ice (199) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Snow platform, Vehicle gates |
+| Water (14) | Pools, Shallow water, Water road |
+| Dirt (571) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Grass (334) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
 
 The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates. Every kit has vehicle gates. The bump road is Trackmania's sausage road: a rounded crown with the stock road's kerbs.
 
@@ -48,7 +48,7 @@ Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and 
 | Platform ice, bobsleigh | The tyres barely hold, so the car slides; steering turns the car itself, and a held turn settles into a steady slide. A slide keeps its speed: the engine keeps driving through it, so the car slides wider instead of slowing down (a 1 s full-lock slide at 250 km/h on platform ice ends about 4% slower, where it used to lose 11%, and a steering tap costs almost nothing). Speedslides work here, the ice-slide kind (see below). Braking takes about five times the distance. Bobsleigh walls hold the car in the channel near their lip. |
 | Dirt | About 0.65 of the road's grip (corners at about 0.8 of the speed). The rear lets go first, so it drifts, and the drift settles when you let go of the steering. A drift keeps most of its speed (a 1 s full-lock drift from 250 km/h ends about 6% slower, where it used to lose 25%), and speedslides and neoslides work here. 0 to 100 km/h takes x1.17 as long, 0 to 200 x1.31, braking x1.6 the distance, and rolling drag costs about 8% of the speed a second. Comes as whole blocks and as dirt verges inside other blocks. |
 | Grass | Trackmania's drivable grass, not the penalty verges. About half the grip and lighter than dirt: the rear steps out easily and smoothly, the slide is easy to hold and catch, and a slalom swings through without stalling. x1.25 as long to 100 km/h, x1.4 to 200, x2 the braking distance, and rolling drag that holds the car well under the road's top end. |
-| Snow | About 0.4 of the grip, x1.3 as long to 100 km/h, x2.5 the braking distance and little drag: between dirt and ice. It is in the physics, but no block uses it yet. |
+| Snow | About 0.4 of the grip, x1.3 as long to 100 km/h, x2.5 the braking distance and little drag: between dirt and ice. The snow platforms (Ice, Snow platform) use it. |
 | Road (bump road) | Exactly the stock road. It has its own entry only for its own wet grip and vehicle numbers. |
 | Water | Not solid. The car sinks slowly, loses speed hard and can drive out. Shallow water sits over a floor: a little drag and a softer engine. Hitting deep water fast and flat, the car skips off it like a stone; while it touches the water in a skip, steering turns it a little (about 3 degrees a skip at full lock), without costing or adding speed. |
 | Tyres | Each tyre gets wet, icy and muddy on its own, and one surface undoes another: see Tyres below. |
@@ -102,13 +102,15 @@ States in between count in proportion, and states together multiply, but never b
 | Fragile | A hard hit sends you back to the last checkpoint. |
 | Reset | Clears every effect. |
 
-The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. The round finish hoops are hidden the same way. All of these are among the 2,413 parts in the table (136 of them hidden).
+The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. The round finish hoops are hidden the same way. All of these are among the 2,593 parts in the table (136 of them hidden).
 
 Trackmania 2020 keeps its car and surface tunings in encrypted packs, so every number here is this project's own estimate, set relative to how Trackmania's Stadium car drives on its road (PolyTrack's stock car on the stock road) and measured with `tools/test/tmphys.mjs`. A Trackmania install was read only for its catalogue: the surface materials, the gameplay effect ids, the per-wheel states the car keeps (wetness, icing) and the editor's block styles and categories.
 
 **Box gates** (Stadium, Box gates) come one per block, with any mix of left, right, top and bottom frame edges, so start, checkpoint and finish boxes can be any width and height. Pieces with the same checkpoint number count as one gate.
 
 **Finish boxes** (Gates in Plastic, Wood, Dirt and Grass, Box gates in Stadium, Ice gates in Ice) are see-through red blocks of finish trigger, one block wide and one block tall (or half as tall), as deep as the stock finish line. Stand one on any road or platform, beside another or on top of one: boxes that touch join into one bigger finish, drawn as one red sheet with a chequered finish frame round the outside of the whole shape (like Trackmania's finish gates), and their triggers meet with no gap. The car drives straight through them. A box leaves its bottom layer free, so it goes onto a road or platform without replacing it. They replace the round finish hoops, which are no longer in the browser; tracks that use hoops still load and finish as before.
+
+**Pipes** (Pipes in Plastic, and road pipes with the stock road's grip in Stadium) are Trackmania's round tubes: the inside is one road wide with its floor at the road's deck, so the road, the open road and a platform curl up into a pipe through their entry pieces and join it edge to edge. There are straights (half, 1, 2 and 4 long), an end cap, curves of radius 30, 50 and 70, chicanes, gentle and medium climbs, open (half) pipes with curves and a piece that closes an open pipe into a full one, and start, checkpoint, finish and effect pipes whose triggers fill the whole tube, so a car on the wall or the ceiling crosses them too. Fast enough, the car rides up the wall and right round over the top. The platform kits (Plastic, Wood, Dirt, Grass, ice and the new snow platforms) also gained Trackmania's platform hills and jumps (crests, dips, kickers, a mound), obstacles (speed bump, block, posts) and diagonal edges; ice gained the bowl corners and curved walls the other kits have; Water has the water road (the stock road under a thin layer of water: wet tyres and spray); and Stadium has small and large grandstands and an arch over the road.
 
 ### Between building and testing
 
@@ -247,7 +249,7 @@ Each mesh entry is `[material, positionsOffset, floatCount, indicesOffset, index
 
 ## Making your own blocks
 
-Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt and grass), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
+Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt and grass), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), [tools/blocks/pipes.js](tools/blocks/pipes.js) (pipes) and [tools/blocks/extras.js](tools/blocks/extras.js) (platform hills, obstacles and diagonals, snow platforms, the water road, stands), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
 
 ```bash
 cd tools && npm install
@@ -282,7 +284,7 @@ This formats `_original/app` into `_original/formatted`, copies the assets to th
 
 ## Known limits
 
-- The catalogue follows Trackmania 2020's block families for plastic, wood, ice, water, dirt and grass, plus the bump road and stadium scenery. It is not a complete copy of every Trackmania block: there are no castle or water roads, and no snow blocks yet.
+- The catalogue follows Trackmania 2020's block families for plastic, wood, ice, water, dirt and grass, plus the bump road and stadium scenery. It is not a complete copy of every Trackmania block: there are no castle roads, no snow roads (only snow platforms) and no pipe junctions.
 - On the tightest plastic loop (radius 20), a car can lose the loop if it steers at the wrong moment.
-- `models/tm_blocks.bin` is about 63 MB (about 29 MB compressed), so the first load takes longer than the stock game.
+- `models/tm_blocks.bin` is about 66 MB (about 30 MB compressed), so the first load takes longer than the stock game.
 - The code under `_original/` and the formatted bundles keep PolyTrack's minified names. [docs/MODULE_MAP.md](docs/MODULE_MAP.md) says where things are.

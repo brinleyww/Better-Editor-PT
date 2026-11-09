@@ -1745,4 +1745,4 @@ function cyl(m, top, side, r, y0, y1, n) {
   }
 }
 
-module.exports = { hoopRing, hoopGate, putFinishBoxes, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, DECAL, RAIL_TOP, TILT, DEG, smooth, hermite, every, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, DIRT_VERGE, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, VEHICLES, vehicleArch, chevrons, loopSet, stockGate };
+module.exports = { styleFor, hoopRing, hoopGate, putFinishBoxes, PATTERNS, roadProfile, openProfile, platProfile, buildSurface, HALF_ROAD, DECK, DECAL, RAIL_TOP, TILT, DEG, smooth, hermite, every, deckPoly, railPoly, sidePoly, grassStrips, grassPatch, DIRT_VERGE, swept, roadPart, gateArch, paintBand, cyl, arcStepFor, FX, VEHICLES, vehicleArch, chevrons, loopSet, stockGate };

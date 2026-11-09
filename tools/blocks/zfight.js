@@ -4,6 +4,8 @@
 const { buildSurface } = require('./catalog');
 const { buildShared } = require('./shared');
 const { buildIce } = require('./ice');
+const { buildPipes } = require('./pipes');
+const { buildExtras } = require('./extras');
 
 const NEAR = 0.03; // planes closer than this flicker at editor distances
 
@@ -45,7 +47,9 @@ function overlap(A, B) {
   return sa.some((p) => inside(p, sb)) || sb.some((p) => inside(p, sa)) || inside(ca, sb) || inside(cb, sa);
 }
 
-const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass')];
+// node tools/blocks/zfight.js [regex]: only the blocks whose names match.
+const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
+const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras()].filter((p) => !only || only.test(p.name));
 const bad = [];
 for (const p of parts) {
   const tris = [];

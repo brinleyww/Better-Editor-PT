@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const { buildSurface } = require('./catalog');
 const { buildShared } = require('./shared');
 const { buildIce } = require('./ice');
+const { buildPipes } = require('./pipes');
+const { buildExtras } = require('./extras');
 const { rasterTiles } = require('./geom');
 
 const site = path.join(__dirname, '..', '..');
@@ -36,7 +38,7 @@ const litAll = (o, keep = []) => Object.fromEntries(Object.entries(o).map(([m, h
 // Stock gate colours, straight from road.glb. The game hands a glb colour factor and a hex colour's raw bytes to the
 // renderer the same way, so the factor x 255 as hex, unlit, looks exactly like the stock gate.
 const stockHex = (...f) => '#' + f.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
-const STOCK_MATS = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack', 'RoadBarrier', 'TechDeck', 'TechEdgeRed', 'TechEdgeWhite'];
+const STOCK_MATS = ['StartLine', 'Checkpoint', 'Finish', 'FinishWhite', 'FinishBlack', 'RoadBarrier', 'TechDeck', 'TechEdgeRed', 'TechEdgeWhite', 'TechDeckB'];
 const MATERIALS = litAll({
   PlasticDeck: '#f2c230',
   PlasticDeckB: '#e4b222',
@@ -175,6 +177,15 @@ const MATERIALS = litAll({
   VehStadiumB: '#3c7be0',
   // Finish box (catalog.js finishBox): drawn see-through by tm_water.js, which also draws its outline. Added last.
   FinishBox: '#ff1e1e',
+  // Road pipes (pipes.js): the inside's second panel shade, a touch darker than the stock road grey. Added last.
+  TechDeckB: stockHex(0.262, 0.262, 0.262),
+  // Snow platforms (extras.js): packed snow in two shades, a pale blue rim, blue-grey sides and underside.
+  Snow: '#f4f7fb',
+  SnowB: '#e6edf5',
+  SnowLine: '#ffffff',
+  SnowRim: '#8fb8e0',
+  SnowSide: '#c9d4e0',
+  SnowUnder: '#6d7f92',
 }, [...STOCK_MATS, 'FinishBox']);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
@@ -202,7 +213,7 @@ const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.color
 // Stock barriers recolour with the season the way stock roads do (main.bundle.js environment colours).
 const BARRIER = { 2: { RoadBarrier: '#898989' }, 3: { RoadBarrier: '#211001' } };
 // So does the bump road, which joins the stock road: its Road, RoadEdgeRed and RoadEdgeWhite per season.
-const TECH = { 2: { TechDeck: '#5077b2', TechEdgeRed: '#1f3d6b', TechEdgeWhite: '#ffffff' }, 3: { TechDeck: '#997240', TechEdgeRed: '#5b2424', TechEdgeWhite: '#510808' } };
+const TECH = { 2: { TechDeck: '#5077b2', TechDeckB: '#4870a8', TechEdgeRed: '#1f3d6b', TechEdgeWhite: '#ffffff' }, 3: { TechDeck: '#997240', TechDeckB: '#8e6a3b', TechEdgeRed: '#5b2424', TechEdgeWhite: '#510808' } };
 const PALETTES = {
   Plastic: litSlots([
     { id: 1, colors: {} },
@@ -297,13 +308,13 @@ function mergeBoxes(list) {
 function main() {
   const reg = fs.existsSync(idsFile) ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : {};
   let nextId = Math.max(FIRST_ID - 1, ...Object.values(reg)) + 1;
-  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass')];
+  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras()];
   // Collision meshes: the same blocks built again without the surface patterns. The pattern strips are coplanar,
   // so they only cost the physics time; the plain mesh has the same shape with far fewer triangles.
   process.env.BE_PLAIN = '1';
   for (const k of Object.keys(require.cache)) if (k.includes(path.sep + 'blocks' + path.sep)) delete require.cache[k];
   const C = require('./catalog');
-  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass')].map((q) => [q.name, q.mesh]));
+  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass'), ...require('./pipes').buildPipes(), ...require('./extras').buildExtras()].map((q) => [q.name, q.mesh]));
   delete process.env.BE_PLAIN;
   const seen = new Set();
   const matNames = Object.keys(MATERIALS),
@@ -470,7 +481,7 @@ function main() {
     proxies: [...proxies.values()],
     // Tabs in menu order; any tab a block uses that is not listed goes at the end, in the order blocks use it.
     // Ice's own tabs come before the vehicle gates, so its browser still opens on the bobsleigh.
-    tabs: [...new Set(['Road', 'Dirt road', 'Open road', 'Narrow road', 'Platform', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Bobsleigh', 'Bobsleigh gates', 'Bobsleigh effects', 'Ice platform', 'Ice walls and loops', 'Ice gates', 'Ice effects', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', ...table.map((p) => p.t)])],
+    tabs: [...new Set(['Road', 'Dirt road', 'Open road', 'Narrow road', 'Platform', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Pipes', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Bobsleigh', 'Bobsleigh gates', 'Bobsleigh effects', 'Ice platform', 'Ice walls and loops', 'Ice gates', 'Ice effects', 'Snow platform', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', 'Water road', ...table.map((p) => p.t)])],
     parts: table,
   };
   fs.writeFileSync(path.join(site, 'tm_parts.js'), '// Generated by tools/blocks/build.js. Do not edit by hand.\nself.TM_DATA = ' + JSON.stringify(data) + ';\n');
