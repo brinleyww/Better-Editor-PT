@@ -1008,7 +1008,14 @@ self.TM.vehicles = (() => {
   const SMOKE = { pool: 1, colors: [0xc8cacd, 0xb4b7ba], life: [0.9, 1.6], size: [0.8, 2.8], gravity: -1.1, drag: 1.3, alpha: 0.38, roll: 0, slide: 28, up: [0.3, 1.2], spread: 1.2, carry: 0.2, throw: 0.25 };
   // By part.u: 0 plastic, 1 wood, 2 penalty grass, 3 platform ice, 4 bobsleigh, 5 dirt, 6 grass, 7 snow, 8 tech.
   const SPRAY = [[FLECKS], [SPLINTERS, SAWDUST], [VERGE, GRASS_DUST], [GLITTER], [GLITTER], [DUST, CLODS], [CLIPPINGS, SOIL, GRASS_DUST], [POWDER, CLUMPS], [SMOKE]];
-  const KINDS = [...new Set(SPRAY.flat())];
+  // Wet wood (a wet tyre on wood, WET_FROM wet or more) throws water instead of splinters: a fan of bright droplets that
+  // arc off and a low sheet of mist behind the tyre, both mostly from sliding, so a wet slide hisses with spray. By the
+  // tyre's wetness (a lightly wet tyre throws a little).
+  const DROPLETS = { pool: 0, colors: [0xe4f1fa, 0xcfe4f2, 0xffffff], life: [0.3, 0.6], size: [0.1, 0.05], gravity: 16, drag: 0.7, alpha: 1, glint: true, roll: 5, slide: 110, up: [1.5, 4], spread: 2.6, carry: 0.55, throw: 0.65 };
+  const MIST = { pool: 1, colors: [0xdfeaf2, 0xcbdbe6], life: [0.45, 0.9], size: [0.7, 2.6], gravity: -0.3, drag: 2.2, alpha: 0.3, roll: 3, slide: 30, up: [0.2, 0.9], spread: 1.4, carry: 0.4, throw: 0.45 };
+  const WET_WOOD = [DROPLETS, MIST],
+    WET_FROM = 0.05;
+  const KINDS = [...new Set([...SPRAY.flat(), ...WET_WOOD])];
   KINDS.forEach((k, i) => {
     k.id = i;
     k.rgb = k.colors.map(shade);
@@ -1243,12 +1250,14 @@ self.TM.vehicles = (() => {
       if (lod <= 0) continue;
       // Wheelspin throws it back behind the tyre.
       const kick = state.controls?.up && skid < SLIDE.skid[0] ? 3 : 0;
-      const list = SPRAY[u];
+      const wet = u === 1 ? c.tyre?.[i]?.wet ?? 0 : 0,
+        list = wet >= WET_FROM ? WET_WOOD : SPRAY[u],
+        much = wet >= WET_FROM ? 0.25 + 0.75 * wet : 1;
       for (let k = 0; k < list.length; k++) {
         const K = list[k],
           P = s.pools[K.pool],
           a = i * MOST + k;
-        S.acc[a] += (K.roll * roll + K.slide * slide * Math.max(0.25, clamp01(speed / 8))) * lod * dt;
+        S.acc[a] += (K.roll * roll + K.slide * slide * Math.max(0.25, clamp01(speed / 8))) * much * lod * dt;
         let count = Math.min(12, Math.floor(S.acc[a]));
         S.acc[a] -= Math.floor(S.acc[a]);
         if (ghost && P.live > P.max / 2) count = 0;

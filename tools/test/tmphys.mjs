@@ -24,6 +24,8 @@ await c.send('Page.addScriptToEvaluateOnNewDocument', { source: hook });
 await c.send('Page.navigate', { url: 'http://127.0.0.1:' + (process.env.TMPORT || 8123) + '/Better-Editor-PT/' });
 await c.waitFor(`[...document.querySelectorAll('button')].some(b=>['Exit','Editor'].includes(b.innerText.trim())&&b.offsetParent)`, 300000);
 await c.waitFor('!!window.__init');
+// The page never needs to draw here: with swiftshader its render loop kept ~10 cores busy and starved the worker.
+await c.evaluate("window.requestAnimationFrame=()=>0;window.cancelAnimationFrame=()=>{};for(const v of document.querySelectorAll('canvas'))v.style.display='none';true");
 // Per frame, per car: frames, km/h, x, y, z, quaternion xyzw, wheel contacts (bit mask), next checkpoint, min skid.
 const K = 12;
 await c.evaluate(`(()=>{

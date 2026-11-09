@@ -422,7 +422,7 @@ self.TM = (() => {
   // tyre is, 0 to 1, and the ground under it adds or takes each away, so one surface undoes another: dirt scrubs ice off
   // and soaks water up, water washes mud off and thaws ice, ice and snow freeze a wet tyre. TM2020's tunings sit in
   // encrypted packs: every rate and grip loss here is this project's estimate of how TM2020 plays (a water section soaks
-  // the tyres, wet wood is its SlidingWood, nearly ice; ice and snow ice the tyres up), not a measurement.
+  // the tyres, wet wood is its SlidingWood; ice and snow ice the tyres up), not a measurement.
   // table: a row per surface (part.u 0-8; road: the stock road and tech 8; water: a wheel under a water surface, whatever
   // floor it is on; air: off the ground). Rates per second:
   //   soak: wetness on; dry: wetness off; ice: icing on (only for a car whose tyres ice up there, VEHICLES ices);
@@ -436,11 +436,18 @@ self.TM = (() => {
   // shed: the cars built for loose ground (Rally, Desert) throw mud off a little faster.
   // Grip: a full state takes wetLoss, iceLoss, mudLoss of the grip on that row's surface, x (1 - loss x state). The three
   // multiply, but together never take more than the worst one alone leaves x KEEP, so stacking them cannot zero the
-  // grip; only the states' own worst cases come near that (wet wood x0.08 of wood's grip, about platform ice's 0.14 of
-  // stock). After TM2020's wet materials: wet tech (WetAsphalt) loses little, wet dirt is a mud road (WetDirtRoad,
-  // slippery, wetRoll: a little more rolling drag, share of the speed per second), wet grass is slick (WetGrass), wet
-  // wood is SlidingWood: besides its grip, `slides` makes it handle like that surface's ice (platform ice) while wet, each
-  // wheel counting by its tyre's wetness (fxStep), so a wet car slides on wood as on ice. Iced tyres lose half their grip off ice and snow; muddy ones lose up to 30% on hard surfaces
+  // grip; only the states' own worst cases come near that (soaked wood x0.15 front, x0.08 rear of wood's grip). After
+  // TM2020's wet materials: wet tech (WetAsphalt) loses little, wet dirt is a mud road (WetDirtRoad, slippery, wetRoll: a
+  // little more rolling drag, share of the speed per second), wet grass is slick (WetGrass), wet wood is SlidingWood.
+  // Wet wood is its own slide, not ice: a loose, playful power-slide. The rear tyres lose more (wetLossRear) and sooner
+  // (by wetness^wetCurveRear), so the tail steps out on turn-in, and `slick` steers the car like ice (fxStep) but quicker
+  // and looser: the spin follows the steering at `pull` per frame towards `yaw` rad/s (x lift off the gas, lift-off
+  // oversteer), the way the car goes swings round to the nose at align x sin(slip) per wheel on it, and sliding costs
+  // loss x sin^2(slip) of the speed per second. Let go of the steering and the nose swings back onto the way the car is
+  // going (towards self x slip rad/s, at most selfMax, by selfPull per frame), so it straightens up in about 0.3 s where
+  // ice slides on. How much of that it gets goes with the tyres' wetness (curve, over the four wheels), and the slide is
+  // held to angle x that^capCurve radians (capPull), so a lightly wet car is a little loose and a soaked one slides wide.
+  // Iced tyres lose half their grip off ice and snow; muddy ones lose up to 30% on hard surfaces
   // (tech, plastic, wood) and nothing on dirt and grass, where the mud is the ground. Dry tyres change nothing.
   // The road, plastic, wood and penalty grass wet losses and the icing rates (0.8 on, 0.4 off on hard ground) are the
   // ones tracks were driven with when wetness was one value for the car.
@@ -450,7 +457,7 @@ self.TM = (() => {
       water: { soak: 0.6, thaw: 1, wear: 1.5 },
       road: { dry: 0.1, thaw: 0.4, wear: 0.25, wetLoss: 0.15, iceLoss: 0.5, mudLoss: 0.3 },
       0: { dry: 0.1, thaw: 0.4, wear: 0.3, wetLoss: 0.3, iceLoss: 0.5, mudLoss: 0.3 }, // plastic
-      1: { dry: 0.01, dryMax: 0.02, thaw: 0.4, wear: 0.25, wetLoss: 0.92, iceLoss: 0.5, mudLoss: 0.3, slides: 3 }, // wood
+      1: { dry: 0.01, dryMax: 0.02, thaw: 0.4, wear: 0.25, wetLoss: 0.85, wetLossRear: 0.92, wetCurveRear: 0.5, iceLoss: 0.5, mudLoss: 0.3, slick: { yaw: 1.6, pull: 0.012, spin: 0.004, align: 2.6, loss: 0.06, lift: 1.3, self: 5, selfMax: 2.5, selfPull: 0.015, curve: 1, angle: 0.6, capCurve: 1, capPull: 0.015 } }, // wood
       2: { dry: 0.25, thaw: 0.8, wetMud: 0.1, wear: 0.1, wetLoss: 0.3, iceLoss: 0.5 }, // penalty grass
       3: { ice: 0.8, freeze: 1, wetLoss: 0.25 }, // platform ice: mud stays on
       4: { ice: 0.8, freeze: 1, wetLoss: 0.25 }, // bobsleigh
@@ -499,10 +506,10 @@ self.TM = (() => {
       t.mud = mud;
     },
     // What the tyre's state does to its grip on surface u: 1 for a clean, dry tyre (and off the ground).
-    factor(u, t) {
+    factor(u, t, rear) {
       if (t.wet == 0 && t.ice == 0 && t.mud == 0) return 1;
       const R = this.row(u),
-        a = 1 - (R.wetLoss || 0) * t.wet,
+        a = rear && R.wetLossRear != null ? 1 - R.wetLossRear * t.wet ** (R.wetCurveRear || 1) : 1 - (R.wetLoss || 0) * t.wet,
         b = 1 - (R.iceLoss || 0) * t.ice,
         m = 1 - (R.mudLoss || 0) * t.mud;
       return Math.max(a * b * m, this.KEEP * Math.min(a, b, m));
@@ -517,7 +524,7 @@ self.TM = (() => {
       let g = S ? (rear ? S.gripRear : S.gripFront) : 1;
       if (S && S.brakeGrip && braking) g = Math.min(g, S.brakeGrip);
       if (V) g *= (rear && V.rearGrip ? V.rearGrip : V.grip)[u == null || u < 0 || u == 8 ? 0 : u + 1];
-      return g * this.factor(u, t);
+      return g * this.factor(u, t, rear);
     },
   };
 
@@ -542,14 +549,14 @@ self.TM = (() => {
     // turns only as tightly as its front wheels point and its tyres never reach their limit on flat ground (tmphys.mjs:
     // wood at grip 1, 1.8 and 5 turns the same). So on wood the turn the steering asks for is made stronger: `turn` lists
     // [speed (units/s), extra share of that turn], in between straight lines, past the last one its value. Measured as
-    // the full-lock turn rate against the stock car at the same speed (tmphys.mjs steer): x2.0 from 30 km/h to 120,
-    // gliding to x1.92 at 160 and x1.85 from 200 to 460. The bump round 8 to 11 units/s is there because the same
-    // share turns less at low speed (the tyres slide more); 57.3 is nudged up a little so the no-steer R20 offset loop,
-    // chaotic round a seam near its top, still comes out on its line. At speed the extra turn builds up while the
-    // steering is held (TURN_BUILD), so a 250 ms tap at 300 km/h turns the car about 14 degrees (stock 9) and full lock
-    // still gets x1.85.
+    // the full-lock turn rate against the stock car at the same speed after 1 s held (tmphys.mjs steer): low grip at low
+    // speed, high at high speed, x1.06 at 20 km/h, x1.12 at 36, x1.4 at 100, x1.9 at 180, x2.3 at 260 and x2.5 from 330
+    // up. The extra builds up the longer the steering is held (TURN_BUILD), so a short turn grips less than a long one.
+    // turnFree: the same off the steering, where only the wheels' own turn is left (in a loop, or while they straighten
+    // after a turn): the earlier table, so the no-steer offset loops, chaotic round a seam near the R20 top, still come
+    // out on their line.
     // loadCap 2: the extra tyre grip holds up to twice the resting load (a hard corner, a compression), not a loop.
-    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [6, 1.725], [8.2, 2.408], [10.7, 2.281], [14.1, 1.895], [18.4, 1.393], [24.3, 1.225], [32.9, 1.149], [44.3, 1.032], [57.3, 0.935], [73.6, 0.908], [91.8, 0.893], [114, 0.878], [127, 0.875]], turnLevel: [3, 8], loadCap: 2 },
+    { gripFront: 1.8, gripRear: 1.8, brakeGrip: 1.2, launch: 0, launchUntil: 0, bounce: false, expo: { push: 4, scale: 50, max: 24, peak: 83, end: 139 }, turn: [[3, 0], [6, 0.086], [8.2, 0.19], [10.7, 0.27], [14.1, 0.34], [18.4, 0.375], [24.3, 0.43], [27.8, 0.476], [32.9, 0.586], [44.3, 0.86], [50, 1.0], [57.3, 1.115], [66, 1.27], [72.2, 1.38], [82, 1.49], [91.7, 1.577], [110, 1.566], [127, 1.54]], turnFree: [[3, 0], [6, 1.725], [8.2, 2.408], [10.7, 2.281], [14.1, 1.895], [18.4, 1.393], [24.3, 1.225], [32.9, 1.149], [44.3, 1.032], [57.3, 0.935], [73.6, 0.908], [91.8, 0.893], [114, 0.878], [127, 0.875]], turnLevel: [3, 8], loadCap: 2 },
     // Penalty grass: soft grip and heavy drag that bleeds speed away while the wheels are on it.
     { gripFront: 0.55, gripRear: 0.5, launch: 0, launchUntil: 0, bounce: false, drag: 1.1 },
     // Platform ice: the tyres barely hold, so the car slides; steering turns the car itself (ice.yaw, rad/s) and the
@@ -646,11 +653,15 @@ self.TM = (() => {
   // eased off to at most maxRate (rad/s). Both build up over rampIn frames of countersteer and fade over `hold` frames
   // after it, so catching a big slide swings the car round over about half a second instead of snapping it.
   const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
-  // The extra turn of a surface's `turn` builds up while the steering is held one way: in full after `frames` frames
-  // (eased in), and it drops `fade` times as fast when the steering is let go or turned the other way. Only above `from`
-  // (units per second), in full from `full` up, so a tap or a flick at speed does not snap the car round while slow tight
-  // turns bite at once. Off the steering (once it has faded) the wheels' own turn, as in a loop, gets all of it.
-  const TURN_BUILD = { frames: 250, fade: 3, from: 25, full: 55 };
+  // The extra turn of a surface's `turn` (wood) builds up the longer the steering is held one way, so a long turn grips
+  // more than a short one: in full after `frames` frames (eased in), and it drops `fade` times as fast when the steering
+  // is let go or turned the other way. A turn starts with `tap` of the extra (a 200 ms tap gets about a quarter, 400 ms
+  // about half), and slow turns with more, `slow` up to slowFrom units per second, easing to `tap` by slowTo, so slow
+  // hairpins bite at once. Off the steering the wheels' own turn, as in a loop, gets all of the surface's turnFree, eased
+  // in over `settle` frames once the steering is let go, so the wheels straightening after a turn do not kick the car on.
+  // hover: the same for the reactor hover's turn (REACTOR_HOVER): in full after 250 frames, only above `from` units per
+  // second, in full from `full` up.
+  const TURN_BUILD = { frames: 800, fade: 3, tap: 0.1, slow: 0.4, slowFrom: 8, slowTo: 14, settle: 300, hover: { frames: 250, fade: 3, from: 25, full: 55 } };
   if (TEST && TEST.turnBuild) Object.assign(TURN_BUILD, TEST.turnBuild);
   // Bugslides: start above minSpeed (units per second) and minSlip (radians) on a landing after `air` frames off the
   // ground or when two wheels' contact normals differ by more than acos(kink); last up to `frames`; tyres at grip;
@@ -676,30 +687,66 @@ self.TM = (() => {
   // with the full give-back). Weaving while it still grips costs speed as before (the tyres' own limit).
   const SLIDE_DRIVE = { ice: 1, wet: 1, iced: 1, loose: 1, looseSlip: [0.5, 2] };
   if (TEST && TEST.slideDrive) Object.assign(SLIDE_DRIVE, TEST.slideDrive);
-  // Speedslides and neoslides (TM2020's techniques) on slippery ground: ice, bobsleigh, snow (ice), wet wood (wet, by
-  // its wetness), iced tyres (iced, by their icing), dirt and drivable grass (loose); never on road, tech, plastic,
-  // dry wood or penalty grass. Done well they beat driving straight: the car gets a push along the way it is going of
-  // whatever brings its gain of speed this frame up to (1 + k) x its straight-line acceleration there (the drive its
-  // wheels would put down going straight, the launch and wood pushes, less the game's damping and the rolling drag;
-  // gravity along a slope counts as it would going straight), at most `cap` units/s^2, all of it once k reaches `full`
-  // and that share of it below. So a slide held in the window, whatever it costs, gains k over driving straight, and
-  // near the top speed, where that acceleration is nothing, neither can push past it.
-  // k is the table's value for the ground (by the share of wheels), times how well the slide is held: slip (degrees)
-  // inside slip [in, full from, full to, out], speed (km/h) inside kmh, and the car not spinning (its yaw rate under
-  // yaw rad/s, none past the second) nor its slide growing fast (slipRate rad/s, all techniques).
-  // speed: a small steady slide on the gas from medium-high speed. neo: from low-medium speed, a slide begun by letting
-  // go of the gas or touching the brake (within `lift` ms of that, the slide passing `start` degrees) and then held
-  // wider on the gas; it lasts while the slide stays between end[0] and end[1] degrees. The windows and strengths are
-  // this project's estimates of how they play in TM2020, not measurements. damp: the game's own velocity damping
-  // (per second: Bullet's linear damping of 0.1, -ln(0.9); tmphys: coasting on stock road loses 0.1054 x the speed).
+  // Speedslides and neoslides, after TM2020's techniques (trackmania.wiki Speedslide and Neoslide), fitted to PolyTrack's
+  // speeds: TM2020's Stadium car tops out about 1000 km/h on the flat and PolyTrack's stock car about 676 (tmphys top),
+  // so TM's speeds are taken x0.67 (400 km/h -> 270, 598 -> 400, 200 -> 135, 191 -> 128). Every window and strength is
+  // this project's estimate of how they play in TM2020, not a measurement. Never on the stock road, dry wood or penalty
+  // grass, so stock tracks stay exactly stock.
+  // speed: a speedslide, a small slide held on the gas that beats driving straight: the car gets a push along the way it
+  // is going of whatever brings its gain of speed this frame up to (1 + k) x its straight-line acceleration there (the
+  // drive its wheels would put down going straight, the launch and wood pushes, less the game's damping and the rolling
+  // drag; gravity along a slope counts as it would going straight), at most `cap` units/s^2, all of it once k reaches
+  // `full` and that share of it below. So a slide held in the window, whatever it costs, gains k over driving straight,
+  // and near the top speed, where that acceleration is nothing, it cannot push past it. k is the ground's value (by the
+  // share of wheels) times how well the slide is held, in three kinds:
+  //   ice: ice-sliding at the angle that accelerates best (TM's ice speedslide): platform ice, bobsleigh, snow (ice) and
+  //     iced tyres (iced, by their icing); slip (degrees) inside slip [in, full from, full to, out], speed inside kmh.
+  //   low: dirt and grass (loose), plastic and wet wood (wet, by the tyres' wetness as their grip goes): from about
+  //     135 km/h (kmh: none under the first, all from the second), at a small angle that falls with speed (best:
+  //     [km/h, degrees], 6 at 135 down to 2.5 near the top).
+  //   road: the Trackmania road surface (tech, u 8; the bump road): from about 270 km/h, at a larger angle (10 at 270
+  //     down to 5).
+  //   low and road take the slide inside `window` x the best angle [in, full from, full to, out], and keep their push for
+  //   up to `hold` frames while the slide swings through straight (a wiggle: quick alternating steering speedslides in a
+  //   straight line). All three fade while the car spins (yaw rate rad/s), and ice also while its slide grows fast
+  //   (slipRate rad/s).
+  // neo: what a neoslide drift keeps: a little push (k) while it is held between end[0] and end[1] degrees, so a held
+  // neoslide drift does not lose speed. The neoslide itself is a way to start a drift (KICK).
   const SLIDE_TECH = {
-    speed: { ice: 0.4, wet: 0.18, iced: 0.3, loose: 0.45, slip: [3, 6, 8, 12], kmh: [100, 150, 1e9, 1e9], yaw: [1, 2] },
-    neo: { ice: 1, wet: 1, iced: 0.8, loose: 1.5, slip: [10, 18, 24, 35], kmh: [40, 60, 200, 250], yaw: [1.5, 2.6], start: 8, end: [5, 45], lift: 500 },
+    speed: {
+      ice: { ice: 0.4, iced: 0.3, slip: [3, 6, 8, 12], kmh: [100, 150] },
+      low: { loose: 0.45, plastic: 0.3, wet: 0.25, kmh: [115, 135], best: [[135, 6], [650, 2.5]] },
+      road: { tech: 0.25, kmh: [240, 270], best: [[270, 10], [650, 5]] },
+      window: [0.5, 0.75, 1.4, 2],
+      hold: 130,
+      yaw: [1, 2],
+    },
+    neo: { k: 0.08, end: [5, 45], kmh: [20, 40] },
     slipRate: [0.4, 1.2],
     damp: 0.10536,
     cap: 30,
     full: 0.08,
   };
+  // Starting a slide (TM2020's techniques, speeds x0.67 as above): the rear steps out to an angle at once, the yaw pulled
+  // turned towards that slip by `gain` of the gap a frame (at most `step` radians) for `frames`, while the rear tyres keep `rear`
+  // of their grip (back to all of it over the kick). The brake in the inputs counts as a tap: the speed it took is given
+  // back when the kick starts and the brake is held off for `noBrake` frames.
+  //   neo: a neoslide (TM's way to start a drift at low speed on full grip): steer one way for at least `held` frames,
+  //     let go for gap[0] to gap[1] frames, then steer again with the brake pressed within `brake` frames of it. A drift
+  //     of `deg` degrees from minKmh up, on plastic, dry wood, dirt, grass and the road surface (tech).
+  //   s4d: a brake tap (at most `tap` frames) while steering, above the speedslide's speed for the ground (low or road
+  //     kinds): a speedslide-sized slide (its best angle) without the brake's scrub.
+  //   auto: an autoslide: above `kmh` on flat ground (wheels square to it), steering held longer than ms [at kmh[0],
+  //     at kmh[1]] (shorter the faster) makes the rear step out to the best angle, once a press; a change of slope under
+  //     the car while steering does too. Low and road kinds only, never on ice.
+  const KICK = {
+    gain: 0.03,
+    step: 0.003,
+    neo: { held: 100, gap: [30, 250], brake: 80, deg: 15, minKmh: 25, frames: 250, rear: 0.5, noBrake: 200 },
+    s4d: { tap: 150, frames: 200, rear: 0.6 },
+    auto: { kmh: [400, 650], ms: [100, 30], frames: 200, rear: 0.7 },
+  };
+  if (TEST && TEST.kick) for (const k in TEST.kick) typeof KICK[k] == 'object' ? Object.assign(KICK[k], TEST.kick[k]) : (KICK[k] = TEST.kick[k]);
   if (TEST && TEST.slideTech) for (const k in TEST.slideTech) typeof SLIDE_TECH[k] == 'object' ? Object.assign(SLIDE_TECH[k], TEST.slideTech[k]) : (SLIDE_TECH[k] = TEST.slideTech[k]);
   // How slippery a wheel's ground is by table T (SLIDE_DRIVE, SLIDE_TECH's): surface f, tyre t, the hover lift, and
   // loose: what loose ground counts for (SLIDE_DRIVE looseSlip).
@@ -707,11 +754,30 @@ self.TM = (() => {
     const S = f == null || f < 0 ? null : SURFACES[f];
     let k = S && (S.ice || f == 7) ? T.ice : S && S.loose ? T.loose * loose : 0;
     if (hover > 0 && T == SLIDE_DRIVE) k = Math.max(k, (hover / REACTOR_HOVER.lift) * REACTOR_HOVER.drive);
-    if (t.wet > 0 && TYRES.row(f).slides != null) k = Math.max(k, t.wet * T.wet);
+    if (t.wet > 0 && TYRES.row(f).slick) k = Math.max(k, t.wet ** (TYRES.row(f).wetCurveRear || 1) * T.wet);
     if (t.ice > 0) k = Math.max(k, t.ice * T.iced);
     return k;
   };
+  // A [x, y] table (x rising) at x: straight lines in between, its end values past either end.
+  const lerpTable = (T, x) => {
+    for (let i = 1; i < T.length; i++) if (x < T[i][0]) return T[i - 1][1] + ((T[i][1] - T[i - 1][1]) * Math.max(0, x - T[i - 1][0])) / (T[i][0] - T[i - 1][0]);
+    return T[T.length - 1][1];
+  };
   const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+  // A wheel's speedslide kinds (SLIDE_TECH speed: ice, low, road) by its ground f and tyre t, added into into[0..2].
+  const speedKinds = (f, t, into) => {
+    const T = SLIDE_TECH.speed,
+      S = f == null || f < 0 ? null : SURFACES[f];
+    let ice = S && (S.ice || f == 7) ? T.ice.ice : 0,
+      low = S && S.loose && f != 7 ? T.low.loose : f === 0 ? T.low.plastic : 0;
+    if (t.ice > 0) ice = Math.max(ice, t.ice * T.ice.iced);
+    if (t.wet > 0 && TYRES.row(f).slick) low = Math.max(low, t.wet ** (TYRES.row(f).wetCurveRear || 1) * T.low.wet);
+    into[0] += ice;
+    into[1] += low;
+    into[2] += f === 8 ? T.road.tech : 0;
+  };
+  // Whether a neoslide can start on a wheel's ground: plastic, dry wood, dirt, grass and the road surface (tech).
+  const neoGround = (f, t) => f === 0 || f === 5 || f === 6 || f === 8 || (f === 1 && t.wet < 0.05 && t.ice < 0.5);
 
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
@@ -848,7 +914,7 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, sinceLift: 1e6, neo: false, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
@@ -876,13 +942,47 @@ self.TM = (() => {
     if (out.reset) {
       // The car it was at the checkpoint comes back in fxStep (justReset), however near the checkpoint it already was.
       clear(c);
-      c.bug = c.catchRamp = c.turnRamp = 0;
+      c.bug = c.catchRamp = c.turnRamp = c.gripRamp = c.kickLeft = c.noBrakeLeft = 0;
+      c.kickWant = null;
+      c.neo = false;
       c.justReset = true;
     }
     // Test rigs only: holds the gas while a reactor is on and the car is under hover.y (by its height lead seconds on).
     if (TEST && TEST.hover && c.reactorLeft > 0 && c.last) out.up = c.last.y + c.last.vy * TEST.hover.lead < TEST.hover.y;
     if (c.noEngine) out.up = false;
     if (c.noBrake) out.down = false;
+    // Starting slides (KICK), from the controls as given: the neoslide's pattern (a held steer, a short gap, then the
+    // steering again with the brake within `brake` frames of it) and the brake tap while steering (s4d). fxStep starts
+    // the kick next, if the ground allows (canNeo, canTap from its last frame).
+    {
+      const K = KICK.neo,
+        s = (r.left ? 1 : 0) - (r.right ? 1 : 0),
+        down = !!r.down;
+      c.ctlFrames++;
+      if (s != 0 && s == c.steerWas) c.steerHeld++;
+      else if (s != 0) {
+        if (c.steerWas == 0 && c.neoArmed && c.steerGap >= K.gap[0] && c.steerGap <= K.gap[1]) (c.neoAt = c.ctlFrames), (c.neoSide = s);
+        if (c.steerWas != 0) c.neoArmed = false;
+        c.steerHeld = 1;
+      } else {
+        if (c.steerWas != 0) (c.neoArmed = c.steerHeld >= K.held), (c.steerGap = 0);
+        c.steerGap = Math.min(1e6, c.steerGap + 1);
+        c.steerHeld = 0;
+      }
+      c.steerWas = s;
+      if (down && !c.downRaw) (c.brakeAt = c.ctlFrames), (c.tapSide = s);
+      if (c.neoAt >= 0 && c.ctlFrames - c.neoAt > K.brake) c.neoAt = -1;
+      if (c.neoAt >= 0 && s == c.neoSide && Math.abs(c.brakeAt - c.neoAt) <= K.brake && (down || c.ctlFrames == c.brakeAt) && c.canNeo) {
+        c.kickWant = { neo: true, side: s };
+        c.neoAt = -1;
+        c.neoArmed = false;
+        c.tapSide = 0;
+        c.noBrakeLeft = K.noBrake;
+      } else if (!down && c.downRaw && c.tapSide != 0 && s == c.tapSide && c.ctlFrames - c.brakeAt <= KICK.s4d.tap && c.canTap) c.kickWant = { neo: false, side: s };
+      c.downRaw = down;
+      // the brake of a neoslide counts as a tap
+      if (c.noBrakeLeft > 0) c.noBrakeLeft--, (out.down = false);
+    }
     if (c.noSteer) out.left = out.right = false;
     if (c.cruise) {
       out.up = true;
@@ -1065,6 +1165,10 @@ self.TM = (() => {
   // orientation twice, as the basis of its world transform (+4) and of its interpolated one (+68), rows 16 bytes apart.
   function turnCar(F, body, v, av, ux, uy, uz, a) {
     turnVelocity(F, v, ux, uy, uz, -a);
+    turnBody(F, body, av, ux, uy, uz, a);
+  }
+  // Turns the car's body (and its spin) by a radians about the unit axis u, leaving the way it goes as it was.
+  function turnBody(F, body, av, ux, uy, uz, a) {
     turnVelocity(F, av, ux, uy, uz, -a);
     const c0 = Math.cos(a),
       s0 = Math.sin(a);
@@ -1280,14 +1384,20 @@ self.TM = (() => {
       steer = c.ctl ? (c.ctl.left ? 1 : 0) - (c.ctl.right ? 1 : 0) : 0,
       // Countersteering: steering towards the side the car is sliding to.
       counter = Math.hypot(lat, fwd) > SLIDE.minSpeed && steer != 0 && Math.sign(steer) == Math.sign(lat) && Math.abs(slip) > SLIDE.from;
-    if (TEST && TEST.slipBot) (c.tFrame = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16)), (c.tSlip = slip);
+    if (TEST && (TEST.slipBot || TEST.holdSlip)) (c.tFrame = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16)), (c.tSlip = slip);
     // How far into the catch the car is, 0 to 1 (see SLIDE).
     c.catchRamp = counter ? Math.min(1, c.catchRamp + 1 / SLIDE.rampIn) : Math.max(0, c.catchRamp - 1 / SLIDE.hold);
     const ease = c.catchRamp * c.catchRamp * (3 - 2 * c.catchRamp);
-    // How far the extra turn has built up (TURN_BUILD), 0 to 1, and the way the steering is held.
-    if (steer != 0 && steer == c.turnSide) c.turnRamp = Math.min(1, c.turnRamp + 1 / TURN_BUILD.frames);
-    else if (c.turnRamp > 0) c.turnRamp = Math.max(0, c.turnRamp - TURN_BUILD.fade / TURN_BUILD.frames);
+    // How far the extra turns have built up (TURN_BUILD: gripRamp for the surfaces, turnRamp for the hover), 0 to 1, and
+    // the way the steering is held.
+    const HB = TURN_BUILD.hover;
+    if (steer != 0 && steer == c.turnSide) c.turnRamp = Math.min(1, c.turnRamp + 1 / HB.frames);
+    else if (c.turnRamp > 0) c.turnRamp = Math.max(0, c.turnRamp - HB.fade / HB.frames);
     else c.turnSide = steer;
+    if (steer != 0 && steer == c.gripSide) c.gripRamp = Math.min(1, c.gripRamp + 1 / TURN_BUILD.frames);
+    else if (c.gripRamp > 0) c.gripRamp = Math.max(0, c.gripRamp - TURN_BUILD.fade / TURN_BUILD.frames);
+    else c.gripSide = steer;
+    c.gripIdle = steer != 0 ? 0 : Math.min(1e6, c.gripIdle + 1);
 
     // A bumper kicks the car sideways, once, as it enters (see BUMPER). R: the car's right in the plate's plane
     // (velocity x plate up).
@@ -1316,8 +1426,9 @@ self.TM = (() => {
       tyreOn = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     let plasticWheels = 0,
       wetRoll = 0, // the wet tyres' extra rolling drag (TYRES wetRoll), share of the speed per second, all wheels added up
-      slideWheels = 0, // wheels on wet wood, each by its wetness (TYRES slides), and the ice they handle like
-      slideIce = null;
+      slideWheels = 0, // wheels on wet wood, each by its wetness, and how they handle (TYRES slick)
+      slideIce = null,
+      slideOn = 0; // and how many wheels that is
     if (c.stockGrip == null) c.stockGrip = F[(wheels + 228) >> 2];
     // The old surfaces' pushes and drag (launch, expo, penalty grass, ice) keep their own rule, exactly as before the newer
     // surfaces: the wheels on such surfaces count, the last of them sets the numbers.
@@ -1336,8 +1447,8 @@ self.TM = (() => {
       straightCap = 0,
       // how much loose ground counts for SLIDE_DRIVE by how far the car slides (looseSlip)
       looseSlide = smooth(((Math.abs(slip) * 180) / Math.PI - SLIDE_DRIVE.looseSlip[0]) / (SLIDE_DRIVE.looseSlip[1] - SLIDE_DRIVE.looseSlip[0])),
-      speedK = 0, // SLIDE_TECH speed and neo by the ground, all wheels added up
-      neoK = 0,
+      speedK = [0, 0, 0], // SLIDE_TECH speed's kinds (ice, low, road) by the ground, all wheels added up
+      neoWheels = 0, // wheels on ground a neoslide starts on (neoGround)
       contacts = 0;
     for (let w = 0; w < 4; w++) {
       const a = wheels + w * 284,
@@ -1378,13 +1489,16 @@ self.TM = (() => {
       if (surface && surface.loose) looseWheels++;
       if (c.bug > 0) grip *= BUG.grip;
       // Wet, iced and muddy tyres (TYRES): from the state they came in with, so it counts from the next frame.
-      const tk = TYRES.factor(f, t);
+      const tk = TYRES.factor(f, t, w >= 2);
       if (tk != 1) grip *= tk;
       // Hovering on a reactor boost: a little floaty (REACTOR_HOVER grip), by how far up the car is.
       if (c.hover > 0) grip *= 1 - ((1 - REACTOR_HOVER.grip) * c.hover) / REACTOR_HOVER.lift;
+      // A slide being started (KICK): the rear tyres let go a little, back to full grip over the kick.
+      // Only until the slide is there, so a slippery deck does not spin round.
+      if (w >= 2 && c.kickLeft > 0 && (Math.abs(slip) * 180) / Math.PI < c.kickDeg) grip *= 1 - (1 - c.kickRear) * (c.kickLeft / c.kickFrames);
       if (f != null) tyreOn[f] += tk;
       if (t.wet > 0 && TYRES.row(f).wetRoll) wetRoll += TYRES.row(f).wetRoll * t.wet;
-      if (t.wet > 0 && TYRES.row(f).slides != null) (slideWheels += t.wet), (slideIce = SURFACES[TYRES.row(f).slides].ice);
+      if (t.wet > 0 && TYRES.row(f).slick) (slideWheels += t.wet), slideOn++, (slideIce = TYRES.row(f).slick);
       normals.push(F[g], F[g + 1], F[g + 2]);
       points.push(F[g + 4], F[g + 5], F[g + 6]);
       // The drive the slide took off this wheel in the last step (SLIDE_DRIVE): engine force at +252, by the friction
@@ -1399,8 +1513,8 @@ self.TM = (() => {
         straightCap += F[g + 69] * 0.001 * F[g + 57];
         if (sd > 0 && alone > F[g + 70]) drive += e * (alone - F[g + 70]) * sd;
       }
-      speedK += slippery(SLIDE_TECH.speed, f, t, 0);
-      neoK += slippery(SLIDE_TECH.neo, f, t, 0);
+      speedKinds(f, t, speedK);
+      if (neoGround(f, t)) neoWheels++;
       F[g + 57] = c.stockGrip * grip;
       if (TEST && TEST.trace) (c.probe.u[w] = f ?? TYRES.ROAD), (c.probe.grip[w] = +grip.toFixed(3));
       // On the ground the tyre is in the water when its contact is under the surface (shallow water's floor).
@@ -1492,21 +1606,37 @@ self.TM = (() => {
 
     // Ice: the tyres alone can hardly turn the car, so steering turns it directly, and the slide straightens out slowly
     // by swinging the velocity round to the nose without losing its length.
-    // Wet wood joins in (TYRES slides) when the car is not on ice already: its wheels count by their wetness, and the
-    // steering help comes in with them (iceWeight: full from two soaked wheels on), so drying tyres ease out of it.
-    let iceWeight = 1;
+    // Wet wood (TYRES slick) does the same its own way when the car is not on ice already: its steering help by the
+    // tyres' wetness over the four wheels (iceWeight), so drying tyres ease out of it, and off the steering the nose
+    // swings back onto the way the car goes.
+    let iceWeight = 1,
+      slick = null;
+    // Wet wood's pull of the nose towards the way the car goes (rad/s, + left) for the slide past `cap` radians.
+    const held = (S, slip, cap) => {
+      const x = Math.sign(slip) * Math.max(0, Math.abs(slip) - cap);
+      return S.selfMax * Math.tanh((S.self * x) / S.selfMax);
+    };
     if (iceWheels < 2 && slideWheels > 0) {
-      iceWeight = Math.min(1, slideWheels / 2);
-      iceWheels += slideWheels;
-      if (!ice) ice = slideIce;
+      if (!ice) ice = slick = slideIce;
+      iceWeight = slick ? Math.min(1, slideWheels / 4) ** slick.curve : Math.min(1, slideWheels / 2);
+      // A sliding tyre puts next to no sideways force down (its skid cuts it), so the way the car goes swings round to
+      // the nose only by `align`: on wet wood by every wheel on it however wet, or a lightly wet car slid on straight.
+      iceWheels += slick ? slideOn : slideWheels;
     }
     if (iceWheels >= 2 || iceWeight < 1) {
       // A car whose tyres hold on ice (the Snow car) gets only iceAssist of the steering and slide help; the spin still
       // dies away off the steering.
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
         help = V.iceAssist,
-        d0 = steer != 0 ? (steer * ice.yaw * Math.min(1, spd / 15) - yaw) * ice.pull : -yaw * ice.spin,
-        d = (help != 1 && steer != 0 ? d0 * help : d0) * iceWeight;
+        d0 =
+          steer != 0
+            ? (steer * ice.yaw * Math.min(1, spd / 15) * (slick && !c.gas ? slick.lift : 1) - yaw) * ice.pull
+            : slick && Math.abs(slip) < 1.2 && spd > 3
+              ? (held(slick, slip, 0) - yaw) * slick.selfPull
+              : -yaw * ice.spin,
+        // wet wood: a slide past what the tyres' wetness allows (slick angle x iceWeight^capCurve) is pulled back in, in
+        // full whatever the wetness, so a less wet car slides less
+        d = (help != 1 && steer != 0 ? d0 * help : d0) * iceWeight + (slick && steer != 0 ? held(slick, slip, slick.angle * iceWeight ** slick.capCurve) * slick.capPull : 0);
       F[av] += upx * d;
       F[av + 1] += upy * d;
       F[av + 2] += upz * d;
@@ -1638,29 +1768,29 @@ self.TM = (() => {
         hi = Math.cos((Lv[0] * Math.PI) / 180),
         level = Math.max(0, Math.min(1, (square - lo) / (hi - lo)));
       if (level == 0) continue;
-      const r = c.turnRamp,
-        atSpeed = steer != 0 || r > 0 ? Math.max(0, Math.min(1, (spd - TURN_BUILD.from) / (TURN_BUILD.full - TURN_BUILD.from))) : 0,
-        build = 1 - atSpeed * (1 - r * r * (3 - 2 * r));
-      let k = T[T.length - 1][1];
-      for (let i = 1; i < T.length; i++)
-        if (spd < T[i][0]) {
-          k = T[i - 1][1] + ((T[i][1] - T[i - 1][1]) * Math.max(0, spd - T[i - 1][0])) / (T[i][0] - T[i - 1][0]);
-          break;
-        }
+      const B = TURN_BUILD,
+        r = c.gripRamp,
+        start = B.slow + (B.tap - B.slow) * Math.max(0, Math.min(1, (spd - B.slowFrom) / (B.slowTo - B.slowFrom))),
+        held = 1 - (1 - start) * (1 - r * r * (3 - 2 * r)),
+        build = steer != 0 ? held : held + (1 - held) * smooth(c.gripIdle / B.settle);
+      const k = lerpTable(steer == 0 && SURFACES[u].turnFree ? SURFACES[u].turnFree : T, spd);
       // steering at +232 (wheels 0 and 1, 284 bytes apart); the wheels' places in the car at +156, z (+164) along the nose
       const angle = (F[(wheels + 232) >> 2] + F[(wheels + 284 + 232) >> 2]) / 2,
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
         hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
         tyres = tyreOn[u] / on[u],
         a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * 0.001;
-      if (a != 0 && base > 0.5) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
+      // Not while the game's own steering countersteers a slide against the way the steering is held (its wheels point
+      // the other way): the extra turn then turned the car out of its own slide, and a wet car slid on in a straight line.
+      if (a != 0 && base > 0.5 && !(steer != 0 && angle * steer < 0)) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
     }
     // Hovering (REACTOR_HOVER turn, push): the sharper turn as wood's, the harder pull on the gas.
     if (c.hover > 0 && contacts > 0 && gl > 0 && c.bug == 0) {
       const H = REACTOR_HOVER,
         up = c.hover / H.lift,
+        HB = TURN_BUILD.hover,
         r = c.turnRamp,
-        atSpeed = steer != 0 || r > 0 ? Math.max(0, Math.min(1, (spd - TURN_BUILD.from) / (TURN_BUILD.full - TURN_BUILD.from))) : 0,
+        atSpeed = steer != 0 || r > 0 ? Math.max(0, Math.min(1, (spd - HB.from) / (HB.full - HB.from))) : 0,
         build = 1 - atSpeed * (1 - r * r * (3 - 2 * r)),
         angle = (F[(wheels + 232) >> 2] + F[(wheels + 284 + 232) >> 2]) / 2,
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
@@ -1705,28 +1835,96 @@ self.TM = (() => {
       F[v + 2] *= k;
     }
 
-    // Speedslides and neoslides (SLIDE_TECH), along the way the car is going. The neoslide's state: frames since the gas
-    // was last off (or the brake on), and whether a neoslide is under way.
+    // Starting slides (KICK): a neoslide or a brake tap asked for by fxControls, and autoslides; then the kick itself.
+    const kmh = spd * 3.6,
+      fastKind = speedK[2] > speedK[1] ? SLIDE_TECH.speed.road : SLIDE_TECH.speed.low,
+      best = lerpTable(fastKind.best, kmh), // the speedslide's best angle here (degrees), low or road kind
+      // a speedslide-sized slide can start here: on low or road ground (more of it than ice) at its speed
+      tapGround = contacts >= 2 && speedK[1] + speedK[2] > speedK[0] && kmh >= fastKind.kmh[1];
+    {
+      const K = KICK,
+        start = (side, deg, P) => {
+          c.kickLeft = c.kickFrames = P.frames;
+          c.kickRear = P.rear;
+          c.kickSide = side;
+          c.kickDeg = deg;
+          // the brake in the inputs was a tap: the speed it took comes back
+          if (c.tapV > spd && spd > 1 && c.ctlFrames - c.tapAt < 400) {
+            const m = Math.min(c.tapV / spd, 1.25);
+            F[v] *= m;
+            F[v + 1] *= m;
+            F[v + 2] *= m;
+          }
+        };
+      if (c.ctl && c.ctl.down && !c.downWas) (c.tapV = spd), (c.tapAt = c.ctlFrames);
+      c.downWas = !!(c.ctl && c.ctl.down);
+      c.canNeo = contacts >= 2 && neoWheels * 2 >= contacts && kmh >= K.neo.minKmh && c.bug == 0;
+      c.canTap = tapGround && c.bug == 0;
+      if (c.kickWant) {
+        const w = c.kickWant;
+        c.kickWant = null;
+        if (w.neo && c.canNeo) start(w.side, K.neo.deg, K.neo), (c.neo = true);
+        else if (!w.neo && c.canTap) start(w.side, best, K.s4d);
+      }
+      // Autoslide: above auto.kmh on flat ground, the steering held long enough (or a change of slope under the car).
+      if (steer == 0 || steer != c.autoSide) c.autoSide = 0;
+      if (steer != 0 && c.autoSide == 0 && c.kickLeft == 0 && tapGround && kmh >= K.auto.kmh[0] && contacts >= 3) {
+        const A = K.auto,
+          ms = A.ms[0] + (A.ms[1] - A.ms[0]) * Math.min(1, (kmh - A.kmh[0]) / (A.kmh[1] - A.kmh[0]));
+        if (kink || (square > 0.9945 && c.steerHeld >= ms)) start(steer, best, A), (c.autoSide = steer);
+      }
+      // The nose turned towards the slip asked for (- for a slide to the left: the car goes right of its nose), at most
+      // step radians a frame, about the ground under the car.
+      const toward = (deg, side, gain, step) => {
+        const want = (-side * deg * Math.PI) / 180,
+          a = Math.max(-step, Math.min(step, (slip - want) * gain));
+        if (gl > 0) turnBody(F, body, av, gx / gl, gy / gl, gz / gl, a);
+      };
+      // Test rigs only: {holdSlip: {from, deg, side}} holds the car in a slide of deg degrees from frame `from`.
+      if (TEST && TEST.holdSlip && c.tFrame >= TEST.holdSlip.from && contacts >= 2) toward(TEST.holdSlip.deg, TEST.holdSlip.side, 0.2, 0.01);
+      // the way the car goes (heading about world up) and how fast it turns (rad/s), for the kick's end
+      const path = Math.atan2(F[v], F[v + 2]),
+        pathRate = c.pathWas == null ? 0 : (((path - c.pathWas + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * 1000;
+      c.pathWas = path;
+      if (c.kickLeft > 0) {
+        if (contacts >= 2) toward(c.kickDeg, c.kickSide, K.gain, K.step);
+        // at its end the car spins as fast as its way turns, so the drift goes on from there instead of swinging wider
+        if (--c.kickLeft == 0 && contacts >= 2 && Math.abs(upy) > 0.9) {
+          const d = pathRate - (F[av] * upx + F[av + 1] * upy + F[av + 2] * upz);
+          F[av] += upx * d;
+          F[av + 1] += upy * d;
+          F[av + 2] += upz * d;
+        }
+      }
+    }
+
+    // Speedslides and the neoslide drift's push (SLIDE_TECH), along the way the car is going.
     {
       const T = SLIDE_TECH,
         N = T.neo,
         S = T.speed,
         a = (Math.abs(slip) * 180) / Math.PI,
         was = c.slipWas ?? a;
-      c.sinceLift = c.gas ? Math.min(1e6, (c.sinceLift ?? 1e6) + 1) : 0;
-      if (!c.neo && contacts > 0 && neoK > 0 && c.sinceLift <= N.lift && a >= N.start && was < N.start) c.neo = true;
-      else if (c.neo && (a < N.end[0] || a > N.end[1] || contacts == 0 || neoK == 0)) c.neo = false;
+      if (c.neo && contacts == 0) c.neo = false;
+      else if (c.neo && c.kickLeft == 0 && (a < N.end[0] || a > N.end[1])) c.neo = false;
       c.slipWas = a;
       // how fast the slide grows (degrees/s), smoothed over about 50 ms: one frame's slip jitters with the contacts
       c.slipRate = (c.slipRate ?? 0) + ((a - was) * 1000 - (c.slipRate ?? 0)) * 0.02;
-      if (c.gas && contacts > 0 && fwd > 0 && spd > 5 && (speedK > 0 || neoK > 0)) {
+      if (c.gas && contacts > 0 && fwd > 0 && spd > 5 && (speedK[0] + speedK[1] + speedK[2] > 0 || c.neo)) {
         const trap = (x, w) => smooth((x - w[0]) / (w[1] - w[0])) * (1 - smooth((x - w[2]) / (w[3] - w[2]))),
-          kmh = spd * 3.6,
+          ramp = (x, w) => smooth((x - w[0]) / (w[1] - w[0])),
           yaw = Math.abs(F[av] * upx + F[av + 1] * upy + F[av + 2] * upz),
           calm = 1 - smooth(((Math.abs(c.slipRate) * Math.PI) / 180 - T.slipRate[0]) / (T.slipRate[1] - T.slipRate[0])),
-          ks = (speedK / 4) * trap(a, S.slip) * trap(kmh, S.kmh) * (1 - smooth((yaw - S.yaw[0]) / (S.yaw[1] - S.yaw[0]))),
-          kn = c.neo ? (neoK / 4) * trap(a, N.slip) * trap(kmh, N.kmh) * (1 - smooth((yaw - N.yaw[0]) / (N.yaw[1] - N.yaw[0]))) : 0,
-          k = Math.max(ks, kn) * calm;
+          spin = 1 - smooth((yaw - S.yaw[0]) / (S.yaw[1] - S.yaw[0])),
+          win = (B, n) => (n > 0 ? (n / 4) * trap(a / lerpTable(B.best, kmh), S.window) * ramp(kmh, B.kmh) : 0);
+        // low and road kinds: in the window round the best angle, kept through a quick swing across straight (wiggle)
+        let kw = win(S.low, speedK[1]) + win(S.road, speedK[2]);
+        if (kw > 0) (c.ssKeep = kw), (c.ssGap = 0);
+        else if (speedK[1] + speedK[2] > 0 && c.ssGap < S.hold && a < best * S.window[0]) (kw = c.ssKeep), c.ssGap++;
+        else c.ssGap = S.hold;
+        const ks = ((speedK[0] / 4) * trap(a, S.ice.slip) * ramp(kmh, S.ice.kmh) * calm + kw) * spin,
+          kn = c.neo ? N.k * ramp(kmh, N.kmh) : 0,
+          k = Math.max(ks, kn);
         if (k > 0) {
           // the straight-line acceleration here (units/s^2), and how fast the car is gaining speed this frame so far (the
           // game step and everything above), gravity along the way (G) taken out
@@ -2137,7 +2335,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, neo: c.neo, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 
