@@ -248,8 +248,9 @@
         try {
             for (const k of Object.keys(localStorage)) used += k.length + (localStorage.getItem(k) || "").length;
         } catch {}
+        // Same blocks under another name ("Unnamed Track (2)") is another track to My Tracks, so it is copied too.
         const ids = new Set();
-        store.forEachCustomTrack((id) => ids.add(id));
+        store.forEachCustomTrack((id, m) => ids.add(id + "\n" + m.name));
         const results = [];
         let changed = false;
         for (const item of Array.isArray(list) ? list : []) {
@@ -263,7 +264,7 @@
                 continue;
             }
             const { trackMetadata: meta, trackData: data } = parsed;
-            const id = data.getId();
+            const id = data.getId() + "\n" + String(meta.name || "Track");
             if (ids.has(id)) {
                 results.push({ ok: true, name: String(meta.name || "Track"), existed: true });
                 continue;
