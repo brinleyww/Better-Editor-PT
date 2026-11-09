@@ -869,7 +869,7 @@
         Dt = n(7852);
       ((zt = new WeakMap()), (Nt = new WeakMap()), (St = new WeakMap()), (Tt = new WeakMap()));
       const Ot = class {
-        constructor(t, e, n, s, o, a, r, h) {
+        constructor(t, e, n, s, o, a, r, h, clear = null) {
           (zt.set(this, void 0), Nt.set(this, void 0), St.set(this, null), Tt.set(this, void 0));
           const l = document.getElementById("ui");
           if (null == l) throw new Error("UI element not found");
@@ -1020,6 +1020,51 @@
                 0 == e.length || h(e, s);
               }),
               L.appendChild((0, i.gn)(this, St, "f"))),
+            null != clear &&
+              (() => {
+                // Clear all and restart: a new, unnamed track, after asking whether to save this one first.
+                const row = document.createElement("div");
+                ((row.className = "button-wrapper"), d.appendChild(row));
+                const button = (parent, icon, text, onClick, disabled = !1) => {
+                  const b = document.createElement("button");
+                  ((b.className = "button"),
+                    (b.disabled = disabled),
+                    (b.innerHTML = '<img class="button-icon" src="images/' + icon + '"> '),
+                    b.append(document.createTextNode(text)),
+                    b.addEventListener("click", () => {
+                      (t.playUIClick(), onClick());
+                    }),
+                    parent.appendChild(b));
+                };
+                button(row, "delete.svg", "Clear all and restart", () => {
+                  const name = m.value.trim(),
+                    shown = [f, L, row];
+                  for (const el of shown) el.style.display = "none";
+                  const ask = document.createElement("section");
+                  ((ask.className = "content"), d.appendChild(ask));
+                  const box = document.createElement("div");
+                  ((box.className = "setting"), ask.appendChild(box));
+                  const title = document.createElement("label");
+                  ((title.className = "title"),
+                    (title.textContent = "Do you want to save the current track before everything is cleared?"),
+                    box.appendChild(title));
+                  if (name.length == 0) {
+                    const hint = document.createElement("p");
+                    ((hint.textContent = "Give it a track name first to save it."),
+                      (hint.style.cssText = "margin: 10px 0 0; font-size: 24px; color: var(--text-color); opacity: 0.6"),
+                      box.appendChild(hint));
+                  }
+                  const buttons = document.createElement("div");
+                  ((buttons.className = "button-wrapper"), d.appendChild(buttons));
+                  // Every button after the first floats right, so Save ends up rightmost.
+                  (button(buttons, "cancel.svg", e.get("Cancel"), () => {
+                    (ask.remove(), buttons.remove());
+                    for (const el of shown) el.style.display = "";
+                  }),
+                    button(buttons, "save.svg", e.get("Save"), () => clear(name, s), name.length == 0),
+                    button(buttons, "delete.svg", "Don't save", () => clear(null, s)));
+                });
+              })(),
             window.addEventListener(
               "keydown",
               (0, i.GG)(
@@ -3458,6 +3503,36 @@
                         ((0, i.gn)(this, re, "f").className = "editor-ui"));
                     },
                     null,
+                    (name, env) => {
+                      const before = (0, i.gn)(this, un, "f");
+                      ((0, i.gn)(this, ye, "f")?.dispose(),
+                        (0, i.GG)(this, ye, null, "f"),
+                        ((0, i.gn)(this, re, "f").className = "editor-ui"));
+                      if (null == name) return void self.__beStartEditor();
+                      ((0, i.gn)(this, Kt, "m", Bn).call(this, name), (0, i.gn)(this, Kt, "m", _n).call(this, env));
+                      const save = () => {
+                        (0, i.gn)(this, $t, "f").saveCustomTrack(
+                          { name, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },
+                          (0, i.gn)(this, jt, "f").getTrackData(),
+                        )
+                          ? ((0, i.gn)(this, te, "f").tryActivatePersistentStorage(), self.__beStartEditor())
+                          : (0, i.gn)(this, Kt, "m", Yn).call(this, (0, i.gn)(this, Vt, "f").get("Failed to save!"), !1);
+                      };
+                      name !== before && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)
+                        ? (((0, i.gn)(this, re, "f").inert = !0),
+                          (0, i.gn)(this, ne, "f").showConfirm(
+                            (0, i.gn)(this, Vt, "f").get('Are you sure you want to overwrite "{0}"?', [name]),
+                            (0, i.gn)(this, Vt, "f").get("Cancel"),
+                            (0, i.gn)(this, Vt, "f").get("Confirm"),
+                            () => {
+                              (0, i.gn)(this, re, "f").inert = !1;
+                            },
+                            () => {
+                              (((0, i.gn)(this, re, "f").inert = !1), save());
+                            },
+                          ))
+                        : save();
+                    },
                   ),
                   "f",
                 ));
