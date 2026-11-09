@@ -366,14 +366,16 @@ self.TM.hud = (() => {
     rowGap: 4,
     slant: 8,
     rowSlant: 6,
-    inset: 8,
-    wheelW: 26,
-    textGap: 10,
-    name: 20,
-    small: 16,
+    inset: 7,
+    wheelW: 24,
+    textGap: 9,
+    name: 23,
+    small: 19,
     motionScale: 5,
     font: 'ForcedSquare, Arial, sans-serif',
-    tyre: [11, 17, 43], // darker than the tyre's box
+    tyre: [74, 90, 160], // lighter than both boxes, so the wheel shows
+    tread: 'rgba(10, 14, 34, 0.45)',
+    rim: 'rgba(255, 255, 255, 0.75)',
     slip: '#ffd24d',
     ice: [223, 244, 255],
     dirt: [217, 160, 102],
@@ -388,7 +390,8 @@ self.TM.hud = (() => {
     pen = null;
   const chips = [];
   let wheelsOn = false,
-    wheelsSize = 0.625, // the Wheel info size setting: a share of the 230 x 370 panel
+    wheelsSize = 0, // the Wheel info size setting: a share of the 230 x 370 panel, 0 as wide as the speedometer
+    speedoW = 0, // the speedometer box's width (layout)
     shown = null, // the car on screen
     focusCar = null,
     focusAt = 0,
@@ -508,13 +511,15 @@ self.TM.hud = (() => {
     pen.beginPath();
     pen.rect(x, y, w, h);
     pen.clip();
-    pen.globalAlpha = 0.16;
-    pen.fillStyle = THEME.text;
+    pen.fillStyle = PT.tread;
     const step = 12,
       n = Math.floor(h / step) + 1,
       shift = (rot * PT.motionScale) % step;
     for (let i = -1; i < n; i++) pen.fillRect(x, y + Math.round(i * step + shift), w, 5);
     pen.restore();
+    pen.lineWidth = 2;
+    pen.strokeStyle = PT.rim;
+    pen.strokeRect(x + 1, y + 1, w - 2, h - 2);
     pen.restore();
   }
   // Words in a line from the tyre's outer side inwards: [colour, text, opacity] each, 8 apart.
@@ -531,7 +536,8 @@ self.TM.hud = (() => {
     pen.globalAlpha = 1;
   }
   function wheels(car, c) {
-    const k = wheelsSize,
+    // Default: the speedometer's width, so the two line up (160 when it is hidden: its box at its smallest).
+    const k = wheelsSize > 0 ? wheelsSize : Math.min(1.5, Math.max(0.4, (speedoW || 160) / PT.w)),
       dpr = Math.min(3, window.devicePixelRatio || 1) * k,
       cssW = Math.round(PT.w * k),
       cssH = Math.round(PT.h * k),
@@ -576,9 +582,13 @@ self.TM.hud = (() => {
         tx = right ? wx - PT.textGap : wx + PT.wheelW + PT.textGap,
         name = c.inWater[w] ? WATER_NAME : NAMES[u + 2];
       let ly = y + PT.inset;
+      const line1 = u == AIR ? [[THEME.text, name]] : [[THEME.text, name], [THEME.text, GRIP_TEXT[Math.min(400, Math.max(0, Math.round(gripOf(c, w) * 100)))], 0.5]];
+      // A long surface name ("Penalty grass 100%") drops to the small size rather than running into the wheel.
       pen.font = PT.name + 'px ' + PT.font;
-      words(tx, ly, right, u == AIR ? [[THEME.text, name]] : [[THEME.text, name], [THEME.text, GRIP_TEXT[Math.min(400, Math.max(0, Math.round(gripOf(c, w) * 100)))], 0.5]]);
-      ly += PT.name + 6;
+      const room = rowW - PT.rowSlant - PT.inset * 2 - PT.wheelW - PT.textGap;
+      if (line1.reduce((a, l) => a + pen.measureText(l[1]).width + 8, -8) > room) pen.font = PT.small + 'px ' + PT.font;
+      words(tx, ly, right, line1);
+      ly += PT.name + 5;
       pen.font = PT.small + 'px ' + PT.font;
       if (m && u != AIR && m.skid[w] < 0.9) {
         words(tx, ly, right, [[PT.slip, 'Slip']]);
@@ -632,6 +642,9 @@ self.TM.hud = (() => {
       top = Math.max(top, (b ? Math.max(b.b, t + SPLITS) : t + SPLITS) + GAP);
     }
     fx.style.top = Math.round(top) + 'px';
+    const speedo = parent.querySelector('.speedometer-ui:not(.hidden) > .box');
+    const spW = speedo ? speedo.offsetWidth : 0;
+    if (spW && Math.abs(spW - speedoW) > 1) speedoW = spW;
     // Bottom right: the panel's reach.
     const pl = Wd - (panel.offsetWidth || 270);
     let bottom = 0;
@@ -753,9 +766,10 @@ self.TM.hud = (() => {
       wheelsOn = !!on;
       if (!wheelsOn && panel) panel.classList.remove('on');
     },
-    // The Wheel info size setting (1 = Openplanet's own size).
+    // The Wheel info scale setting (1 = 230 x 370). Anything else (its "auto", or 0.625, the old default) matches the
+    // speedometer's width.
     setWheelsSize(k) {
-      wheelsSize = k > 0 ? Math.min(3, Math.max(0.1, k)) : 0.5;
+      wheelsSize = k > 0 && k != 0.625 ? Math.min(3, Math.max(0.1, k)) : 0;
     },
     get wheels() {
       return wheelsOn;

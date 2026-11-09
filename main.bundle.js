@@ -53927,9 +53927,9 @@
               this,
               "Wheel info size",
               [
+                { title: "Speedometer width", value: "auto" },
                 { title: "25%", value: "0.25" },
                 { title: "50%", value: "0.5" },
-                { title: "62.5%", value: "0.625" },
                 { title: "75%", value: "0.75" },
                 { title: "100%", value: "1" },
                 { title: "125%", value: "1.25" },
@@ -62422,7 +62422,7 @@
             [P.A.VibrationEnabled, "false"],
             [P.A.TouchSteeringSide, "true"],
             [P.A.WheelInfo, "false"],
-            [P.A.WheelInfoScale, "0.625"],
+            [P.A.WheelInfoScale, "auto"],
           ]);
         }
         defaultKeyBindings() {

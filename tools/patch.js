@@ -49,7 +49,7 @@ apply('main.bundle.js', [
   ['HUD follows the watched replay while it plays', '(0, R.gn)(this, ng, "f").update(s.car));', '(0, R.gn)(this, ng, "f").update(s.car),\n            self.TM.hud.focus(s.car));'],
   // A real game setting (saved by name with the others), Off by default, shown under Speedometer.
   ['Wheel info setting', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"));', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"),\n              (e[(e.WheelInfo = 24)] = "WheelInfo"),\n              (e[(e.WheelInfoScale = 25)] = "WheelInfoScale"));'],
-  ['Wheel info default', '[P.A.TouchSteeringSide, "true"],', '[P.A.TouchSteeringSide, "true"],\n            [P.A.WheelInfo, "false"],\n            [P.A.WheelInfoScale, "0.625"],'],
+  ['Wheel info default', '[P.A.TouchSteeringSide, "true"],', '[P.A.TouchSteeringSide, "true"],\n            [P.A.WheelInfo, "false"],\n            [P.A.WheelInfoScale, "auto"],'],
   [
     'Wheel info in the settings menu',
     `              P.A.Speedometer,
@@ -70,9 +70,9 @@ apply('main.bundle.js', [
               this,
               "Wheel info size",
               [
+                { title: "Speedometer width", value: "auto" },
                 { title: "25%", value: "0.25" },
                 { title: "50%", value: "0.5" },
-                { title: "62.5%", value: "0.625" },
                 { title: "75%", value: "0.75" },
                 { title: "100%", value: "1" },
                 { title: "125%", value: "1.25" },
