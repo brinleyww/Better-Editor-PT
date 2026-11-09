@@ -539,8 +539,11 @@ self.TM = (() => {
   // All by the share of wheels on the surface.
   const SURFACES = [
     // Plastic: almost no grip (30% more than the first 0.45 / 0.36), very strong acceleration at low speed, and it throws the
-    // car back when hit side-on or roof-first.
-    { gripFront: 0.585, gripRear: 0.468, launch: 34, launchUntil: 45, bounce: true },
+    // car back when hit side-on or roof-first. The rear lets go first, but a held full lock settles into a slide of about 20
+    // degrees (cap) instead of spinning round (it spun at 100 to 250 km/h: 48 degrees after 1 s, 170 after 2), and off the
+    // steering or countersteering the slide straightens like loose ground's (settle, align: the way the car goes swings
+    // round to its nose keeping its speed), so a slide is easy to hold and to catch.
+    { gripFront: 0.585, gripRear: 0.468, launch: 34, launchUntil: 45, bounce: true, settle: 0.003, align: 2.5, cap: { from: 0.3, self: 5, max: 2.5, pull: 0.015 } },
     // Wood: grips hard, like TM2020 dry wood: half as much again as before. The tyres' grip also limits braking, so while
     // the brake is down wood holds the car with brakeGrip instead, or it would stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
@@ -649,11 +652,15 @@ self.TM = (() => {
   // `steady` frames (calm per frame), so the car flies off flat the same way every time instead of tumbling.
   const BOUNCE = { hit: 0.5, window: 30, minInto: 4, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
-  // Countersteering on plastic, once the car slides more than `from` (radians) above minSpeed (units per second):
-  // frontGrip multiplies the front tyres' grip, and the yaw rate is pulled by `pull` per frame towards catchRate x slip,
-  // eased off to at most maxRate (rad/s). Both build up over rampIn frames of countersteer and fade over `hold` frames
-  // after it, so catching a big slide swings the car round over about half a second instead of snapping it.
-  const SLIDE = { minSpeed: 8, from: 0.1, frontGrip: 2.4, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
+  // Countersteering on plastic and loose ground, once the car slides more than `from` (radians) above minSpeed (units
+  // per second): the yaw rate is pulled by `pull` per frame towards catchRate x slip, eased off to at most maxRate
+  // (rad/s). It builds up over rampIn frames of countersteer and fades over `hold` frames after it, so catching a big
+  // slide swings the car round instead of snapping it. The way the car goes swings round to its nose meanwhile (the
+  // surface's align, keeping its speed). Plastic's front tyres used to grip x2.4 while catching instead: they scrubbed the
+  // slide off as speed (a 30 degree slide at 200 km/h caught by 300 ms of countersteer was at 184 km/h 1 s later, now
+  // 218; straight again after 0.97 s, now 0.37).
+  const SLIDE = { minSpeed: 8, from: 0.1, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
+  if (TEST && TEST.slide) Object.assign(SLIDE, TEST.slide);
   // The extra turn of a surface's `turn` (wood) builds up the longer the steering is held one way, so a long turn grips
   // more than a short one: in full after `frames` frames (eased in), and it drops `fade` times as fast when the steering
   // is let go or turned the other way. A turn starts with `tap` of the extra (a 200 ms tap gets about a quarter, 400 ms
@@ -1483,10 +1490,7 @@ self.TM = (() => {
           rest = ((9.81 / F[(body + 344) >> 2]) / 4) * ((surface && surface.loadCap) || 1);
         if (load > rest) grip = 1 + ((grip - 1) * rest) / load;
       }
-      if (surface && surface.bounce) {
-        plasticWheels++;
-        if (w < 2) grip *= 1 + (SLIDE.frontGrip - 1) * ease;
-      }
+      if (surface && surface.bounce) plasticWheels++;
       if (surface && surface.loose) looseWheels++;
       if (c.bug > 0) grip *= BUG.grip;
       // Wet, iced and muddy tyres (TYRES): from the state they came in with, so it counts from the next frame.
@@ -1563,8 +1567,8 @@ self.TM = (() => {
     }
 
     if (straight > 0) straight *= Math.min(1, straightCap / (0.5 * straight));
-    // Countersteering on plastic: the front tyres bite harder and the car's spin is pulled towards the way it is going,
-    // so a slide can be caught instead of spinning out.
+    // Countersteering on plastic: the car's spin is pulled towards the way it is going, so a slide can be caught instead
+    // of spinning out (and the way it goes swings round to the nose: align, below).
     // The pull fades over `hold` frames past the countersteer, so catching a slide does not whip the car round the other way.
     if (ease > 0 && plasticWheels >= 2) {
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
@@ -1881,8 +1885,8 @@ self.TM = (() => {
           a = Math.max(-step, Math.min(step, (slip - want) * gain));
         if (gl > 0) turnBody(F, body, av, gx / gl, gy / gl, gz / gl, a);
       };
-      // Test rigs only: {holdSlip: {from, deg, side}} holds the car in a slide of deg degrees from frame `from`.
-      if (TEST && TEST.holdSlip && c.tFrame >= TEST.holdSlip.from && contacts >= 2) toward(TEST.holdSlip.deg, TEST.holdSlip.side, 0.2, 0.01);
+      // Test rigs only: {holdSlip: {from, to, deg, side}} holds the car in a slide of deg degrees from frame `from` (until `to`).
+      if (TEST && TEST.holdSlip && c.tFrame >= TEST.holdSlip.from && !(c.tFrame >= TEST.holdSlip.to) && contacts >= 2) toward(TEST.holdSlip.deg, TEST.holdSlip.side, 0.2, 0.01);
       // the way the car goes (heading about world up) and how fast it turns (rad/s), for the kick's end
       const path = Math.atan2(F[v], F[v + 2]),
         pathRate = c.pathWas == null ? 0 : (((path - c.pathWas + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * 1000;
@@ -1947,7 +1951,7 @@ self.TM = (() => {
     }
 
     // Loose ground (dirt, grass, snow) lets the rear go. Steering into the slide catches it as on plastic: the yaw rate is
-    // pulled towards catchRate x slip (SLIDE; without plastic's extra front grip). Off the steering, and while catching,
+    // pulled towards catchRate x slip (SLIDE). Off the steering, and while catching (on plastic too),
     // the spin also dies away (settle: share of the yaw rate lost per frame, by the share of wheels), so a drift
     // straightens out when you let go or countersteer instead of spinning the car round.
     if (ease > 0 && looseWheels >= 2) {
@@ -1965,6 +1969,23 @@ self.TM = (() => {
       let d = 0;
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz;
       for (let u = 0; u < on.length; u++) if (on[u] && SURFACES[u].steerHelp) d += (steer * SURFACES[u].steerHelp[0] - yaw) * SURFACES[u].steerHelp[1] * (on[u] / 4);
+      if (d) {
+        F[av] += upx * d;
+        F[av + 1] += upy * d;
+        F[av + 2] += upz * d;
+      }
+    }
+    // A surface's slide cap (SURFACES cap: {from, self, max, pull}, by the share of wheels): steering into the turn, a
+    // slide past `from` radians is pulled back in (the spin eased off by max x tanh(self x the slide past it / max) x pull
+    // rad/s a frame), so a held full lock settles into a slide instead of spinning round.
+    if (steer != 0 && !counter && contacts > 0 && spd > SLIDE.minSpeed) {
+      let d = 0;
+      for (let u = 0; u < on.length; u++) {
+        const C = on[u] && SURFACES[u].cap;
+        if (!C) continue;
+        const x = Math.sign(slip) * Math.max(0, Math.abs(slip) - C.from);
+        d += C.max * Math.tanh((C.self * x) / C.max) * C.pull * (on[u] / 4);
+      }
       if (d) {
         F[av] += upx * d;
         F[av + 1] += upy * d;
