@@ -25743,7 +25743,8 @@
               (e[(e.GhostCarSoundsEnabled = 21)] = "GhostCarSoundsEnabled"),
               (e[(e.VibrationEnabled = 22)] = "VibrationEnabled"),
               (e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"),
-              (e[(e.WheelInfo = 24)] = "WheelInfo"));
+              (e[(e.WheelInfo = 24)] = "WheelInfo"),
+              (e[(e.WheelInfoSize = 25)] = "WheelInfoSize"));
           })(i || (i = {})));
         const r = i;
       },
@@ -53922,6 +53923,19 @@
               ],
               P.A.WheelInfo,
             ),
+            (0, R.gn)(this, zs, "m", ao).call(
+              this,
+              "Wheel info size",
+              [
+                { title: "25%", value: "0.25" },
+                { title: "50%", value: "0.5" },
+                { title: "75%", value: "0.75" },
+                { title: "100%", value: "1" },
+                { title: "125%", value: "1.25" },
+                { title: "150%", value: "1.5" },
+              ],
+              P.A.WheelInfoSize,
+            ),
             (0, R.gn)(this, zs, "m", ro).call(this, Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "Mobile")),
             (0, R.gn)(this, zs, "m", ao).call(
               this,
@@ -62407,6 +62421,7 @@
             [P.A.VibrationEnabled, "false"],
             [P.A.TouchSteeringSide, "true"],
             [P.A.WheelInfo, "false"],
+            [P.A.WheelInfoSize, "0.5"],
           ]);
         }
         defaultKeyBindings() {
@@ -62486,6 +62501,7 @@
             (0, R.gn)(this, cf, "f").set(t, n);
           }
           self.TM.hud.setWheels(this.getSettingBoolean(P.A.WheelInfo));
+          self.TM.hud.setWheelsSize?.(this.getSettingFloat(P.A.WheelInfoSize));
         }
         saveSettings() {
           (0, R.gn)(this, lf, "f").saveSettings((0, R.gn)(this, cf, "f"));

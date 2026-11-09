@@ -48,8 +48,8 @@ apply('main.bundle.js', [
   ['HUD follows the watched replay', '(0, R.gn)(this, ng, "f").update(i.car));', '(0, R.gn)(this, ng, "f").update(i.car),\n                  self.TM.hud.focus(i.car));'],
   ['HUD follows the watched replay while it plays', '(0, R.gn)(this, ng, "f").update(s.car));', '(0, R.gn)(this, ng, "f").update(s.car),\n            self.TM.hud.focus(s.car));'],
   // A real game setting (saved by name with the others), Off by default, shown under Speedometer.
-  ['Wheel info setting', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"));', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"),\n              (e[(e.WheelInfo = 24)] = "WheelInfo"));'],
-  ['Wheel info default', '[P.A.TouchSteeringSide, "true"],', '[P.A.TouchSteeringSide, "true"],\n            [P.A.WheelInfo, "false"],'],
+  ['Wheel info setting', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"));', '(e[(e.TouchSteeringSide = 23)] = "TouchSteeringSide"),\n              (e[(e.WheelInfo = 24)] = "WheelInfo"),\n              (e[(e.WheelInfoSize = 25)] = "WheelInfoSize"));'],
+  ['Wheel info default', '[P.A.TouchSteeringSide, "true"],', '[P.A.TouchSteeringSide, "true"],\n            [P.A.WheelInfo, "false"],\n            [P.A.WheelInfoSize, "0.5"],'],
   [
     'Wheel info in the settings menu',
     `              P.A.Speedometer,
@@ -66,6 +66,19 @@ apply('main.bundle.js', [
               ],
               P.A.WheelInfo,
             ),
+            (0, R.gn)(this, zs, "m", ao).call(
+              this,
+              "Wheel info size",
+              [
+                { title: "25%", value: "0.25" },
+                { title: "50%", value: "0.5" },
+                { title: "75%", value: "0.75" },
+                { title: "100%", value: "1" },
+                { title: "125%", value: "1.25" },
+                { title: "150%", value: "1.5" },
+              ],
+              P.A.WheelInfoSize,
+            ),
             (0, R.gn)(this, zs, "m", ro).call(this, Ns.getFromLanguage((0, R.gn)(this, Js, "f"), "Mobile")),`,
   ],
   [
@@ -76,6 +89,7 @@ apply('main.bundle.js', [
     `            (0, R.gn)(this, cf, "f").set(t, n);
           }
           self.TM.hud.setWheels(this.getSettingBoolean(P.A.WheelInfo));
+          self.TM.hud.setWheelsSize?.(this.getSettingFloat(P.A.WheelInfoSize));
         }`,
   ],
   ['part ids', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"));', '(e[(e.PlaneCorner = 189)] = "PlaneCorner"),\n              self.TM.addEnum(e));'],

@@ -390,6 +390,7 @@ self.TM.hud = (() => {
     pen = null;
   const chips = [];
   let wheelsOn = false,
+    wheelsSize = 0.5, // the Wheel info size setting: a share of Openplanet's 230 x 370
     shown = null, // the car on screen
     focusCar = null,
     focusAt = 0,
@@ -418,9 +419,6 @@ self.TM.hud = (() => {
       chips.push({ el: chip, text, bar: el('i', '', p), label: null, step: -1, idle: false });
     }
     panel = el('canvas', 'be-hud-wheels');
-    // The stroke straddles the box's edge, so the canvas is a line wider all round.
-    panel.style.width = OP.w + OP.line * 2 + 'px';
-    panel.style.height = OP.h + OP.line * 2 + 'px';
     pen = panel.getContext('2d');
     ICONS = {};
     for (const k in ICON_PATHS) ICONS[k] = { adv: ICON_PATHS[k].adv, path: new Path2D(ICON_PATHS[k].d) };
@@ -540,10 +538,20 @@ self.TM.hud = (() => {
     return y + box;
   }
   function wheels(car, c) {
-    const dpr = Math.min(3, window.devicePixelRatio || 1),
+    // The stroke straddles the box's edge, so the canvas is a line wider all round.
+    const k = wheelsSize,
+      dpr = Math.min(3, window.devicePixelRatio || 1) * k,
+      cssW = Math.round((OP.w + OP.line * 2) * k),
+      cssH = Math.round((OP.h + OP.line * 2) * k),
       cw = Math.round((OP.w + OP.line * 2) * dpr),
       ch = Math.round((OP.h + OP.line * 2) * dpr);
-    if (panel.width != cw || panel.height != ch) (panel.width = cw), (panel.height = ch);
+    if (panel.width != cw || panel.height != ch) {
+      panel.width = cw;
+      panel.height = ch;
+      panel.style.width = cssW + 'px';
+      panel.style.height = cssH + 'px';
+      nextLayout = 0;
+    }
     pen.setTransform(dpr, 0, 0, dpr, OP.line * dpr, OP.line * dpr);
     pen.clearRect(-OP.line, -OP.line, OP.w + OP.line * 2, OP.h + OP.line * 2);
     roundRect(0, 0, OP.w, OP.h, OP.radius);
@@ -741,6 +749,10 @@ self.TM.hud = (() => {
     setWheels(on) {
       wheelsOn = !!on;
       if (!wheelsOn && panel) panel.classList.remove('on');
+    },
+    // The Wheel info size setting (1 = Openplanet's own size).
+    setWheelsSize(k) {
+      wheelsSize = k > 0 ? Math.min(3, Math.max(0.1, k)) : 0.5;
     },
     get wheels() {
       return wheelsOn;
