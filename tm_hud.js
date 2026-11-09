@@ -328,9 +328,12 @@ self.TM.hud = (() => {
   }
 
   // ---- drawing --------------------------------------------------------------------------------------------------------
-  // In PolyTrack's own HUD style: its timer's boxes (surface colour with slanted ends round a darker inner box) for the
-  // banner, its speedometer's box for the wheels, ForcedSquare italic from the page.
+  // The banner in PolyTrack's own HUD style: its timer's boxes (surface colour with slanted ends round a darker inner box),
+  // ForcedSquare italic from the page. The wheels as Openplanet's Dashboard plugin draws them for Trackmania (its Wheels
+  // display, Detailed style, default settings), on a canvas.
+  const BASE = (document.currentScript?.src || location.href).replace(/[^/?#]*([?#].*)?$/, '');
   const CSS = `
+@font-face { font-family: 'BE Droid Sans'; src: url('${BASE}droid_sans.ttf') format('truetype'); }
 .be-hud-fx { position: absolute; left: 50%; top: 230px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: max-content; max-width: calc(100% - 380px); transform: translateX(-50%); pointer-events: none; }
 .be-hud-chip { display: none; margin: 0; padding: 0 10px 8px; background-color: var(--surface-color); opacity: 0.9; clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 8px 100%); }
 .be-hud-chip.on { display: block; animation: be-hud-in 0.15s ease-out; }
@@ -341,44 +344,56 @@ self.TM.hud = (() => {
 .be-hud-chip.info { --be-hud-c: var(--text-color); }
 .be-hud-chip.idle > p > i { opacity: 0.35; }
 @keyframes be-hud-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 0.9; transform: none; } }
-.be-hud-wheels { position: absolute; right: var(--safe-area-horizontal); bottom: 100px; display: none; grid-template-columns: auto auto; gap: 4px; margin: 0; padding: 8px 10px; background-color: var(--surface-color); opacity: 0.9; clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%); pointer-events: none; }
-.be-hud-wheels.on { display: grid; }
-.be-hud-wheel { display: grid; grid-template-columns: 1fr auto; align-items: end; width: 136px; margin: 0; padding: 5px 8px 6px 14px; background-color: var(--surface-tertiary-color); color: var(--text-color); clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%); }
-.be-hud-wheel > p { margin: 0; padding: 0; white-space: nowrap; }
-.be-hud-wheel > .s { grid-column: 1 / 3; font-size: 17px; opacity: 0.6; }
-.be-hud-wheel > .g { font-size: 28px; }
-.be-hud-wheel > .b { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 2px; height: 49px; font-size: 15px; }
-.be-hud-wheel > .b > span { display: none; }
-.be-hud-wheel > .b > span.on { display: inline; }
-.be-hud-wheel > .b > .wet { color: #8cf; }
-.be-hud-wheel > .b > .icy { color: #dff4ff; }
-.be-hud-wheel > .b > .dirt { color: #d9a066; }
+.be-hud-wheels { position: absolute; right: var(--safe-area-horizontal); bottom: 100px; display: none; pointer-events: none; }
+.be-hud-wheels.on { display: block; }
 `;
   // Every string the HUD writes, made once, so drawing a frame allocates nothing.
   const pct = (prefix) => Array.from({ length: 101 }, (_, i) => prefix + i + '%');
   const GRIP_TEXT = Array.from({ length: 401 }, (_, i) => i + '%'),
-    WET_TEXT = pct('Wet '),
-    ICY_TEXT = pct('Icy '),
-    DIRT_TEXT = pct('Dirty '),
-    MUD_TEXT = pct('Muddy '),
+    PCT = pct(''),
     BARS = 40, // steps of a chip's time bar
     BAR = Array.from({ length: BARS + 1 }, (_, i) => 'scaleX(' + i / BARS + ')');
   // Wheel surface names by code + 2 (AIR, stock road, then part.u 0-8), and one for a wheel under water.
   const NAMES = ['Air', 'Road', 'Plastic', 'Wood', 'Penalty grass', 'Ice', 'Bobsleigh', 'Dirt', 'Grass', 'Snow', 'Road'],
-    WATER_NAME = 'Water',
-    NO_GRIP = '- - -'; // the timer's own "nothing" text
-  // Wheels: front left, front right, rear left, rear right, laid out like the car seen from behind it.
-  const WHEEL_ORDER = [0, 1, 2, 3];
+    WATER_NAME = 'Water';
+
+  // Openplanet Dashboard's Wheels defaults: a 230 x 370 box, 25 padding, a row per wheel (front left, front right, rear
+  // left, rear right) 10 apart, the left wheels drawn on the left and the right ones on the right, each a 32 wide wheel
+  // with its text 20 beside it. Colours are its own (vec3 x 255).
+  const OP = {
+    w: 230,
+    h: 370,
+    pad: 25,
+    rowGap: 10,
+    wheelW: 32,
+    textGap: 20,
+    radius: 5,
+    line: 3,
+    font: 16,
+    backdrop: 'rgba(0, 0, 0, 0.7)',
+    border: '#fff',
+    fillAlpha: 0.7,
+    motionAlpha: 0.5,
+    motionScale: 5,
+    slip: [255, 255, 0],
+    ice: [153, 255, 242.25],
+    dirt: [204, 127.5, 0],
+    wet: [0, 127.5, 255],
+    name: [255, 255, 255],
+  };
+  // Font Awesome 4.7 glyphs (Openplanet's Icons::), in font units: 1792 to the em, ascent 1536, y up.
+  const ICON_PATHS = {"slip":{"adv":640,"d":"M512 288v-224q0 -26 -19 -45t-45 -19h-256q-26 0 -45 19t-19 45v224q0 26 19 45t45 19h256q26 0 45 -19t19 -45zM542 1344l-28 -768q-1 -26 -20.5 -45t-45.5 -19h-256q-26 0 -45.5 19t-20.5 45l-28 768q-1 26 17.5 45t44.5 19h320q26 0 44.5 -19t17.5 -45z"},"ice":{"adv":1664,"d":"M1566 419l-167 -33l186 -107q23 -13 29.5 -38.5t-6.5 -48.5q-14 -23 -39 -29.5t-48 6.5l-186 106l55 -160q13 -38 -12 -63.5t-60.5 -20.5t-48.5 42l-102 300l-271 156v-313l208 -238q16 -18 17 -39t-11 -36.5t-28.5 -25t-37 -5.5t-36.5 22l-112 128v-214q0 -26 -19 -45\nt-45 -19t-45 19t-19 45v214l-112 -128q-16 -18 -36.5 -22t-37 5.5t-28.5 25t-11 36.5t17 39l208 238v313l-271 -156l-102 -300q-13 -37 -48.5 -42t-60.5 20.5t-12 63.5l55 160l-186 -106q-23 -13 -48 -6.5t-39 29.5q-13 23 -6.5 48.5t29.5 38.5l186 107l-167 33\nq-29 6 -42 29t-8.5 46.5t25.5 40t50 10.5l310 -62l271 157l-271 157l-310 -62q-4 -1 -13 -1q-27 0 -44 18t-19 40t11 43t40 26l167 33l-186 107q-23 13 -29.5 38.5t6.5 48.5t39 30t48 -7l186 -106l-55 160q-13 38 12 63.5t60.5 20.5t48.5 -42l102 -300l271 -156v313\nl-208 238q-16 18 -17 39t11 36.5t28.5 25t37 5.5t36.5 -22l112 -128v214q0 26 19 45t45 19t45 -19t19 -45v-214l112 128q16 18 36.5 22t37 -5.5t28.5 -25t11 -36.5t-17 -39l-208 -238v-313l271 156l102 300q13 37 48.5 42t60.5 -20.5t12 -63.5l-55 -160l186 106\nq23 13 48 6.5t39 -29.5q13 -23 6.5 -48.5t-29.5 -38.5l-186 -107l167 -33q27 -5 40 -26t11 -43t-19 -40t-44 -18q-9 0 -13 1l-310 62l-271 -157l271 -157l310 62q29 6 50 -10.5t25.5 -40t-8.5 -46.5t-42 -29z"},"dirt":{"adv":1920,"d":"M1111 540v4l-24 320q-1 13 -11 22.5t-23 9.5h-186q-13 0 -23 -9.5t-11 -22.5l-24 -320v-4q-1 -12 8 -20t21 -8h244q12 0 21 8t8 20zM1870 73q0 -73 -46 -73h-704q13 0 22 9.5t8 22.5l-20 256q-1 13 -11 22.5t-23 9.5h-272q-13 0 -23 -9.5t-11 -22.5l-20 -256\nq-1 -13 8 -22.5t22 -9.5h-704q-46 0 -46 73q0 54 26 116l417 1044q8 19 26 33t38 14h339q-13 0 -23 -9.5t-11 -22.5l-15 -192q-1 -14 8 -23t22 -9h166q13 0 22 9t8 23l-15 192q-1 13 -11 22.5t-23 9.5h339q20 0 38 -14t26 -33l417 -1044q26 -62 26 -116z"},"wet":{"adv":1024,"d":"M512 384q0 36 -20 69q-1 1 -15.5 22.5t-25.5 38t-25 44t-21 50.5q-4 16 -21 16t-21 -16q-7 -23 -21 -50.5t-25 -44t-25.5 -38t-15.5 -22.5q-20 -33 -20 -69q0 -53 37.5 -90.5t90.5 -37.5t90.5 37.5t37.5 90.5zM1024 512q0 -212 -150 -362t-362 -150t-362 150t-150 362\nq0 145 81 275q6 9 62.5 90.5t101 151t99.5 178t83 201.5q9 30 34 47t51 17t51.5 -17t33.5 -47q28 -93 83 -201.5t99.5 -178t101 -151t62.5 -90.5q81 -127 81 -275z"}};
+  let ICONS = null;
 
   let fx = null,
-    panel = null;
-  const chips = [],
-    wheelEls = [];
+    panel = null,
+    pen = null;
+  const chips = [];
   let wheelsOn = false,
     shown = null, // the car on screen
     focusCar = null,
     focusAt = 0,
-    nextWheels = 0,
+    lastDraw = 0,
     nextLayout = 0;
 
   function el(tag, className, parent) {
@@ -402,15 +417,14 @@ self.TM.hud = (() => {
       p.appendChild(text);
       chips.push({ el: chip, text, bar: el('i', '', p), label: null, step: -1, idle: false });
     }
-    panel = el('div', 'be-hud-wheels');
-    for (const w of WHEEL_ORDER) {
-      const box = el('div', 'be-hud-wheel', panel),
-        b = el('div', 'b', box);
-      const e = { s: el('p', 's', box), g: el('p', 'g', box), wet: el('span', 'wet', b), icy: el('span', 'icy', b), dirt: el('span', 'dirt', b), w, name: null, grip: -1, lv: [-1, -1, -1] };
-      box.insertBefore(e.s, b);
-      box.insertBefore(e.g, b);
-      wheelEls.push(e);
-    }
+    panel = el('canvas', 'be-hud-wheels');
+    // The stroke straddles the box's edge, so the canvas is a line wider all round.
+    panel.style.width = OP.w + OP.line * 2 + 'px';
+    panel.style.height = OP.h + OP.line * 2 + 'px';
+    pen = panel.getContext('2d');
+    ICONS = {};
+    for (const k in ICON_PATHS) ICONS[k] = { adv: ICON_PATHS[k].adv, path: new Path2D(ICON_PATHS[k].d) };
+    document.fonts?.load(OP.font + "px 'BE Droid Sans'").catch(() => {});
   }
   // The race's HUD element, so the banner hides with the rest of the HUD; #ui when there is none.
   function attach() {
@@ -458,37 +472,116 @@ self.TM.hud = (() => {
       setChip(CAR + i, left > 0 ? c.shotLabel[i] : null, left / ONE_SHOT);
     }
   }
-  function level(v) {
-    return Math.max(0, Math.min(100, Math.round(v * 100)));
+  // Each wheel's steering, spin and slip, from the car states (state below). Openplanet turns the wheel by its steer angle
+  // and scrolls the bars by its rotation; the page has the front wheels' steering and each wheel's spin per frame.
+  function motion(c, s, now) {
+    const m = c.motion || (c.motion = { steer: 0, rot: new Float64Array(4), spin: new Float32Array(4), skid: new Float32Array(4), at: now });
+    const dt = Math.min(0.1, Math.max(0, (now - m.at) / 1000));
+    m.at = now;
+    m.steer = s.steering || 0;
+    for (let w = 0; w < 4; w++) {
+      if (s.wheelContact[w]) m.spin[w] = 1000 * (s.wheelDeltaRotation?.[w] || 0); // radians a second, as VisualCar
+      m.rot[w] += m.spin[w] * dt;
+      m.skid[w] = s.wheelContact[w] ? s.wheelSkidInfo?.[w] ?? 1 : 1;
+    }
   }
-  function badge(e, i, span, text, lv) {
-    if (lv === e.lv[i]) return;
-    e.lv[i] = lv;
-    if (lv > 0) {
-      span.textContent = text[lv];
-      span.classList.add('on');
-    } else span.classList.remove('on');
+  const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const rgba = (c, a) => 'rgba(' + Math.round(c[0]) + ', ' + Math.round(c[1]) + ', ' + Math.round(c[2]) + ', ' + a + ')';
+  function roundRect(x, y, w, h, r) {
+    pen.beginPath();
+    pen.roundRect(x, y, w, h, r);
+  }
+  // RenderWheelVisual: the wheel turned by its steer angle, filled black and tinted by icing, dirt and wetness, its motion
+  // bars (7 high, 5 apart) scrolling with its rotation, and a white border.
+  function wheelVisual(x, y, w, h, steer, rot, ice, dirt, wet) {
+    pen.save();
+    pen.translate(x + w / 2, y + h / 2);
+    pen.rotate(-steer);
+    pen.translate(-(x + w / 2), -(y + h / 2));
+    let fill = [0, 0, 0];
+    if (ice > 0) fill = mix(fill, OP.ice, ice);
+    if (dirt > 0) fill = mix(fill, OP.dirt, dirt);
+    if (wet > 0) fill = mix(fill, OP.wet, wet);
+    roundRect(x, y, w, h, OP.radius);
+    pen.fillStyle = rgba(fill, OP.fillAlpha);
+    pen.fill();
+    pen.save();
+    pen.beginPath();
+    pen.rect(x, y, w, h);
+    pen.clip();
+    pen.fillStyle = rgba([0, 0, 0], OP.motionAlpha);
+    const step = 12,
+      n = Math.floor(h / step) + 1,
+      shift = (rot * OP.motionScale) % step;
+    for (let i = -1; i < n; i++) pen.fillRect(x, y + Math.round(i * step + shift), w, 7);
+    pen.restore();
+    roundRect(x, y, w, h, OP.radius);
+    pen.lineWidth = OP.line;
+    pen.strokeStyle = OP.border;
+    pen.stroke();
+    pen.restore();
+  }
+  // RenderWheelLine: an icon in a box (font size + 4) at the outer side, the text beside it, one line per font size + 4.
+  function line(x, y, width, right, color, icon, text) {
+    const box = OP.font + 4;
+    pen.fillStyle = rgba(color, 1);
+    if (icon) {
+      const I = ICONS[icon],
+        k = OP.font / 1792,
+        ix = (right ? x + width - box : x) + (box - I.adv * k) / 2;
+      pen.save();
+      pen.translate(ix, y + 1536 * k);
+      pen.scale(k, -k);
+      pen.fill(I.path);
+      pen.restore();
+    }
+    pen.textAlign = right ? 'right' : 'left';
+    pen.fillText(text, right ? x + width - box : x + box, y);
+    return y + box;
   }
   function wheels(car, c) {
-    const dirt = c.tyre ? null : TM.vehicles?.tyres?.(car);
-    for (const e of wheelEls) {
-      const w = e.w,
-        u = c.wheel[w],
-        name = c.inWater[w] ? WATER_NAME : NAMES[u + 2],
-        grip = u == AIR ? -1 : Math.min(400, Math.max(0, Math.round(gripOf(c, w) * 100)));
-      if (name !== e.name) e.s.textContent = e.name = name;
-      if (grip !== e.grip) e.g.textContent = (e.grip = grip) < 0 ? NO_GRIP : GRIP_TEXT[grip];
-      const t = c.tyre?.[w];
-      if (t) {
-        badge(e, 0, e.wet, WET_TEXT, level(t.wet));
-        badge(e, 1, e.icy, ICY_TEXT, level(t.ice));
-        badge(e, 2, e.dirt, MUD_TEXT, level(t.mud));
-        continue;
-      }
-      badge(e, 0, e.wet, WET_TEXT, level(c.wet));
-      badge(e, 1, e.icy, ICY_TEXT, level(c.ice[w]));
-      badge(e, 2, e.dirt, DIRT_TEXT, dirt ? level(dirt[w]?.mud ?? dirt[w]?.dirt ?? 0) : 0);
+    const dpr = Math.min(3, window.devicePixelRatio || 1),
+      cw = Math.round((OP.w + OP.line * 2) * dpr),
+      ch = Math.round((OP.h + OP.line * 2) * dpr);
+    if (panel.width != cw || panel.height != ch) (panel.width = cw), (panel.height = ch);
+    pen.setTransform(dpr, 0, 0, dpr, OP.line * dpr, OP.line * dpr);
+    pen.clearRect(-OP.line, -OP.line, OP.w + OP.line * 2, OP.h + OP.line * 2);
+    roundRect(0, 0, OP.w, OP.h, OP.radius);
+    pen.fillStyle = OP.backdrop;
+    pen.fill();
+    pen.font = OP.font + "px 'BE Droid Sans', 'Droid Sans', 'Noto Sans', 'Open Sans', sans-serif";
+    pen.textBaseline = 'top';
+    const m = c.motion,
+      dirtOf = c.tyre ? null : TM.vehicles?.tyres?.(car),
+      rowW = OP.w - OP.pad * 2,
+      rowH = (OP.h - OP.pad * 2 - OP.rowGap * 3) / 4,
+      textW = rowW - OP.wheelW - OP.textGap;
+    for (let w = 0; w < 4; w++) {
+      const right = w % 2 == 1,
+        y = OP.pad + w * (rowH + OP.rowGap),
+        t = c.tyre?.[w],
+        ice = t ? t.ice : c.ice[w],
+        dirt = t ? t.mud : dirtOf ? dirtOf[w]?.mud ?? dirtOf[w]?.dirt ?? 0 : 0,
+        wet = t ? t.wet : c.wet,
+        steer = m && w < 2 ? m.steer : 0;
+      wheelVisual(right ? OP.pad + rowW - OP.wheelW : OP.pad, y, OP.wheelW, rowH, steer, m ? m.rot[w] : 0, ice, dirt, wet);
+      // RenderWheelDetails, with the wheel's surface and grip first.
+      const u = c.wheel[w],
+        tx = right ? OP.pad : OP.pad + OP.wheelW + OP.textGap,
+        name = c.inWater[w] ? WATER_NAME : NAMES[u + 2];
+      let ly = line(tx, y, textW, right, OP.name, null, u == AIR ? name : name + ' ' + GRIP_TEXT[Math.min(400, Math.max(0, Math.round(gripOf(c, w) * 100)))]);
+      if (m && u != AIR && m.skid[w] < 0.9) ly = line(tx, ly, textW, right, OP.slip, 'slip', 'Slip');
+      if (ice > 0.005) ly = line(tx, ly, textW, right, OP.ice, 'ice', PCT[level(ice)]);
+      if (dirt > 0.005) ly = line(tx, ly, textW, right, OP.dirt, 'dirt', PCT[level(dirt)]);
+      if (wet > 0.005) ly = line(tx, ly, textW, right, OP.wet, 'wet', PCT[level(wet)]);
     }
+    roundRect(0, 0, OP.w, OP.h, OP.radius);
+    pen.lineWidth = OP.line;
+    pen.strokeStyle = OP.border;
+    pen.stroke();
+  }
+  function level(v) {
+    return Math.max(0, Math.min(100, Math.round(v * 100)));
   }
 
   // ---- where it goes ------------------------------------------------------------------------------------------------
@@ -549,8 +642,7 @@ self.TM.hud = (() => {
     const now = performance.now();
     if (car !== shown) {
       shown = car;
-      for (const e of wheelEls) (e.name = null), (e.grip = -1), e.lv.fill(-1);
-      nextWheels = nextLayout = 0;
+      nextLayout = 0;
     }
     // NSWS's photo mode takes the HUD away.
     const off = !!self.__PolyFX?.photo?.active;
@@ -560,8 +652,9 @@ self.TM.hud = (() => {
       panel.classList.toggle('on', panelOn);
       nextLayout = 0;
     }
-    if (panelOn && now >= nextWheels) {
-      nextWheels = now + 66; // about 15 times a second
+    // Every frame, as Openplanet draws it (the bars scroll).
+    if (panelOn && now - lastDraw > 4) {
+      lastDraw = now;
       wheels(car, c);
     }
     if (now >= nextLayout) {
@@ -629,6 +722,7 @@ self.TM.hud = (() => {
       if (c && c.watch && s)
         try {
           step(c, s);
+          if (wheelsOn) motion(c, s, performance.now());
         } catch (e) {
           cars.delete(car);
           console.warn('HUD off:', e);
