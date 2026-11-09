@@ -160,20 +160,35 @@
         }
     }
 
+    // Names this editor's saved tracks for NSWS, which keeps them in step with My Tracks: a new id means another store
+    // (cleared storage, or the Worker mirror's origin), where missing tracks were never deleted.
+    const STORE_KEY = "nsws_bridge_store";
+    function storeId() {
+        try {
+            let id = localStorage.getItem(STORE_KEY);
+            if (!id) localStorage.setItem(STORE_KEY, (id = Math.random().toString(36).slice(2) + Date.now().toString(36)));
+            return id;
+        } catch {
+            return null;
+        }
+    }
+
     function listTracks() {
+        const ids = new Map();
+        self.__beTrackStore?.forEachCustomTrack((id, meta) => ids.set(meta.name, id));
         const out = [];
         for (const key of trackKeys()) {
             try {
                 const saved = JSON.parse(localStorage.getItem(key));
-                if (saved && typeof saved.data === "string")
-                    out.push({ name: key.slice(PREFIX.length), code: saved.data, saveTime: Number(saved.saveTime) || 0 });
+                const name = key.slice(PREFIX.length);
+                if (saved && typeof saved.data === "string") out.push({ name, code: saved.data, saveTime: Number(saved.saveTime) || 0, id: ids.get(name) || null });
             } catch {}
         }
         if (!out.length && self.__beTrackStore) {
             // Builds whose storage isn't localStorage still have the editor's in-memory list.
             self.__beTrackStore.forEachCustomTrack((id, meta, data) => {
                 try {
-                    out.push({ name: meta.name, code: data.toExportString(meta), saveTime: 0 });
+                    out.push({ name: meta.name, code: data.toExportString(meta), saveTime: 0, id });
                 } catch {}
             });
         }
@@ -286,6 +301,37 @@
         return { ok: true, results };
     }
 
+    // A My Tracks entry changed elsewhere (another device's editor): its copy here, under the name it has here.
+    function putTrack(name, code) {
+        const TD = self.__beTrackData;
+        const store = self.__beTrackStore;
+        if (!TD || !store) return { ok: false, error: "The editor is still loading. Try again in a moment." };
+        if (typeof name !== "string" || !name || !store.checkCustomTrackNameExists(name)) return { ok: false, gone: true };
+        let parsed = null;
+        try {
+            parsed = typeof code === "string" ? TD.fromExportString(code) : null;
+        } catch {}
+        if (!parsed) return { ok: false, error: "The editor can't read that track code." };
+        let used = 0, old = 0;
+        try {
+            for (const k of Object.keys(localStorage)) used += k.length + (localStorage.getItem(k) || "").length;
+            old = (localStorage.getItem(PREFIX + name) || "").length;
+        } catch {}
+        const { trackMetadata: meta, trackData: data } = parsed;
+        if (used - old + code.length > COPY_ROOM || !store.saveCustomTrack({ name, author: meta.author ?? null, lastModified: meta.lastModified ?? null }, data)) return { ok: false, full: true };
+        checkChanged();
+        return { ok: true, name };
+    }
+
+    function deleteTrack(name) {
+        const store = self.__beTrackStore;
+        if (!store) return { ok: false, error: "The editor is still loading. Try again in a moment." };
+        if (typeof name !== "string" || !store.checkCustomTrackNameExists(name)) return { ok: true, gone: true };
+        const ok = !!store.deleteCustomTrack(name);
+        if (ok) checkChanged();
+        return { ok };
+    }
+
     const wait = (test, ms) => new Promise((resolve) => {
         const end = Date.now() + ms;
         (function check() {
@@ -344,10 +390,29 @@
         const reply = (body) => post(Object.assign({ type: msg.type, reqId: msg.reqId }, body));
         if (msg.type === "hello") {
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 4, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
+            post({ type: "ready", version: 5, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
         } else if (msg.type === "list") {
-            reply({ tracks: listTracks() });
+            reply({ tracks: listTracks(), loaded: !!self.__beTrackStore, store: storeId() });
+        } else if (msg.type === "ids") {
+            const TD = self.__beTrackData;
+            reply({
+                ids: (Array.isArray(msg.codes) ? msg.codes : []).map((code) => {
+                    try {
+                        return (TD && typeof code === "string" && TD.fromExportString(code)?.trackData.getId()) || null;
+                    } catch {
+                        return null;
+                    }
+                }),
+            });
+        } else if (msg.type === "put" || msg.type === "delete") {
+            let result;
+            try {
+                result = msg.type === "put" ? putTrack(msg.name, msg.code) : deleteTrack(msg.name);
+            } catch (err) {
+                result = { ok: false, error: "The editor couldn't change that track." };
+            }
+            reply(result);
         } else if (msg.type === "import") {
             let result;
             try {
