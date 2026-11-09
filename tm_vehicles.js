@@ -921,7 +921,7 @@ self.TM.vehicles = (() => {
       // the ground is in the water when its contact is under the surface, one in the air when the car's underside is.
       const n = Math.max(1, Math.min(250, Math.round(dt * 1000))),
         d = dt / n,
-        skid = s.wheelSkidInfo;
+        skid = s.tmSkid ?? s.wheelSkidInfo;
       for (let i = 0; i < 4; i++) {
         const contact = s.wheelContact[i],
           u = !contact ? TYRES.AIR : c.surfaces ? surfaceAt(c, contact) ?? TYRES.ROAD : TYRES.ROAD,
@@ -1193,7 +1193,8 @@ self.TM.vehicles = (() => {
     const s = c.pool;
     // A move further than the car can drive is a respawn (as step() decides it; 200 units/s = 720 km/h of room, past an
     // ultra turbo's 515 or wood's top end).
-    if (fresh || moved > JUMP + 0.2 * steps || c.soaking || !state.hasStarted || !particlesOn(s)) return;
+    // Hovering on a reactor boost the jets carry the car and the wheels throw nothing up.
+    if (fresh || moved > JUMP + 0.2 * steps || c.soaking || c.lift > 0.1 || !state.hasStarted || !particlesOn(s)) return;
     const cam = s.sw.camera?.position,
       far = cam ? Math.hypot(p.x - cam.x, p.y - cam.y, p.z - cam.z) : 0,
       ghost = c.ghost && s.nearest !== car,
@@ -1383,13 +1384,14 @@ self.TM.vehicles = (() => {
 
   // ---- reactor jets -------------------------------------------------------------------------------------------------
   // While a reactor boost is on, every wheel is a jet, as TM2020's FLReactor .. RRReactor, cyan for a reactor boost and
-  // purple for a super one, in the plates' colours (FxReactor, FxReactor2, cores in their glyph colours); the flame
-  // points against the push. A boost up: on the ground (IsReactorGroundMode, hovering over flat ground) short hover
-  // thrusters straight down out of the bottom of the wheels, a little longer on the gas; in the air long flames down
-  // along world down on the gas (the runtime pushes only then) and a pilot glow off it. A boost down: flames out of the
-  // tops of the wheels, along the car's up on the ground (it presses the car into the ground) and world up in the air,
-  // big on the gas. The gas is state.controls, the controls the car got after the effects filtered them (ghosts and
-  // replays carry them too). They lean with the steering (ReactorInputsX) and the ones on the outside of the turn flare.
+  // purple for a super one, in the plates' colours (FxReactor, FxReactor2, cores in their glyph colours); every
+  // flame comes out of the centre of its wheel's outer face (the hub, away from the car) and points straight out along
+  // the axle, tilted from there by at most 45 degrees (tilt) in any direction. A boost up tilts it down, against the
+  // push: all the way on the gas in the air (the runtime pushes only then), less while it hovers (short thrusters, a
+  // little longer on the gas) and off the gas (a pilot glow). A boost down tilts it up the same way, big on the gas. The
+  // gas is state.controls, the controls the car got after the effects filtered them (ghosts and replays carry them
+  // too). They swing fore and aft with the steering (ReactorInputsX), turned the way the front wheels turn, and the ones
+  // on the outside of the turn flare; the two tilts together are held to 45 degrees off the axle.
   // They die away over the last half second. The boost itself is worked out in step() like the vehicle: the plate the
   // car's origin enters and the way it crosses it, ended by a reset plate, a checkpoint, a respawn, the reset key or the
   // finish.
@@ -1405,9 +1407,10 @@ self.TM.vehicles = (() => {
   const HOVER = TM.REACTOR_HOVER ?? { lift: 0, flat: [4, 10], rise: 1.5, drop: 4 };
   const pick = typeof TM.reactorPick == 'function' ? TM.reactorPick : (q) => q.type;
   // length / radius: a full flame (world units). core: the white-hot core's size against the flame. pilot: its size off
-  // the gas; hover: a hover thruster's off and on the gas; ground: a down boost's on the ground; sweep: how far a flame
-  // on the ground leans back (towards the tail, per unit along it; hoverSweep for the thrusters).
-  // lean: how far full steering leans the jets sideways; flare: how much longer the outside ones burn at full steering
+  // the gas; hover: a hover thruster's off and on the gas; ground: a down boost's on the ground. tilt: the most a flame
+  // leans off the axle (radians); dip: how much of that a boost's push gives it up or down, [off the gas, hovering on
+  // the gas, on the gas] (in the air a boost up only pushes on the gas); swing: how much of it full steering gives it
+  // fore and aft. hub: from the wheel's centre out to its outer face. flare: how much longer the outside ones burn at full steering
   // (the inside ones lose a third of that). fade: physics frames the flame dies away over at the end (the runtime's
   // REACTOR fade, its push dying away with it, where it has one). attack / release:
   // how fast a flame grows and shrinks (per second). flicker: how much it wavers. Colours as the points take them:
@@ -1422,9 +1425,10 @@ self.TM.vehicles = (() => {
     pilot: 0.28,
     hover: [0.3, 0.46],
     ground: 0.7,
-    sweep: 1.2,
-    hoverSweep: 0.3,
-    lean: 0.55,
+    tilt: Math.PI / 4,
+    dip: [0.35, 0.65, 1],
+    swing: 1,
+    hub: 0.16,
     flare: 0.45,
     fade: 500,
     attack: 14,
@@ -1473,7 +1477,7 @@ self.TM.vehicles = (() => {
         c.rig.body.add(o);
         meshes.push(o);
       }
-    c.jet = { mats, meshes, level: 0, power: new Float32Array(4), steer: 0, body: c.rig.body, opacity: -1 };
+    c.jet = { mats, meshes, level: 0, power: new Float32Array(4), steer: 0, dip: 0, body: c.rig.body, opacity: -1 };
   }
   function dropJets(c) {
     const J = c.jet;
@@ -1509,29 +1513,26 @@ self.TM.vehicles = (() => {
       J.mats[0].opacity = JET.opacity[0] * op;
       J.mats[1].opacity = JET.opacity[1] * op;
     }
-    // Which way the flames point, in the body frame (+x left, +y up, +z nose): against the push. On the ground along the
-    // car's own up (down for a boost up, up for a boost down); in the air along world up or down whatever the car's
-    // angle: that direction turned into the car's frame (the conjugate of its quaternion).
-    const ground = c.rGround || c.lift > 0.05;
-    let ux = 0,
-      uy = 1,
-      uz = 0;
-    if (R && !ground) {
-      const q = state.quaternion;
-      ux = 2 * (q.x * q.y + q.w * q.z);
-      uy = 1 - 2 * (q.x * q.x + q.z * q.z);
-      uz = 2 * (q.y * q.z - q.w * q.x);
-    }
     // The flame's size follows the gas smoothly; the boost's last stretch (the runtime's fade, the same frames its push
     // dies away over) scales it straight down, so the jets go out on the frame the push ends.
-    const up = !R || R.dir > 0,
-      sign = up ? -1 : 1,
-      sweep = ground ? (up ? JET.hoverSweep : JET.sweep) : 0.12,
+    const ground = c.rGround || c.lift > 0.05,
+      up = !R || R.dir > 0,
       size = !R ? 0 : ground ? (up ? JET.hover[gas ? 1 : 0] : gas ? JET.ground : JET.pilot) : gas ? 1 : JET.pilot,
       fade = R && c.rLeft > 0 ? Math.min(1, c.rLeft / (R.fade ?? JET.fade)) : 0,
       len = state.wheelSuspensionLength,
       t = performance.now() / 1000,
       s = J.steer;
+    // How far the push tilts the flames (share of the tilt), eased like the steering: down for a boost up, up for a
+    // boost down.
+    J.dip += ((!R ? 0 : !gas ? JET.dip[0] : ground && up ? JET.dip[1] : JET.dip[2]) - J.dip) * (1 - Math.exp(-10 * d));
+    // The two tilts (radians): tv up (+) or down, th with the steering; together no more than the tilt.
+    let tv = J.dip * JET.tilt * (up ? -1 : 1),
+      th = s * JET.swing * JET.tilt;
+    const tt = Math.hypot(tv, th);
+    if (tt > JET.tilt) (tv *= JET.tilt / tt), (th *= JET.tilt / tt);
+    const ta = Math.min(JET.tilt, tt),
+      cs = Math.cos(ta),
+      sn = ta > 1e-6 ? Math.sin(ta) / ta : 0;
     for (let i = 0; i < 4; i++) {
       const outside = (s > 0) == (WHEELS[i][0] < 0), // steering left: the right wheels (x < 0) are outside the turn
         flare = outside ? 1 + JET.flare * Math.abs(s) : 1 - (JET.flare / 3) * Math.abs(s),
@@ -1544,14 +1545,13 @@ self.TM.vehicles = (() => {
         a.visible = b.visible = false;
         continue;
       }
-      // the flame's way: against the push, leaned out of the turn, swept back on the ground
-      let fx = ux * sign - s * JET.lean,
-        fy = uy * sign,
-        fz = uz * sign - sweep;
-      const fl = Math.hypot(fx, fy, fz) || 1;
-      fx /= fl;
-      fy /= fl;
-      fz /= fl;
+      // The flame's way, in the body frame (+x left, +y up, +z nose): out along the axle (sx: this wheel's side), tilted
+      // up or down by tv and turned about the car's up by th the way the front wheels steer (steering left swings the
+      // outer end of the axle towards the tail on the left, the nose on the right).
+      const sx = WHEELS[i][0] > 0 ? 1 : -1,
+        fx = sx * cs,
+        fy = tv * sn,
+        fz = -sx * th * sn;
       // turn +y onto (fx, fy, fz): the half-way quaternion
       let qx = fz,
         qy = 0,
@@ -1560,15 +1560,14 @@ self.TM.vehicles = (() => {
       const ql = Math.hypot(qx, qy, qz, qw);
       if (ql < 1e-6) (qx = 1), (qy = qz = qw = 0);
       else (qx /= ql), (qy /= ql), (qz /= ql), (qw /= ql);
-      // from the wheel's centre (the body frame's wheel table, the suspension as it is now) out through the tyre
-      const wx = WHEELS[i][0],
+      // from the centre of the wheel's outer face (the body frame's wheel table, the suspension as it is now)
+      const wx = WHEELS[i][0] + sx * JET.hub,
         wy = AXLE - (len?.[i] ?? 0),
         wz = WHEELS[i][1],
-        out = 0.18,
         wave = 1 + JET.flicker * Math.sin(t * 43 + i * 1.9) * Math.sin(t * 17 + i * 0.7),
         L = JET.length * p * wave,
         r = JET.radius * (0.55 + 0.45 * p);
-      a.position.set(wx + fx * out, wy + fy * out, wz + fz * out);
+      a.position.set(wx, wy, wz);
       a.quaternion.set(qx, qy, qz, qw);
       a.scale.set(r, L, r);
       b.position.copy(a.position);
@@ -1716,6 +1715,18 @@ self.TM.vehicles = (() => {
       return c && !c.ghost ? c.vehicle : null;
     },
     tyres: (car) => cars.get(car)?.tyre ?? null,
+    // Hovering on a reactor boost the jets carry the car, so its wheels show no skid smoke and leave no skid marks: the
+    // game draws both from the state's skidInfo as the state comes in (VisualCar.setCarState, before the car's update),
+    // so tm_hud.js hands every state here once it has read it, and while the car hovers its skidInfo reads 1 (gripping);
+    // the real values stay in tmSkid for the tyres here (soak).
+    quiet(car, s) {
+      const c = cars.get(car),
+        k = s?.wheelSkidInfo;
+      if (!c || !(c.lift > 0.1) || !k || s.tmSkid) return;
+      const keep = (c.skid0 ??= new Float32Array(4));
+      for (let i = 0; i < 4; i++) (keep[i] = k[i]), (k[i] = 1);
+      s.tmSkid = keep;
+    },
     // What a car's tyres are throwing up (tests): the surface under each wheel, how hard each slides (0..1), and how
     // many chips and puffs are alive in its scene.
     spray: (car) => {

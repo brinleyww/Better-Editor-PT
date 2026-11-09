@@ -356,8 +356,8 @@ const platProfile = (st, paint) => () => [deckPoly(st, 10, DECK, 0.5, paint)];
 // leaves the deck flat (tangent to it) and rounds over at the top, so a car running wide rides up it and comes back
 // instead of hitting a wall. x0: deck half width, x1: outer edge, h: bank height over the deck, line: deck edge strip.
 // NARROW is TM's narrow dirt road: about half the width, with low banks.
-const BERM = { x0: 4.5, x1: HALF_ROAD, h: 1.2, n: 6, line: 0.35 };
-const NARROW = { x0: 2.6, x1: 3.6, h: 0.45, n: 4, line: 0.25 };
+const BERM = { x0: 4.5, x1: HALF_ROAD, h: 1.7, n: 6, line: 0.35 };
+const NARROW = { x0: 2.6, x1: 3.6, h: 0.65, n: 4, line: 0.25 };
 // A bank squeezed to nothing (a connector's far end) has no width: it is flat at the deck.
 const bermY = (B, x) => (B.x1 - B.x0 < 1e-9 ? DECK : DECK + (B.h * (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, (Math.abs(x) - B.x0) / (B.x1 - B.x0)))))) / 2);
 // The banks as n strips a side (the bank as a whole is concave, so it cannot be one convex polygon).

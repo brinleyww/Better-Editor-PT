@@ -364,7 +364,7 @@ self.TM.hud = (() => {
     BARS = 40, // steps of a chip's time bar
     BAR = Array.from({ length: BARS + 1 }, (_, i) => 'scaleX(' + i / BARS + ')');
   // Wheel surface names by code + 2 (AIR, stock road, then part.u 0-8), and one for a wheel under water.
-  const NAMES = ['Air', 'Tech', 'Plastic', 'Wood', 'Penalty grass', 'Ice', 'Bobsleigh', 'Dirt', 'Grass', 'Snow', 'Tech'],
+  const NAMES = ['Air', 'Road', 'Plastic', 'Wood', 'Penalty grass', 'Ice', 'Bobsleigh', 'Dirt', 'Grass', 'Snow', 'Road'],
     WATER_NAME = 'Water',
     NO_GRIP = '- - -'; // the timer's own "nothing" text
   // Wheels: front left, front right, rear left, rear right, laid out like the car seen from behind it.
@@ -626,13 +626,17 @@ self.TM.hud = (() => {
     // Every car state the page gets (VisualCar.setCarState), before the car draws it.
     state(car, s) {
       const c = cars.get(car);
-      if (!c || !c.watch || !s) return;
+      if (c && c.watch && s)
+        try {
+          step(c, s);
+        } catch (e) {
+          cars.delete(car);
+          console.warn('HUD off:', e);
+        }
+      // then a hovering car's wheels go quiet (tm_vehicles.js quiet: no skid smoke or marks)
       try {
-        step(c, s);
-      } catch (e) {
-        cars.delete(car);
-        console.warn('HUD off:', e);
-      }
+        TM.vehicles?.quiet?.(car, s);
+      } catch (e) {}
     },
     // The car the HUD is for, each frame, from where the game updates its speedometer.
     focus(car) {

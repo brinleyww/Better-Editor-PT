@@ -201,10 +201,11 @@ self.TM.water = (() => {
   // ---- finish boxes ------------------------------------------------------------------------------------------------
   // A finish box (catalog.js finishBox) is a see-through red block of finish trigger. Boxes that touch are drawn as one:
   // the water seams' idea with whole boxes in 3D. A face is dropped where a point just outside it is inside another
-  // box, and the bright outline runs only along edges with no box beyond them, so a wall of boxes reads as one red
-  // sheet with one outline round it. A block's box stays axis-aligned however it is turned (rotations are exact), so
-  // each is kept as its world min and max.
-  let finishMat = null;
+  // box, so a wall of boxes reads as one red sheet. Round the outside of the joined shape runs a chequered frame, like
+  // Trackmania's finish gates (see FRAME). A block's box stays axis-aligned however it is turned (rotations are exact),
+  // so each is kept as its world min and max.
+  let finishMat = null,
+    frameMat = null;
   const finTex = { value: null },
     finCount = { value: 0 };
   const finScenes = new WeakMap(); // scene -> what it drew last frame and the boxes built from that
@@ -261,6 +262,56 @@ self.TM.water = (() => {
     if (s.tex) s.tex.dispose();
     s.n = data.length / 8;
     s.tex = s.n ? floatTexture(data, s.n * 2) : null;
+    buildFrame(s, data);
+  }
+
+  // The frame is drawn on its own: a shell a little outside every box, opaque and writing depth, so it hides what is
+  // behind it the way a solid gate does and the see-through faces behind or flush with it lose to it. Its shader keeps
+  // only the frame. One mesh per scene, in world coordinates, added to the scene the boxes are drawn in; it is rebuilt
+  // only when the boxes change, and hides itself once the boxes have not been drawn for a while (all deleted, or out of
+  // view).
+  const FRAME_OUT = 0.03;
+  function buildFrame(s, data) {
+    if (!s.mesh) {
+      if (!s.n) return;
+      frameMat ??= makeFrame(three3);
+      s.mesh = new three3.eaF(new three3.LoY(), frameMat);
+      s.mesh.name = 'be-finish-frame';
+      s.mesh.frustumCulled = false;
+      s.mesh.matrixAutoUpdate = false;
+      s.mesh.raycast = () => {};
+      s.mesh.onBeforeRender = (renderer) => {
+        if (renderer.info.render.frame - s.frame > 30) s.mesh.visible = false;
+        finTex.value = s.tex;
+        finCount.value = s.n;
+      };
+    }
+    const P = new Float32Array(s.n * 108),
+      lo = [0, 0, 0],
+      hi = [0, 0, 0];
+    let o = 0;
+    for (let i = 0; i < s.n; i++) {
+      for (let a = 0; a < 3; a++) {
+        lo[a] = data[i * 8 + a] - FRAME_OUT;
+        hi[a] = data[i * 8 + 4 + a] + FRAME_OUT;
+      }
+      for (let a = 0; a < 3; a++)
+        for (const w of [lo[a], hi[a]]) {
+          const b = (a + 1) % 3,
+            c = (a + 2) % 3;
+          for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]) {
+            P[o + a] = w;
+            P[o + b] = u ? hi[b] : lo[b];
+            P[o + c] = v ? hi[c] : lo[c];
+            o += 3;
+          }
+        }
+    }
+    s.mesh.geometry.dispose();
+    const g = new three3.LoY();
+    g.setAttribute('position', new three3.THS(P, 3));
+    s.mesh.geometry = g;
+    s.mesh.visible = s.n > 0;
   }
 
   // Runs before each finish box draw, the way seams() does for water.
@@ -280,13 +331,16 @@ self.TM.water = (() => {
     if (!s.drawn.includes(object)) s.drawn.push(object);
     finTex.value = s.tex;
     finCount.value = s.n;
+    if (s.mesh && s.n) {
+      if (s.mesh.parent !== scene) scene.add(s.mesh);
+      s.mesh.visible = true;
+    }
   }
 
   // The fragment's own box is the one whose surface it is nearest (it may sit a little off it at a polygon's edge, where
-  // the position is extrapolated); the face's outward normal is the axis it is nearest a side on. Until the boxes are
-  // known (a box's first frame) the face draws plain.
-  const FINISH = `
-    {
+  // the position is extrapolated, or on the frame's shell); the face's outward normal is the axis it is nearest a side
+  // on. Until the boxes are known (a box's first frame) the face draws plain.
+  const OWN_FACE = `
       vec3 beLo = vec3(0.0), beHi = vec3(0.0);
       float beBest = 1e9;
       for (int i = 0; i < beFinCount; i++) {
@@ -299,33 +353,112 @@ self.TM.water = (() => {
           beHi = hi;
         }
       }
-      float beLine = 0.0;
-      if (beBest < 0.75) {
-        vec3 beP = clamp(vBeWorld, beLo, beHi);
-        vec3 beD0 = beP - beLo, beD1 = beHi - beP, beD = min(beD0, beD1);
-        // n: the face's outward normal.
-        vec3 beN = beD.x <= beD.y && beD.x <= beD.z ? vec3(1.0, 0.0, 0.0) : beD.y <= beD.z ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
-        if (dot(beD0, beN) < dot(beD1, beN)) beN = -beN;
-        // Another box right outside this face: the face is inside the joined shape.
-        if (beFinInside(beP + beN * 0.3)) discard;
-        vec3 beIn = beP - beN * 0.3; // a point inside the box, under this face
-        for (int a = 0; a < 3; a++) {
-          if (abs(beN[a]) > 0.5) continue;
-          float beW = max(0.14, 1.5 * fwidth(vBeWorld[a]));
-          for (int sd = 0; sd < 2; sd++) {
-            float dist = sd == 0 ? beP[a] - beLo[a] : beHi[a] - beP[a];
-            if (dist > beW) continue;
-            // An edge with another box beyond it is a join, not an outer edge.
-            vec3 q = beIn;
-            q[a] = sd == 0 ? beLo[a] - 0.3 : beHi[a] + 0.3;
-            if (!beFinInside(q)) beLine = max(beLine, 1.0 - smoothstep(beW * 0.5, beW, dist));
-          }
-        }
-      }
-      diffuseColor.rgb = mix(diffuseColor.rgb * 0.85, min(diffuseColor.rgb * 1.8 + 0.12, vec3(1.0)), beLine);
-      diffuseColor.a = mix(0.2, 0.7, beLine);
+      vec3 beP = clamp(vBeWorld, beLo, beHi);
+      vec3 beD0 = beP - beLo, beD1 = beHi - beP, beD = min(beD0, beD1);
+      // beA: the axis of the face's outward normal beN.
+      int beA = beD.x <= beD.y && beD.x <= beD.z ? 0 : beD.y <= beD.z ? 1 : 2;
+      vec3 beN = beA == 0 ? vec3(1.0, 0.0, 0.0) : beA == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      if (dot(beD0, beN) < dot(beD1, beN)) beN = -beN;
+  `;
+  const FINISH = `
+    {
+      ${OWN_FACE}
+      // Another box right outside this face: the face is inside the joined shape.
+      if (beBest < 0.75 && beFinInside(beP + beN * 0.3)) discard;
+      diffuseColor.a = 0.2;
     }
   `;
+
+  // The frame: the part of each outer face within BAND of the joined shape's outline, measured in the face's plane, in
+  // chequer squares of SQ, with a thin red trim inside it. Distance to the outline is how far one can go from the point,
+  // along the face's two axes and the four diagonals, before leaving every box: the axes find straight edges, the
+  // diagonals the inside corners of an L or beside a half box, so the frame follows any shape and stops at joins. The
+  // squares are counted from the first box's corner in world units, so they run on unbroken from box to box and round
+  // the edges onto the box's sides (every box edge sits on that grid). Faces a whole box deep (a sheet's top and sides)
+  // are all frame.
+  const SQ = 0.5,
+    BAND = 1.0,
+    TRIM = 0.18;
+  const FRAME = `
+    {
+      vec3 beFw = max(fwidth(vBeWorld) / ${SQ.toFixed(3)}, vec3(1e-4));
+      if (beFinCount == 0) discard;
+      ${OWN_FACE}
+      const float beCap = ${(BAND + TRIM).toFixed(3)};
+      vec3 beU = beA == 0 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), beV = beA == 2 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+      if (min(dot(beD, beU), dot(beD, beV)) >= beCap) discard;
+      if (beFinInside(beP + beN * 0.3)) discard;
+      vec3 beQ = beP - beN * 0.3; // under the face, inside its box
+      float beDist = beCap;
+      for (int i = -1; i <= 1; i++)
+        for (int j = -1; j <= 1; j++) {
+          if (i == 0 && j == 0) continue;
+          vec3 d = float(i) * beU + float(j) * beV;
+          vec3 e = mix(beLo, beHi, step(0.0, d)) - beQ;
+          float t = 1e9;
+          for (int a = 0; a < 3; a++) if (d[a] != 0.0) t = min(t, e[a] * d[a]);
+          if (t < beDist) beDist = beFinRun(beQ, d, t, beDist);
+        }
+      if (beDist >= beCap) discard;
+      if (beDist < ${(BAND + 0.001).toFixed(3)}) {
+        vec3 beO = texelFetch(beFin, ivec2(0, 0), 0).xyz;
+        vec3 c = (clamp(beP - beN * ${(SQ / 2).toFixed(3)}, beLo + 0.01, beHi - 0.01) - beO) / ${SQ.toFixed(3)};
+        vec3 cLo = (beLo - beO) / ${SQ.toFixed(3)}, cHi = (beHi - beO) / ${SQ.toFixed(3)};
+        vec2 uv = vec2(dot(c, beU), dot(c, beV)), fw = vec2(dot(beFw, beU), dot(beFw, beV));
+        vec2 lo2 = vec2(dot(cLo, beU), dot(cLo, beV)), hi2 = vec2(dot(cHi, beU), dot(cHi, beV)), h = min(0.5 * fw, 0.5 * (hi2 - lo2));
+        uv = clamp(uv, lo2 + h, hi2 - h); // the filter never reaches past the box, where there are no squares
+        // A box-filtered chequer, so far off it fades to grey instead of shimmering. The square is read from just inside
+        // the box, never on a square's border (the shell's rim past a box edge would show a grey seam there).
+        vec2 k = 2.0 * (abs(fract((uv - 0.5 * fw) * 0.5) - 0.5) - abs(fract((uv + 0.5 * fw) * 0.5) - 0.5)) / fw;
+        float w = 0.5 - 0.5 * k.x * k.y;
+        if (mod(floor(dot(c, abs(beN))), 2.0) > 0.5) w = 1.0 - w;
+        diffuseColor.rgb = mix(vec3(0.012), vec3(0.86), w);
+      } else diffuseColor.rgb = vec3(0.9, 0.02, 0.02);
+      diffuseColor.a = 1.0;
+    }
+  `;
+
+  const FIN_HEAD = `uniform highp sampler2D beFin;
+        uniform int beFinCount;
+        centroid varying vec3 vBeWorld;
+        bool beFinInside(vec3 q) {
+          for (int i = 0; i < beFinCount; i++) {
+            vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+            if (all(greaterThan(q, lo - 0.001)) && all(lessThan(q, hi + 0.001))) return true;
+          }
+          return false;
+        }
+        // How far the joined boxes go from q along d (each part -1, 0 or 1, so the distance is the larger of the
+        // in-plane offsets), starting at t, where q's own box ends; at most cap.
+        float beFinRun(vec3 q, vec3 d, float t, float cap) {
+          for (int k = 0; k < 6 && t < cap; k++) {
+            vec3 x = q + d * (t + 0.01);
+            float tn = -1.0;
+            for (int i = 0; i < beFinCount; i++) {
+              vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+              if (any(lessThan(x, lo - 0.001)) || any(greaterThan(x, hi + 0.001))) continue;
+              vec3 e = mix(lo, hi, step(0.0, d)) - q;
+              float te = 1e9;
+              for (int a = 0; a < 3; a++) if (d[a] != 0.0) te = min(te, e[a] * d[a]);
+              tn = max(tn, te);
+            }
+            if (tn < 0.0) return t;
+            t = tn;
+          }
+          return min(t, cap);
+        }
+        `;
+  const WORLD_VERTEX = (sh) =>
+    'centroid varying vec3 vBeWorld;\n' +
+    sh.vertexShader.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+        vec4 beW = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          beW = instanceMatrix * beW;
+        #endif
+        vBeWorld = (modelMatrix * beW).xyz;`,
+    );
 
   // Unlit, so it reads the same from every side; no depth writes, so faces behind it and other boxes show through and
   // the order they draw in does not matter; pushed back a little, so a face flush with a solid block loses to it.
@@ -336,29 +469,24 @@ self.TM.water = (() => {
     m.onBeforeCompile = (sh) => {
       sh.uniforms.beFin = finTex;
       sh.uniforms.beFinCount = finCount;
-      sh.vertexShader = 'centroid varying vec3 vBeWorld;\n' + sh.vertexShader.replace(
-        '#include <project_vertex>',
-        `#include <project_vertex>
-        vec4 beW = vec4(transformed, 1.0);
-        #ifdef USE_INSTANCING
-          beW = instanceMatrix * beW;
-        #endif
-        vBeWorld = (modelMatrix * beW).xyz;`,
-      );
-      sh.fragmentShader =
-        `uniform highp sampler2D beFin;
-        uniform int beFinCount;
-        centroid varying vec3 vBeWorld;
-        bool beFinInside(vec3 q) {
-          for (int i = 0; i < beFinCount; i++) {
-            vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
-            if (all(greaterThan(q, lo - 0.001)) && all(lessThan(q, hi + 0.001))) return true;
-          }
-          return false;
-        }
-        ` + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + FINISH);
+      sh.vertexShader = WORLD_VERTEX(sh);
+      sh.fragmentShader = FIN_HEAD + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + FINISH);
     };
     m.customProgramCacheKey = () => 'be-finish';
+    return m;
+  }
+
+  // Opaque and unlit, both sides; pushed back like the boxes, so a solid block flush with it (the road under a box)
+  // wins, while the shell, a little outside the boxes, still wins over their see-through faces.
+  function makeFrame(three) {
+    const m = new three.V9B({ side: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.beFin = finTex;
+      sh.uniforms.beFinCount = finCount;
+      sh.vertexShader = WORLD_VERTEX(sh);
+      sh.fragmentShader = FIN_HEAD + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + FRAME);
+    };
+    m.customProgramCacheKey = () => 'be-finish-frame';
     return m;
   }
 
