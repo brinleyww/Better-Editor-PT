@@ -264,11 +264,14 @@
             }
             const { trackMetadata: meta, trackData: data } = parsed;
             const id = data.getId();
-            const name = String(meta.name || "Track");
-            if (ids.has(id) || store.checkCustomTrackNameExists(name)) {
-                results.push({ ok: true, name, existed: true });
+            if (ids.has(id)) {
+                results.push({ ok: true, name: String(meta.name || "Track"), existed: true });
                 continue;
             }
+            // The editor keeps one track per name, and My Tracks can hold several of one name: the others get a number.
+            const base = String(meta.name || "Track").slice(0, 58);
+            let name = String(meta.name || "Track");
+            for (let n = 2; store.checkCustomTrackNameExists(name); n++) name = base + " (" + n + ")";
             if (used + code.length > COPY_ROOM || !store.saveCustomTrack({ name, author: meta.author ?? null, lastModified: meta.lastModified ?? null }, data)) {
                 results.push({ ok: false, full: true });
                 continue;
@@ -340,7 +343,7 @@
         const reply = (body) => post(Object.assign({ type: msg.type, reqId: msg.reqId }, body));
         if (msg.type === "hello") {
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 3,reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
+            post({ type: "ready", version: 4, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen });
             sendBlocks(true);
         } else if (msg.type === "list") {
             reply({ tracks: listTracks() });
