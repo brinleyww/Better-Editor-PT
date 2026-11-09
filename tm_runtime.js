@@ -538,9 +538,9 @@ self.TM = (() => {
   // whose tyres hold on ice (iceAssist < 1), where the others brake badly anyway.
   // All by the share of wheels on the surface.
   const SURFACES = [
-    // Plastic: almost no grip (10% more than the first 0.45 / 0.36), very strong acceleration at low speed, and it throws the
+    // Plastic: almost no grip (20% more than the first 0.45 / 0.36), very strong acceleration at low speed, and it throws the
     // car back when hit side-on or roof-first.
-    { gripFront: 0.495, gripRear: 0.396, launch: 34, launchUntil: 45, bounce: true },
+    { gripFront: 0.54, gripRear: 0.432, launch: 34, launchUntil: 45, bounce: true },
     // Wood: grips hard, like TM2020 dry wood: half as much again as before. The tyres' grip also limits braking, so while
     // the brake is down wood holds the car with brakeGrip instead, or it would stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
