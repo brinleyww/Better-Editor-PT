@@ -311,9 +311,9 @@ function pipeSet(put, look) {
   put('TubeCheckpoint', 'Checkpoint, pipe', T, TG, pipePart(P, [{ line: 20 }], { paint: gatePaint('Checkpoint'), marks: [9, 10, 11] }), det(0));
   put('TubeFinish', 'Finish, pipe', T, TG, pipePart(P, [{ line: 20 }], { paint: gatePaint('Finish'), marks: [9, 10, 11] }), det(1));
   // Effects: the floor panels in the effect's colour; the zone fills the tube.
-  for (const fx of FX.filter((f) => ['Turbo', 'Super', 'Ultra', 'Reset', 'Cruise', 'NoSteer'].includes(f.key))) {
+  for (const fx of FX.filter((f) => ['Turbo', 'Super', 'Ultra', 'Reset', 'Cruise', 'NoSteer', 'NoGrip', 'ResetWheels'].includes(f.key))) {
     const paint = (j) => (j >= -5 && j < 5 ? fx.mat : null);
-    put('TubeFx' + fx.key, fx.label + ', pipe', T, 'Pipe effects', pipePart(P, [{ line: 20 }], { paint }), { fx: { type: fx.key, center: [0, CY, 0], size: [2 * R, 2 * R, 12] } });
+    put('TubeFx' + fx.key, fx.label + ', pipe', T, 'Pipe effects', pipePart(P, [{ line: 20 }], { paint }), { fx: { type: fx.key, center: [0, CY, 0], size: [2 * R, 2 * R, 20] } });
   }
 }
 

@@ -1150,7 +1150,8 @@ function buildSurface(surface) {
         const paint = (ring, isLine) => (isLine ? st.line(ring) : fx.mat);
         const m = roadPart(st, W.make(paint), [{ line: 20 }], { step: 5 });
         glyphOn(m, fx.glyph, W.glyph);
-        put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 12] }, hidden: fx.hidden });
+        // The effect's box covers the whole painted plate, edge to edge (it fires on the car's first touch, tm_runtime.js fxTouch).
+        put('Fx' + fx.key + W.key, fx.label + ', ' + W.fam, T, fx.label, m, { fx: { type: fx.key, center: [0, 2.5, 0], size: [W.sx, 5, 20] }, hidden: fx.hidden });
       }
   }
 
@@ -1273,6 +1274,10 @@ const FX = [
   { key: 'Ultra', label: 'Ultra turbo', mat: 'FxUltra', glyph: (m, y) => chevrons(m, 'FxUltraB', 3, y, 4.4) },
   { key: 'Bumper', label: 'Bumper', mat: 'FxBumper', glyph: (m, y) => bumperGlyph(m, 'FxBumperB', y, 1) },
   { key: 'Bumper2', label: 'Super bumper', mat: 'FxBumper', glyph: (m, y) => bumperGlyph(m, 'FxBumper2B', y, 2) },
+  // TM2020's No grip (the tyres let go for a few seconds), and a reset for the tyres themselves: wet, iced, muddy and
+  // no-grip tyres back to clean and dry (Reset effects leaves the tyres as they are).
+  { key: 'NoGrip', label: 'No grip', mat: 'FxNoGrip', glyph: (m, y) => skidGlyph(m, 'FxNoGripB', y) },
+  { key: 'ResetWheels', label: 'Reset wheels', mat: 'FxResetWheels', glyph: (m, y) => wheelsGlyph(m, 'FxResetWheelsB', y) },
 ];
 
 // TM2020 vehicle transform gates; zone type 'Car' + key (tm_runtime.js), Stadium turns you back into the normal car.
@@ -1363,6 +1368,16 @@ function bumperGlyph(m, mat, y, n) {
       const z = n == 1 ? 0 : (k - 0.5) * 2.6;
       m.triFacing(mat, [side * 4.9, y, z], [side * 3.5, y, z - 1.1], [side * 3.5, y, z + 1.1], [0, 1, 0]);
     }
+}
+
+// No grip: three skid marks slanting across the plate.
+function skidGlyph(m, mat, y) {
+  for (const x of [-2.6, 0, 2.6]) m.quadFacing(mat, [x - 1.9, y, 3.6], [x - 0.9, y, 3.6], [x + 1.9, y, -3.6], [x + 0.9, y, -3.6], [0, 1, 0]);
+}
+// Reset wheels: a ring with four tyres round it, a car's wheels seen from above.
+function wheelsGlyph(m, mat, y) {
+  ringGlyph(m, mat, y);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) m.quadFacing(mat, [sx * 4.4, y, sz * 4.6], [sx * 5.6, y, sz * 4.6], [sx * 5.6, y, sz * 2.4], [sx * 4.4, y, sz * 2.4], [0, 1, 0]);
 }
 
 function arrowGlyph(m, mat, y, dir) {

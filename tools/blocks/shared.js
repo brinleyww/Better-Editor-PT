@@ -273,7 +273,7 @@ function buildShared() {
         glyph = new Mesh();
       fx.glyph(glyph, DECAL);
       m.merge(onCrown(glyph));
-      put('Fx' + fx.key + 'Bump', fx.label + ', bump road', T, 'Effects', m, { ...u, fx: { type: fx.key, center: [0, 2.5, 0], size: [13.1, 5, 12] }, hidden: fx.hidden });
+      put('Fx' + fx.key + 'Bump', fx.label + ', bump road', T, 'Effects', m, { ...u, fx: { type: fx.key, center: [0, 2.5, 0], size: [13.1, 5, 20] }, hidden: fx.hidden });
     }
   }
 

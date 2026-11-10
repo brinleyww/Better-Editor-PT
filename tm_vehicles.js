@@ -40,23 +40,32 @@ self.TM.vehicles = (() => {
   };
   const lin = (h) => [srgb(h, 0), srgb(h, 1), srgb(h, 2)];
   const MUD = lin(0x6b4a2b),
-    FROST = lin(0xdcecf7);
+    FROST = lin(0xdcecf7),
+    SLICK = lin(0xc9ccd2);
+  // No grip (the runtime's NOGRIP): how long it lasts and its fade, for the tyres' look.
+  const NOGRIP = TM.NOGRIP ?? { frames: 5000, fade: 400 };
 
-  function tint(w, mat) {
+  // ng: no grip on the car, 0 to 1: the tyres go pale and glassy, like worn-out slicks.
+  function tint(w, mat, ng = 0) {
     const b = mat.__beTyre ?? (mat.__beTyre = { r: mat.color.r, g: mat.color.g, b: mat.color.b, rough: mat.roughness });
     const d = Math.min(1, w.mud) * 0.85,
       i = Math.min(1, w.ice) * 0.75,
       wet = Math.min(1, w.wet),
-      dark = 1 - 0.35 * wet;
+      dark = 1 - 0.35 * wet,
+      sl = ng * 0.55;
     let r = b.r + (MUD[0] - b.r) * d,
       g = b.g + (MUD[1] - b.g) * d,
       bl = b.b + (MUD[2] - b.b) * d;
     r += (FROST[0] - r) * i;
     g += (FROST[1] - g) * i;
     bl += (FROST[2] - bl) * i;
+    r += (SLICK[0] - r) * sl;
+    g += (SLICK[1] - g) * sl;
+    bl += (SLICK[2] - bl) * sl;
     mat.color.setRGB(r * dark, g * dark, bl * dark);
-    // Wet rubber shines. Only roughness: clearcoat would recompile the shader the first time it turns on.
-    mat.roughness = b.rough + (0.18 - b.rough) * wet * (1 - i);
+    // Wet rubber shines, and so do tyres with no grip. Only roughness: clearcoat would recompile the shader the first
+    // time it turns on.
+    mat.roughness = b.rough + (0.18 - b.rough) * Math.max(wet * (1 - i), ng);
   }
 
   // ---- low-poly parts -----------------------------------------------------------------------------------------------
@@ -774,6 +783,11 @@ self.TM.vehicles = (() => {
     return t0;
   }
   const inBox = (q, x, y, z) => x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2];
+  // An effect fires on the car's first touch (the runtime's fxTouch: its hull or a wheel reaching the box); an older
+  // runtime fires when the car's origin gets in. touch(q, s): touching in state s; enter: where in the step from the
+  // last position it started (0 to 1, -1 none). With fxTouch a touch starting this state counts at its end.
+  const touch = typeof TM.fxTouch == 'function' ? (q, s) => TM.fxTouch(q, s.position.x, s.position.y, s.position.z, s.quaternion.x, s.quaternion.y, s.quaternion.z, s.quaternion.w) : (q, s) => inBox(q, s.position.x, s.position.y, s.position.z);
+  const enter = (q, s, x0, y0, z0) => (typeof TM.fxTouch == 'function' ? (touch(q, s) ? 1 : -1) : entry(q, x0, y0, z0, s.position.x, s.position.y, s.position.z));
 
   function restart(c, s) {
     c.vehicle = c.cpVehicle = 'Stadium';
@@ -784,6 +798,7 @@ self.TM.vehicles = (() => {
     c.z = s.position.z;
     c.rate = 0;
     c.tyre.forEach((w) => (w.wet = w.ice = w.mud = 0));
+    c.ngLeft = 0;
     c.rInside.fill(0);
     c.reactor = null;
     c.rLeft = 0;
@@ -822,8 +837,11 @@ self.TM.vehicles = (() => {
     }
     // Reactor boosts end as every effect does in the runtime (clear): on the reset key, a respawn, a checkpoint, and here
     // also at the finish, where the runtime stops; otherwise they run down by the physics frames since the last state.
-    if (s.controls?.reset || respawn || s.nextCheckpointIndex > c.n || s.finishFrames != null) (c.reactor = null), (c.rLeft = 0);
-    else if (c.rLeft > 0 && (c.rLeft -= steps) <= 0) (c.reactor = null), (c.rLeft = 0);
+    if (s.controls?.reset || respawn || s.nextCheckpointIndex > c.n || s.finishFrames != null) (c.reactor = null), (c.rLeft = 0), (c.ngLeft = 0);
+    else {
+      if (c.rLeft > 0 && (c.rLeft -= steps) <= 0) (c.reactor = null), (c.rLeft = 0);
+      if (c.ngLeft > 0) c.ngLeft = Math.max(0, c.ngLeft - steps);
+    }
     if (s.nextCheckpointIndex > c.n) c.cpVehicle = c.vehicle;
     c.n = s.nextCheckpointIndex;
     // The last reactor or reset plate the car's origin entered since the last state: a reactor plate starts its boost
@@ -833,10 +851,15 @@ self.TM.vehicles = (() => {
         rt = -1;
       for (let i = 0; i < c.react.length; i++) {
         const q = c.react[i],
-          now = inBox(q, p.x, p.y, p.z) ? 1 : 0;
+          now = touch(q, s) ? 1 : 0;
         if (!c.rInside[i]) {
-          const t = entry(q, x0, y0, z0, p.x, p.y, p.z);
-          if (t >= 0 && t >= rt) (rb = i), (rt = t);
+          const t = enter(q, s, x0, y0, z0);
+          // Reset wheels and No grip act on the tyres at once; the reactor and Reset effects plates: the last one counts.
+          if (t >= 0 && q.type == 'ResetWheels') {
+            for (const w of c.tyre) w.wet = w.ice = w.mud = 0;
+            c.ngLeft = 0;
+          } else if (t >= 0 && q.type == 'NoGrip') c.ngLeft = NOGRIP.frames;
+          else if (t >= 0 && t >= rt) (rb = i), (rt = t);
         }
         c.rInside[i] = now;
       }
@@ -882,9 +905,9 @@ self.TM.vehicles = (() => {
       bestT = -1;
     for (let i = 0; i < c.gates.length; i++) {
       const q = c.gates[i],
-        now = inBox(q, p.x, p.y, p.z) ? 1 : 0;
+        now = touch(q, s) ? 1 : 0;
       if (!c.inside[i]) {
-        const t = entry(q, x0, y0, z0, p.x, p.y, p.z);
+        const t = enter(q, s, x0, y0, z0);
         if (t >= 0 && t >= bestT) (best = i), (bestT = t);
       }
       c.inside[i] = now;
@@ -1592,7 +1615,7 @@ self.TM.vehicles = (() => {
       const zones = TM.zones(trackData),
         gates = zones.filter((z) => z.type in GATES),
         water = zones.filter((z) => z.type == 'Water' || z.type == 'Shallow'),
-        react = zones.filter((z) => z.type in PLATES || z.type == 'Reset');
+        react = zones.filter((z) => z.type in PLATES || z.type == 'Reset' || z.type == 'ResetWheels' || z.type == 'NoGrip');
       let surfaces = null;
       if (typeof TM.surfaceAt == 'function' && typeof TM.surfaceIndex == 'function') surfaces = TM.surfaceIndex(trackData);
       // A track with no new blocks has no surfaces to throw anything up from.
@@ -1604,7 +1627,7 @@ self.TM.vehicles = (() => {
   // A car's own state over its track's tables (T).
   function setUp(car, T, ghost) {
     const tyre = [0, 1, 2, 3].map(() => ({ wet: 0, ice: 0, mud: 0 }));
-    cars.set(car, { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost, react: T.react ?? [], rInside: new Uint8Array(T.react?.length ?? 0), reactor: null, rLeft: 0, lift: 0, rGround: false, jet: null });
+    cars.set(car, { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost, react: T.react ?? [], rInside: new Uint8Array(T.react?.length ?? 0), reactor: null, rLeft: 0, ngLeft: 0, lift: 0, rGround: false, jet: null });
   }
   // Ghosts and replays: the game sets up (track) only the cars it simulates itself, so a ghost or a replayed car never
   // comes to track and only ever gets its states. It is followed for its tyres and spray over the tables of a car set up in
@@ -1680,9 +1703,12 @@ self.TM.vehicles = (() => {
     }
     if (c.look) follow(c, car, state);
     // Tyres only change colour while there is something on them, so a clean car costs nothing here.
-    let any = false;
+    const hud = c.car && !c.ghost ? TM.hud?.of?.(c.car) : null,
+      ngLeft = hud && 'noGripLeft' in hud ? hud.noGripLeft : c.ngLeft,
+      ng = ngLeft > 0 ? Math.min(1, ngLeft / NOGRIP.fade) : 0;
+    let any = ng > 0;
     for (const w of c.tyre) any = any || w.wet > 0 || w.ice > 0 || w.mud > 0;
-    if (any || c.tinted) for (let i = 0; i < 4; i++) if (c.rig.tyres[i]) tint(c.tyre[i], c.rig.tyres[i]);
+    if (any || c.tinted) for (let i = 0; i < 4; i++) if (c.rig.tyres[i]) tint(c.tyre[i], c.rig.tyres[i], ng);
     c.tinted = any;
   }
 

@@ -40,10 +40,15 @@ self.TM.hud = (() => {
     NO_BRAKE = 5,
     NO_STEER = 6,
     FRAGILE = 7,
-    CAR = 8,
-    BUMP = 9,
-    RESET = 10;
-  const KIND = ['good', 'good', 'bad', 'bad', 'bad', 'bad', 'bad', 'bad', 'info', 'info', 'info'];
+    NO_GRIP = 8,
+    CAR = 9,
+    BUMP = 10,
+    RESET = 11;
+  const KIND = ['good', 'good', 'bad', 'bad', 'bad', 'bad', 'bad', 'bad', 'bad', 'info', 'info', 'info'];
+  // No grip (the runtime's NOGRIP): how long it lasts and the frames it fades over.
+  const NOGRIP = TM.NOGRIP ?? { frames: 5000, fade: 400, grip: 0.12 };
+  // The runtime's first-touch test for effect boxes (fxTouch); an older runtime counts the car's origin.
+  const touch = typeof TM.fxTouch == 'function' ? (q, p, Q) => TM.fxTouch(q, p.x, p.y, p.z, Q.x, Q.y, Q.z, Q.w) : (q, p) => p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2];
   const LABEL = {
     Turbo: 'TURBO',
     Super: 'SUPER TURBO',
@@ -59,7 +64,8 @@ self.TM.hud = (() => {
     Desert: 'DESERT CAR',
     Stadium: 'STADIUM CAR',
   };
-  const FIXED = [null, null, 'SLOW-MO', 'CRUISE CONTROL', 'NO ENGINE', 'NO BRAKES', 'NO STEERING', 'FRAGILE', null, null, 'RESET'];
+  const FIXED = [null, null, 'SLOW-MO', 'CRUISE CONTROL', 'NO ENGINE', 'NO BRAKES', 'NO STEERING', 'FRAGILE', 'NO GRIP', null, null, 'RESET'];
+  const RESET_WHEELS = 'RESET WHEELS';
 
   // ---- per car --------------------------------------------------------------------------------------------------------
   const cars = new WeakMap(); // car -> its zones and the effects, vehicle and tyres the runtime gives it
@@ -92,6 +98,7 @@ self.TM.hud = (() => {
       noSteer: false,
       cruise: false,
       fragile: false,
+      noGripLeft: 0, // physics frames of no grip left
       vehicle: 'Stadium',
       cpVehicle: 'Stadium',
       shotLabel: [null, null, null], // CAR, BUMP, RESET: what the chip says and until which race frame
@@ -110,6 +117,7 @@ self.TM.hud = (() => {
     c.boost = c.reactor = null;
     c.boostLeft = c.reactorLeft = 0;
     c.slow = c.noEngine = c.noBrake = c.noSteer = c.cruise = c.fragile = false;
+    c.noGripLeft = 0;
   }
   function restart(c, s) {
     clear(c);
@@ -171,7 +179,8 @@ self.TM.hud = (() => {
     let water = null;
     for (let i = 0; i < c.zones.length; i++) {
       const q = c.zones[i],
-        hit = p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2];
+        wet = q.type == 'Water' || q.type == 'Shallow',
+        hit = wet ? p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2] : touch(q, p, s.quaternion);
       if ((q.type == 'Water' || q.type == 'Shallow') && p.x >= q.min[0] && p.x <= q.max[0] && p.z >= q.min[2] && p.z <= q.max[2] && p.y >= q.min[1] - 1 && p.y <= q.surface + 3) water = q;
       if (!hit) {
         c.inside[i] = 0;
@@ -213,6 +222,14 @@ self.TM.hud = (() => {
           clear(c);
           shot(c, RESET, FIXED[RESET], s.frames);
           break;
+        case 'ResetWheels':
+          clean(c);
+          c.noGripLeft = 0;
+          shot(c, RESET, RESET_WHEELS, s.frames);
+          break;
+        case 'NoGrip':
+          c.noGripLeft = NOGRIP.frames;
+          break;
         case 'NoEngine':
           c.noEngine = true;
           break;
@@ -243,6 +260,7 @@ self.TM.hud = (() => {
       }
     }
     tyres(c, s, water);
+    if (c.noGripLeft > 0) c.noGripLeft--;
     if (c.boostLeft > 0) c.boostLeft--;
     if (c.reactorLeft > 0) c.reactorLeft--;
     // The reactor only pushes while the gas is held (the runtime's c.gas, from the controls the car got).
@@ -314,8 +332,12 @@ self.TM.hud = (() => {
   // A wheel's grip as the runtime sets it (tm_runtime.js fxStep), as a share of the Stadium car's on dry stock road:
   // the surface (front or rear tyres), wood's braking grip, the vehicle's multiplier, then wet and iced tyres. Left out:
   // the cap on extra grip under heavy load (the page has no suspension forces), plastic countersteer and bugslides.
+  // What no grip leaves of a tyre's grip (1 without it), as the runtime sets it.
+  function noGrip(c) {
+    return c.noGripLeft > 0 ? 1 - (1 - NOGRIP.grip) * Math.min(1, c.noGripLeft / NOGRIP.fade) : 1;
+  }
   function gripOf(c, w) {
-    if (c.tyre) return TYRES.grip(c.wheel[w], c.tyre[w], c.vehicle, c.brake, w >= 2);
+    if (c.tyre) return TYRES.grip(c.wheel[w], c.tyre[w], c.vehicle, c.brake, w >= 2) * noGrip(c);
     const u = c.wheel[w],
       S = u >= 0 ? SURFACES[u] : null,
       V = VEHICLES[c.vehicle];
@@ -324,7 +346,7 @@ self.TM.hud = (() => {
     if (V) grip *= (w >= 2 && V.rearGrip ? V.rearGrip : V.grip)[u < 0 || u == 8 ? 0 : u + 1];
     if (c.wet > 0) grip *= 1 - (WET.wetGrip?.[u < 0 ? 'road' : u] ?? 0) * c.wet;
     if (c.ice[w] > 0 && !(u >= 0 && ICING.surfaces.includes(u))) grip *= 1 - ICING.grip * c.ice[w];
-    return grip;
+    return grip * noGrip(c);
   }
 
   // ---- drawing --------------------------------------------------------------------------------------------------------
@@ -380,6 +402,7 @@ self.TM.hud = (() => {
     ice: [223, 244, 255],
     dirt: [217, 160, 102],
     wet: [136, 204, 255],
+    noGrip: [217, 178, 58],
   };
   // The page's own colours (PolyTrack's :root variables), read when the panel is made.
   const THEME = { surface: '#28346a', tertiary: '#192042', text: '#fff' };
@@ -467,6 +490,7 @@ self.TM.hud = (() => {
     setChip(NO_BRAKE, on && c.noBrake ? FIXED[NO_BRAKE] : null, -1);
     setChip(NO_STEER, on && c.noSteer ? FIXED[NO_STEER] : null, -1);
     setChip(FRAGILE, on && c.fragile ? FIXED[FRAGILE] : null, -1);
+    setChip(NO_GRIP, on && c.noGripLeft > 0 ? FIXED[NO_GRIP] : null, on ? c.noGripLeft / NOGRIP.frames : 0);
     for (let i = 0; i < 3; i++) {
       const left = on ? c.shotUntil[i] - c.f : 0;
       setChip(CAR + i, left > 0 ? c.shotLabel[i] : null, left / ONE_SHOT);
@@ -496,7 +520,7 @@ self.TM.hud = (() => {
     pen.closePath();
   }
   // The wheel turned by its steer angle, a dark tyre tinted by icing, mud and wetness, its tread scrolling as it spins.
-  function wheelVisual(x, y, w, h, steer, rot, ice, dirt, wet) {
+  function wheelVisual(x, y, w, h, steer, rot, ice, dirt, wet, ng = 0) {
     pen.save();
     pen.translate(x + w / 2, y + h / 2);
     pen.rotate(-steer);
@@ -505,6 +529,7 @@ self.TM.hud = (() => {
     if (ice > 0) fill = mix(fill, PT.ice, ice * 0.8);
     if (dirt > 0) fill = mix(fill, PT.dirt, dirt * 0.8);
     if (wet > 0) fill = mix(fill, PT.wet, wet * 0.8);
+    if (ng > 0) fill = mix(fill, PT.noGrip, ng * 0.7);
     pen.fillStyle = HEX(fill.map(Math.round));
     pen.fillRect(x, y, w, h);
     pen.save();
@@ -576,7 +601,8 @@ self.TM.hud = (() => {
       pen.fillStyle = THEME.tertiary;
       pen.fill();
       const wx = right ? x0 + rowW - PT.inset - PT.wheelW : x0 + PT.rowSlant + PT.inset;
-      wheelVisual(wx, y + PT.inset, PT.wheelW, wheelH, steer, m ? m.rot[w] : 0, ice, dirt, wet);
+      const ng = (1 - noGrip(c)) / (1 - NOGRIP.grip);
+      wheelVisual(wx, y + PT.inset, PT.wheelW, wheelH, steer, m ? m.rot[w] : 0, ice, dirt, wet, ng);
       // The surface and grip, then a slipping tyre, then how icy, muddy and wet it is.
       const u = c.wheel[w],
         tx = right ? wx - PT.textGap : wx + PT.wheelW + PT.textGap,
@@ -598,6 +624,7 @@ self.TM.hud = (() => {
       if (ice > 0.005) states.push([HEX(PT.ice), 'Icy ' + PCT[level(ice)]]);
       if (dirt > 0.005) states.push([HEX(PT.dirt), (t ? 'Muddy ' : 'Dirty ') + PCT[level(dirt)]]);
       if (wet > 0.005) states.push([HEX(PT.wet), 'Wet ' + PCT[level(wet)]]);
+      if (ng > 0) states.push([HEX(PT.noGrip), 'No grip']);
       if (states.length) words(tx, ly, right, states);
     }
   }
@@ -792,6 +819,7 @@ self.TM.hud = (() => {
         noSteer: c.noSteer,
         cruise: c.cruise,
         fragile: c.fragile,
+        noGripLeft: c.noGripLeft, // physics frames left, as the runtime's (tm_vehicles.js tints the tyres by it)
         get wet() {
           return c.tyre ? c.tyre.map((t) => t.wet) : c.wet;
         },

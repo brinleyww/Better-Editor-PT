@@ -401,6 +401,45 @@ self.TM = (() => {
       up: rotate(M, 0, 1, 0),
     };
   }
+  // Effect blocks fire on first contact: the moment any part of the car, its hull or a wheel, reaches the effect's box
+  // (the whole plate, edge to edge), not when the car's middle gets there (it used to be the middle 12 units of a
+  // 20-unit plate, 5.7 units, 165 ms at 120 km/h, late). FX_BOX: the hull with its wheels round it, in the car's own
+  // frame (+z its nose, +y its up; the car state's position and quaternion): hull centre (0, 0.616, -0.153), half
+  // extents (0.773, 0.382, 1.843), wheels to 0.85 out and down to their tyres' bottoms. fxTouch tests it against an
+  // effect box on the six face axes (the box's and the car's), so a car turned across a plate's corner can count a few
+  // hundredths of a unit early, never late. Water keeps its own test (the car's middle, see fxStep). The page uses the
+  // same function, so its banner and wheel looks fire on the same frame.
+  const FX_BOX = { c: [0, 0.4, -0.153], h: [0.85, 0.6, 1.843] };
+  function fxTouch(q, x, y, z, qx, qy, qz, qw) {
+    const X0 = 1 - 2 * (qy * qy + qz * qz),
+      X1 = 2 * (qx * qy + qw * qz),
+      X2 = 2 * (qx * qz - qw * qy),
+      Y0 = 2 * (qx * qy - qw * qz),
+      Y1 = 1 - 2 * (qx * qx + qz * qz),
+      Y2 = 2 * (qy * qz + qw * qx),
+      Z0 = 2 * (qx * qz + qw * qy),
+      Z1 = 2 * (qy * qz - qw * qx),
+      Z2 = 1 - 2 * (qx * qx + qy * qy),
+      c = FX_BOX.c,
+      h = FX_BOX.h,
+      C0 = x + X0 * c[0] + Y0 * c[1] + Z0 * c[2],
+      C1 = y + X1 * c[0] + Y1 * c[1] + Z1 * c[2],
+      C2 = z + X2 * c[0] + Y2 * c[1] + Z2 * c[2],
+      r0 = Math.abs(X0) * h[0] + Math.abs(Y0) * h[1] + Math.abs(Z0) * h[2],
+      r1 = Math.abs(X1) * h[0] + Math.abs(Y1) * h[1] + Math.abs(Z1) * h[2],
+      r2 = Math.abs(X2) * h[0] + Math.abs(Y2) * h[1] + Math.abs(Z2) * h[2];
+    if (C0 + r0 < q.min[0] || C0 - r0 > q.max[0] || C1 + r1 < q.min[1] || C1 - r1 > q.max[1] || C2 + r2 < q.min[2] || C2 - r2 > q.max[2]) return false;
+    const b0 = (q.max[0] - q.min[0]) / 2,
+      b1 = (q.max[1] - q.min[1]) / 2,
+      b2 = (q.max[2] - q.min[2]) / 2,
+      d0 = q.min[0] + b0 - C0,
+      d1 = q.min[1] + b1 - C1,
+      d2 = q.min[2] + b2 - C2;
+    if (Math.abs(d0 * X0 + d1 * X1 + d2 * X2) > b0 * Math.abs(X0) + b1 * Math.abs(X1) + b2 * Math.abs(X2) + h[0]) return false;
+    if (Math.abs(d0 * Y0 + d1 * Y1 + d2 * Y2) > b0 * Math.abs(Y0) + b1 * Math.abs(Y1) + b2 * Math.abs(Y2) + h[1]) return false;
+    if (Math.abs(d0 * Z0 + d1 * Z1 + d2 * Z2) > b0 * Math.abs(Z0) + b1 * Math.abs(Z1) + b2 * Math.abs(Z2) + h[2]) return false;
+    return true;
+  }
   // Every effect box on a track, for the page (water splashes, vehicle gates, bumpers).
   function zones(track) {
     const out = [];
@@ -482,6 +521,12 @@ self.TM = (() => {
     Reactor2Up: { level: 2, dir: 1, ...REACTOR_TIME, push: { base: 1, extra: 0.4, vcap: 5, under: 1.25 } },
     Reactor2Down: { level: 2, dir: -1, ...REACTOR_TIME, press: 2.2 * G },
   };
+  // No grip (TM2020's NoGrip plate): for `frames` the tyres keep only `grip` of their grip, so the car slides as on ice
+  // and keeps its drive (SLIDE_DRIVE gives back all the drive the slides cut), the last `fade` frames easing back to
+  // full grip. With grip that low Bullet's tyres hardly turn the car, so it steers and its slides straighten as on ice
+  // (ice: the same settings as a surface's ice, weaker than platform ice). It ends early on a Reset effects or Reset
+  // wheels plate, a checkpoint or a respawn.
+  const NOGRIP = { frames: 5000, fade: 400, grip: 0.12, ice: { yaw: 0.9, pull: 0.003, spin: 0.0015, align: 1.2, loss: 0.08, stick: 0, follow: 0 } };
   // The plates (part.x types) and the effect they give. arrow 1: the arrow on the plate points the way the road runs at
   // rotation 0 (the part's -z); -1 the other way: the old down plates, which no longer show in the menu but still load.
   // The old up plates are the two plates the menu offers; the old oriented ones (hidden too) work like them.
@@ -784,8 +829,10 @@ self.TM = (() => {
   // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per entry, square to the way the car is going in the
   // plate's plane, away from the line through the plate's centre along that way (inside `centre` units of it: to the
   // right), plus a hop (units/s). Platforms are driven every way, so the plate's own axes would brake a car crossing a
-  // turned one.
-  const BUMPER = { Bumper: { side: 14, up: 2.5 }, Bumper2: { side: 24, up: 4 }, centre: 0.25 };
+  // turned one. TM2020's bumpers fling the car hard: x2.5 the first kicks (14 and 24 units/s sideways, 2.5 and 4 up)
+  // and a higher hop, so the tyres leave the deck and the kick is not scrubbed straight off by their grip (tmphys: 3 to
+  // 4 times as far sideways 1 s on, the nose still pointing down the road).
+  const BUMPER = { Bumper: { side: 36, up: 5 }, Bumper2: { side: 60, up: 7 }, centre: 0.25 };
   // A collision is added up over the frames it lasts (hit: per-frame velocity change that counts as contact,
   // window: longest collision in frames), then judged as a whole.
   // The bounce mirrors the car's velocity off the surface: the part along it is kept, the part into it comes back at
@@ -1065,11 +1112,12 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
-  // Every effect on the car ends (effect blocks). On a Reset block, a checkpoint and a respawn.
-  // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet and iced tyres: they are the tyres' own
-  // state, not effects, and dry or thaw on the road. Only a respawn (or the respawn key) gives clean tyres, see fxStep.
+  // Every effect on the car ends (effect blocks), no grip too. On a Reset effects block, a checkpoint and a respawn.
+  // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet, iced and muddy tyres: they are the
+  // tyres' own state, not effects, and dry or thaw on the road. Only a respawn (or the respawn key) and the Reset wheels
+  // block give clean tyres, see fxStep.
   const clear = (c) => {
     c.boostLeft = 0;
     c.boost = null;
@@ -1078,6 +1126,7 @@ self.TM = (() => {
     c.reactor = null;
     c.slow = false;
     c.noEngine = c.noBrake = c.noSteer = c.cruise = c.fragile = false;
+    c.noGripLeft = 0;
   };
   // Filters the controls going into the car. Always returns a fresh object; stock tracks pass straight through.
   function fxControls(carId, r) {
@@ -1429,16 +1478,23 @@ self.TM = (() => {
 
     const inside = c.inside;
     let kick = null; // a bumper's kick, applied below once the car's velocity is at hand
+    const sqx = s.getFloat32(pos + 12, true),
+      sqy = s.getFloat32(pos + 16, true),
+      sqz = s.getFloat32(pos + 20, true),
+      sqw = s.getFloat32(pos + 24, true);
     for (let i = 0; i < c.zones.length; i++) {
       const q = c.zones[i],
-        hit = x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2];
-      if ((q.type == 'Water' || q.type == 'Shallow') && x >= q.min[0] && x <= q.max[0] && z >= q.min[2] && z <= q.max[2] && y >= q.min[1] - 1 && y <= q.surface + 3) water = q;
+        wet = q.type == 'Water' || q.type == 'Shallow',
+        // water by the car's middle; every effect from the first touch of the car's hull or wheels (fxTouch)
+        hit = wet ? x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2] : fxTouch(q, x, y, z, sqx, sqy, sqz, sqw);
+      if (wet && x >= q.min[0] && x <= q.max[0] && z >= q.min[2] && z <= q.max[2] && y >= q.min[1] - 1 && y <= q.surface + 3) water = q;
       if (!hit) {
         inside.delete(i);
         continue;
       }
       if (inside.has(i)) continue;
       inside.add(i);
+      if (TEST && TEST.trace) postMessage({ tmProbe: { fr: s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16), carId, enter: q.type } });
       switch (q.type) {
         case 'Turbo':
         case 'Super':
@@ -1472,6 +1528,14 @@ self.TM = (() => {
           break;
         case 'Reset':
           clear(c);
+          break;
+        case 'ResetWheels':
+          // Clean, dry tyres and full grip again: wet, iced and muddy tyres and no grip end; every other effect stays.
+          for (const t of c.tyres) t.wet = t.ice = t.mud = 0;
+          c.noGripLeft = 0;
+          break;
+        case 'NoGrip':
+          c.noGripLeft = NOGRIP.frames;
           break;
         case 'NoEngine':
           c.noEngine = true;
@@ -1581,6 +1645,9 @@ self.TM = (() => {
       slideIce = null,
       slideOn = 0; // and how many wheels that is
     if (c.stockGrip == null) c.stockGrip = F[(wheels + 228) >> 2];
+    // No grip (NOGRIP), 0 to 1: in full until its last `fade` frames.
+    const ngK = c.noGripLeft > 0 ? Math.min(1, c.noGripLeft / NOGRIP.fade) : 0;
+    if (TEST && TEST.wheelGeo && !c.geoSent) (c.geoSent = true), postMessage({ tmProbe: { carId, geo: [0, 1, 2, 3].map((w) => { const g = (wheels + w * 284) >> 2; return { conn: [F[g + 39], F[g + 40], F[g + 41]], rest: F[g + 51], len: F[g + 8], radius: F[g + 53], centre: [F[g + 35], F[g + 36], F[g + 37]] }; }), pos: [x, y, z], q: [s.getFloat32(pos + 12, true), s.getFloat32(pos + 16, true), s.getFloat32(pos + 20, true), s.getFloat32(pos + 24, true)] } });
     // The old surfaces' pushes and drag (launch, expo, penalty grass, ice) keep their own rule, exactly as before the newer
     // surfaces: the wheels on such surfaces count, the last of them sets the numbers.
     let launchWheels = 0,
@@ -1641,6 +1708,7 @@ self.TM = (() => {
       if (tk != 1) grip *= tk;
       // Hovering on a reactor boost: a little floaty (REACTOR_HOVER grip), by how far up the car is.
       if (c.hover > 0) grip *= 1 - ((1 - REACTOR_HOVER.grip) * c.hover) / REACTOR_HOVER.lift;
+      if (ngK > 0) grip *= 1 - (1 - NOGRIP.grip) * ngK;
       // A slide being started (KICK): the rear tyres let go a little, back to full grip over the kick.
       // Only until the slide is there, so a slippery deck does not spin round.
       if (w >= 2 && c.kickLeft > 0 && (Math.abs(slip) * 180) / Math.PI < c.kickDeg) grip *= 1 - (1 - c.kickRear) * (c.kickLeft / c.kickFrames);
@@ -1654,12 +1722,14 @@ self.TM = (() => {
       if (c.gas && F[g + 63] > 0 && F[g + 69] > 0) {
         const e = F[g + 63] * 0.001,
           alone = Math.min(1, (F[g + 69] * 0.001 * F[g + 57]) / (0.5 * e)),
-          sd = slippery(SLIDE_DRIVE, f, t, c.hover, looseSlide);
+          sd = ngK > 0 ? Math.max(ngK * SLIDE_DRIVE.ice, slippery(SLIDE_DRIVE, f, t, c.hover, looseSlide)) : slippery(SLIDE_DRIVE, f, t, c.hover, looseSlide);
         // what the driven wheels would put down driving straight (SLIDE_TECH): their drive and grip limits added up, so
         // a slide's shift of load from one side to the other does not count
         straight += e;
         straightCap += F[g + 69] * 0.001 * F[g + 57];
-        if (sd > 0 && alone > F[g + 70]) drive += e * (alone - F[g + 70]) * sd;
+        // No grip keeps all of the drive: the wheelspin the low grip gives costs nothing either (NOGRIP).
+        const al = ngK > 0 ? alone + (1 - alone) * ngK : alone;
+        if (sd > 0 && al > F[g + 70]) drive += e * (al - F[g + 70]) * sd;
       }
       speedKinds(f, t, speedK);
       if (neoGround(f, t)) neoWheels++;
@@ -1770,6 +1840,13 @@ self.TM = (() => {
       // A sliding tyre puts next to no sideways force down (its skid cuts it), so the way the car goes swings round to
       // the nose only by `align`: on wet wood by every wheel on it however wet, or a lightly wet car slid on straight.
       iceWheels += slick ? slideOn : slideWheels;
+    }
+    // No grip: steering and slides as on ice (NOGRIP ice), by how much of it is left, wherever the car is not on ice.
+    if (ngK > 0 && contacts >= 2 && !(ice && !slick && iceWheels >= 2)) {
+      ice = NOGRIP.ice;
+      slick = null;
+      iceWeight = ngK;
+      iceWheels = contacts;
     }
     if (iceWheels >= 2 || iceWeight < 1) {
       // A car whose tyres hold on ice (the Snow car) gets only iceAssist of the steering and slide help; the spin still
@@ -1927,7 +2004,7 @@ self.TM = (() => {
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
         hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
         tyres = tyreOn[u] / on[u],
-        a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * 0.001;
+        a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * (1 - ngK) * 0.001;
       // Not while the game's own steering countersteers a slide against the way the steering is held (its wheels point
       // the other way): the extra turn then turned the car out of its own slide, and a wet car slid on in a straight line.
       if (a != 0 && base > 0.5 && !(steer != 0 && angle * steer < 0)) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
@@ -2479,6 +2556,7 @@ self.TM = (() => {
     }
     c.justReset = false;
 
+    if (c.noGripLeft > 0) c.noGripLeft--;
     if (c.boostLeft > 0) {
       c.boostLeft--;
       const dv = c.boost.accel * 2 * (c.boostLeft / c.boost.frames) * 0.001;
@@ -2644,6 +2722,9 @@ self.TM = (() => {
     REACTOR_PLATES,
     REACTOR_HOVER,
     reactorPick,
+    NOGRIP,
+    FX_BOX,
+    fxTouch,
     WATER,
     ICING,
     TYRES,

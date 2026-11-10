@@ -158,6 +158,11 @@ const MATERIALS = litAll({
   FxBumper: '#2a2c33',
   FxBumperB: '#ffd23a',
   FxBumper2B: '#ff4f6a',
+  // No grip: a mustard plate with dark skid marks; Reset wheels: a dark plate with four white tyres round a ring.
+  FxNoGrip: '#d9b23a',
+  FxNoGripB: '#3a2d06',
+  FxResetWheels: '#3d4350',
+  FxResetWheelsB: '#f2f4f8',
   // Vehicle gates: each car its own colour, the car drawn white on a dark sign.
   VehSnow: '#9fdcf5',
   VehRally: '#d8572a',
