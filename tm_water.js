@@ -70,6 +70,12 @@ self.TM.water = (() => {
     return out;
   }
 
+  // A mesh drawn last frame may have lost its geometry's data since: Not So Weekly Shorts empties a shared geometry's
+  // attributes when it rebuilds the track (a new race, Watch, the menu's track, a graphics change: one scene for all).
+  // When the meshes drawn changed in the frame before (the camera turned a box out of view), the next render read the
+  // emptied position and threw "Cannot read properties of undefined (reading 'array')". Such meshes are no longer
+  // drawn, so they are dropped from the list.
+  const intact = (o) => o.geometry?.attributes?.position != null && (!o.isInstancedMesh || o.instanceMatrix != null);
   const seamKey = (o) => o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + o.matrixWorld.elements.join(',');
 
   // World boxes of everything drawn, two texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0).
@@ -129,7 +135,7 @@ self.TM.water = (() => {
     const f = renderer.info.render.frame;
     if (s.frame != f) {
       s.frame = f;
-      const key = s.drawn.map(seamKey).join('|');
+      const key = (s.drawn = s.drawn.filter(intact)).map(seamKey).join('|');
       if (key != s.key) {
         s.key = key;
         buildSeams(s);
@@ -321,7 +327,7 @@ self.TM.water = (() => {
     const f = renderer.info.render.frame;
     if (s.frame != f) {
       s.frame = f;
-      const key = s.drawn.map(seamKey).join('|');
+      const key = (s.drawn = s.drawn.filter(intact)).map(seamKey).join('|');
       if (key != s.key) {
         s.key = key;
         buildFinish(s);

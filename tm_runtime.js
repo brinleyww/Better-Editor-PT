@@ -1145,6 +1145,7 @@ self.TM = (() => {
     if (TEST && TEST.bot && c) r = testBot(c, r);
     if (TEST && TEST.slipBot && c) r = slipBot(c, r);
     if (!c || !c.active) return r;
+    c.raw = { up: !!r.up, right: !!r.right, down: !!r.down, left: !!r.left };
     const out = { up: r.up, right: r.right, down: r.down, left: r.left, reset: r.reset };
     if (c.pulseReset) {
       out.reset = true;
@@ -1331,6 +1332,32 @@ self.TM = (() => {
   function fxLoad(carId, saved) {
     const c = cars.get(carId);
     if (c && saved) Object.assign(c, structuredClone(saved));
+  }
+  // The car state's controls are what the page records a run from, and fxControls changes them (no brake while a
+  // neoslide starts, No steer, No engine, No brake, Cruise; a held slow-motion frame repeats the last ones). A replay
+  // feeds the recording through fxControls again, so a recording of the changed keys missed a neoslide's brake or the
+  // steering under No steer: the replay drove another line and failed its check. fxRecord puts the keys the player
+  // pressed (as the last fxControls got them) back into a state buffer (ArrayBuffer or Uint8Array, the layout fxStep
+  // reads) before the worker hands it on; held: the state is a held slow-motion frame. The reset bit stays as driven: a
+  // reset fxControls adds itself (Fragile) comes again on the replay. Stock tracks: nothing changes.
+  function fxRecord(carId, state, held) {
+    const c = cars.get(carId),
+      r = c && c.active ? c.raw : null;
+    if (!r || !c.ctl) return;
+    const u = state instanceof Uint8Array ? state : new Uint8Array(state),
+      flags = u[11];
+    // id, frames, speed, flags, [finish], next checkpoint, position, quaternion, impulses, wheel contacts, 4 x 4 wheel
+    // floats, steering, then the controls byte.
+    let o = 12 + (flags & 2 ? 3 : 0) + 2 + 12 + 16;
+    if (o >= u.length) return;
+    o += 1 + 4 * u[o];
+    for (let w = 0; w < 4; w++) if (flags & (8 << w)) o += 24;
+    o += 64 + 4;
+    if (o >= u.length) return;
+    const bits = (x) => (x.up ? 1 : 0) | (x.right ? 2 : 0) | (x.down ? 4 : 0) | (x.left ? 8 : 0);
+    // A stepped frame's byte holds the keys the car was given (c.ctl); anything else is not the controls byte.
+    if (!held && (u[o] & 15) != bits(c.ctl)) return;
+    u[o] = (u[o] & ~15) | bits(r);
   }
   // Slow motion: the car only gets every other physics frame while the race clock keeps counting, so it moves at half speed.
   // Returns the held state for a skipped frame, or null to run the frame normally.
@@ -2742,6 +2769,7 @@ self.TM = (() => {
     fxSkip,
     fxSave,
     fxLoad,
+    fxRecord,
     surfaces: SURFACES,
     // For the page: the cars (VEHICLES[name].look has the hints for drawing them), which gate gives which car, and the
     // tyre model itself (TYRES: the page steps its tyres with the same code). The page works out the car the same way: a

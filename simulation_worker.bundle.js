@@ -17393,7 +17393,8 @@ importScripts("tm_parts.js", "tm_runtime.js");
           function n(e, r) {
             r = self.TM.fxControls(e.id, r);
             const tmHeld = self.TM.fxSkip(e.id, t.HEAPU8);
-            if (null != tmHeld) return tmHeld;
+            // The recording is made from the state's controls: the keys pressed, not the ones fxControls changed.
+            if (null != tmHeld) return (self.TM.fxRecord?.(e.id, tmHeld, !0), tmHeld);
             t.ccall(
               "updateCarModel",
               "void",
@@ -17402,6 +17403,7 @@ importScripts("tm_parts.js", "tm_runtime.js");
             );
             const tmState = new Uint8Array(t.HEAPU8.buffer, i, 227).slice().buffer;
             self.TM.fxStep(e.id, t.HEAPU8, tmState);
+            self.TM.fxRecord?.(e.id, tmState);
             return tmState;
           }
           (($o.length = 0), (onmessage = r));
