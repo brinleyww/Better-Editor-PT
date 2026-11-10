@@ -1810,7 +1810,7 @@
           for (let e = 0; e < t.length; e++) {
             const n = t[e],
               tm = n.configuration.tm ?? self.TM.ui.stockPart(n.configuration),
-              cat = n.configuration.tm ? n.configuration.category : 1;
+              cat = n.configuration.tm && "RoadKit" != (self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])[n.configuration.tm.f] ? n.configuration.category : 1;
             let s = (0, i.gn)(this, zn, "f").find((t) => t.category == cat)?.partPanel;
             if (null == s) {
               ((s = document.createElement("div")),

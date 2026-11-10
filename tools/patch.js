@@ -405,14 +405,15 @@ apply('112.bundle.js', [
   ['save knows its own track: loaded', '                          (0, i.gn)(this, Kt, "m", In).call(this, t),\n                          (0, i.GG)(this, Ye, !0, "f"));', '                          (0, i.gn)(this, Kt, "m", In).call(this, t),\n                          (self.__beOwnName = t?.name ?? null),\n                          (0, i.GG)(this, Ye, !0, "f"));'],
   ['save knows its own track: saved', '                  (0, i.gn)(this, $t, "f").saveCustomTrack(e, n)\n                    ? ((0, i.gn)(this, te, "f").tryActivatePersistentStorage(),', '                  (0, i.gn)(this, $t, "f").saveCustomTrack(e, n)\n                    ? ((self.__beOwnName = t),\n                      (0, i.gn)(this, te, "f").tryActivatePersistentStorage(),'],
   ['save asks only for another track', '                (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e)\n                  ? (((0, i.gn)(this, re, "f").inert = !0),', '                (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e) && self.__beOwnName !== e\n                  ? (((0, i.gn)(this, re, "f").inert = !0),'],
-  // Every stock block goes under one Road category (1) and its browser, like the four surfaces.
+  // Every stock block goes under one Road category (1) and its browser, like the four surfaces. So does the road kit
+  // (the kits' shapes as stock road): the stock list comes first, so the browser is the stock one by then.
   [
     'stock blocks share the Road category',
     `const n = t[e];
             let s = (0, i.gn)(this, zn, "f").find((t) => t.category == n.configuration.category)?.partPanel;`,
     `const n = t[e],
               tm = n.configuration.tm ?? self.TM.ui.stockPart(n.configuration),
-              cat = n.configuration.tm ? n.configuration.category : 1;
+              cat = n.configuration.tm && "RoadKit" != ${FAMILIES}[n.configuration.tm.f] ? n.configuration.category : 1;
             let s = (0, i.gn)(this, zn, "f").find((t) => t.category == cat)?.partPanel;`,
   ],
   ['Road category icon', 'getCategoryMesh(\n                  n.configuration.category,', 'getCategoryMesh(\n                  cat,'],

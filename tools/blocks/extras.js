@@ -140,7 +140,7 @@ function buildExtras() {
   const kit = (surface, extra = {}) => (name, label, tab, sub, mesh, x = {}) => parts.push({ name: surface + name, label, tab, sub, surface, mesh, ...extra, ...x });
 
   // ---- platform kits ----------------------------------------------------------------------------------------------------
-  for (const surface of ['Plastic', 'Wood', 'Dirt', 'Grass']) platformExtras(kit(surface), styleFor(surface), 'Platform');
+  for (const surface of ['Plastic', 'Wood', 'Dirt', 'Grass', 'RoadKit']) platformExtras(kit(surface), styleFor(surface), 'Platform');
 
   // ---- ice: the corners the other kits have, and hills and jumps on the ice platform ------------------------------------------
   {

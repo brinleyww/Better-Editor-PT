@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 2,457 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 3,582 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -27,14 +27,19 @@ Seven new categories sit near the top of the editor's block column, under the er
 
 | Category | Tabs |
 |---|---|
-| Plastic (568), Wood (534) | Road, Open road, Platform, Penalty grass, Walls and loops, Half-pipe, Pipes (plastic only), Gates, Effects, Vehicle gates, Connectors, Deco |
-| Stadium (237) | Penalty grass, Pipes, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
-| Ice (199) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice gates, Ice effects, Snow platform, Vehicle gates |
+| Road (513 new, with the stock blocks) | The stock browser's own tabs, plus Open road, Platform, Walls and loops, Half-pipe, Pipes, Effects, Vehicle gates, Connectors, Penalty grass |
+| Plastic (683), Wood (649) | Road, Wide road, Open road, Platform, Blocks, Wall track, Penalty grass, Walls and loops, Half-pipe, Pipes (plastic only), Gates, Effects, Vehicle gates, Connectors, Deco |
+| Stadium (203) | Penalty grass, Box gates, Special gates, Vehicle gates, Bump road, Track walls, Structures, Stage and screens, Deco |
+| Ice (353) | Bobsleigh, Bobsleigh gates, Bobsleigh effects, Ice platform, Ice walls and loops, Ice blocks, Ice wall track, Ice gates, Ice effects, Snow platform, Snow blocks, Snow wall track, Vehicle gates |
 | Water (14) | Pools, Shallow water, Water road |
-| Dirt (571) | Dirt road, Open road, Narrow road, Platform, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
-| Grass (334) | Open road, Platform, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Dirt (702) | Dirt road, Railed road, Wide road, Open road, Narrow road, Platform, Blocks, Wall track, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Grass (465) | Railed road, Wide road, Open road, Platform, Blocks, Wall track, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
 
 The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates. Every kit has vehicle gates. The bump road is Trackmania's sausage road: a rounded crown with the stock road's kerbs.
+
+**The stock blocks on every surface.** Each kit also has the stock game's own shapes that it had no piece for, with the exact stock geometry, so they join stock blocks and each other the way the stock ones do: the wide road (to wide, corners, slopes), the Y junctions, long slopes, S-turns and slopes into walls, the plane pieces (half, quarter and corner planes, half slopes, bridges, plane walls and their slopes), every block (blocks, half and quarter blocks, the triangular corners, sloped edges, slopes, bridges) and the wall track. Plastic and wood leave out the few their road already has (straight, the five turns, T and crossroads, the short slopes, the banked pieces); dirt and grass get the whole railed road as well (Railed road); ice and snow get the planes, blocks and wall track. They look like their kit (panels, planks) and drive as its surface.
+
+**The kits' shapes as stock road.** The Road browser, where the stock blocks are, also has the kits' shapes in stock road: longer and half straights, speed bumps, chicanes, gentle and steep slopes, crests, dips and kickers, climbing curves, banks and banked curves, diagonals, loops and wall rides, the open road (no rails), platforms with their hills, corners and bowls, half-pipes, the road pipes, connectors, gates for the open road and for slopes, banks, diagonals and walls, finish boxes, every effect plate and the vehicle gates. They are the stock road's grey with its red and white kerbs and dark barriers, follow the season like stock road, and drive exactly as stock road does (the pipes as the road surface, as before).
 
 Blocks use the stock road's measurements (13.13 wide, 0.21 deck, 1:2 slopes and banks), so they join stock blocks seamlessly. The dirt road and the narrow road are narrower, as in Trackmania, so they join the stock road and the other kits through their connectors (Dirt, Connectors), and the bump road joins through "Bump road from road".
 
@@ -87,9 +92,9 @@ States in between count in proportion, and states together multiply, but never b
 
 | Vehicle | Behaviour |
 |---|---|
-| Snow | Studded tyres: on platform ice it brakes in about a quarter of the distance and doesn't spin, on snow it grips almost like on the road, and its tyres never ice. About 0.86 of the grip on road, 1.1 on dirt and grass. A little slower to 100 km/h (x1.1), and drag holds it near 230 km/h. Softer, taller suspension and a little air control. |
+| Snow | Studded tyres: on platform ice it brakes in about a quarter of the distance and doesn't spin, on snow it grips almost like on the road, and its tyres never ice. About 0.86 of the grip on road, 1.1 on dirt and grass. A little slower to 100 km/h (x1.1), and drag holds it near 230 km/h. Softer, taller suspension and a little air control (steering turns it in the air; the brake steadies it like the stock car). |
 | Rally | Built for loose ground: about 1.45 of the grip on dirt and grass (on dirt it corners about as fast as the Stadium car on road) and 1.2 on snow, slightly less on road. It pulls well on dirt, grass and snow, and drag holds it near 260 km/h. Soft springs that soak up bumps. |
-| Desert | The fastest top end (drag holds it near 330 km/h) and quicker to 100 km/h (x0.95), but it understeers on road (about 0.75 of the grip); 1.25 on dirt and grass. Very soft long-travel suspension that lands big drops without losing speed, and strong air control: steering turns it and the brake lifts the nose. |
+| Desert | The fastest top end (drag holds it near 330 km/h) and quicker to 100 km/h (x0.95), but it understeers on road (about 0.75 of the grip); 1.25 on dirt and grass. Very soft long-travel suspension that lands big drops without losing speed, and strong air control: steering turns it in the air. Braking in the air steadies it like the stock car. |
 
 | Effect | Behaviour |
 |---|---|
@@ -249,7 +254,7 @@ Each mesh entry is `[material, positionsOffset, floatCount, indicesOffset, index
 
 ## Making your own blocks
 
-Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt and grass), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), [tools/blocks/pipes.js](tools/blocks/pipes.js) (pipes) and [tools/blocks/extras.js](tools/blocks/extras.js) (platform hills, obstacles and diagonals, snow platforms, the water road, stands), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
+Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt, grass and the road kit), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), [tools/blocks/pipes.js](tools/blocks/pipes.js) (pipes) and [tools/blocks/extras.js](tools/blocks/extras.js) (platform hills, obstacles and diagonals, snow platforms, the water road, stands) and [tools/blocks/stockblocks.js](tools/blocks/stockblocks.js) (the stock game's shapes in each kit's look: [tools/blocks/stock/parts.js](tools/blocks/stock/parts.js) reads the stock part list out of the game and its models, and the kit's pattern is cut into the driving faces), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
 
 ```bash
 cd tools && npm install

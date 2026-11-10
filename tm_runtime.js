@@ -761,7 +761,8 @@ self.TM = (() => {
   //   before (x0.6, +0.1) keep it off the bump stops: it bounces once on a 30 unit drop and keeps its speed (226 km/h
   //   1 s after, Stadium 227; softer compression dampers bottomed out and lost up to 30%), and soaks up dirt ripples
   //   (106 km/h out where the Stadium car leaves at 85).
-  // air: in the air, steering yaws the car and the brake lifts its nose, this much harder than nothing (1: no help).
+  // air: in the air, steering yaws the car this much harder than nothing (1: no help). The brake in the air is the
+  //   game's own for every car: it steadies the car, and nothing here adds to it.
   // ices: the surfaces its tyres ice up on (see ICING); in TM2020 the Stadium car's tyres ice up too (the Snow car's
   //   studs never do). loose: on dirt, grass and snow the engine pulls with this factor instead of accel, and the top end
   //   drag does not count there (the Rally car is geared for loose ground).
@@ -778,8 +779,8 @@ self.TM = (() => {
   if (TEST && TEST.veh) for (const k in TEST.veh) Object.assign(VEHICLES[k], TEST.veh[k]);
   const GATES = { CarSnow: 'Snow', CarRally: 'Rally', CarDesert: 'Desert', CarStadium: 'Stadium' };
   // Air control for the cars that have it (air > 1): after `after` frames off the ground, steering pulls the yaw rate
-  // towards yaw x steer and the brake the pitch rate towards -pitch (nose up, rad/s), by pull x (air - 1) per frame.
-  const AIR = { after: 20, yaw: 1.2, pitch: 1.5, pull: 0.01 };
+  // towards yaw x steer, by pull x (air - 1) per frame.
+  const AIR = { after: 20, yaw: 1.2, pull: 0.01 };
   // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per entry, square to the way the car is going in the
   // plate's plane, away from the line through the plate's centre along that way (inside `centre` units of it: to the
   // right), plus a hop (units/s). Platforms are driven every way, so the plate's own axes would brake a car crossing a
@@ -2199,16 +2200,8 @@ self.TM = (() => {
       F[av] += upx * dy;
       F[av + 1] += upy * dy;
       F[av + 2] += upz * dy;
-      // Spin about the car's left axis: + dips the nose. The brake lifts it; the gas does nothing here, since drivers
-      // hold it through every jump (measured: a gas-dips-the-nose rule tipped the Desert car 57 degrees in 0.8 s).
-      const pitchWant = c.ctl.down ? -1 : 0;
-      if (pitchWant != 0) {
-        const pitch = F[av] * lx + F[av + 1] * ly + F[av + 2] * lz,
-          dp = (pitchWant * AIR.pitch - pitch) * pull;
-        F[av] += lx * dp;
-        F[av + 1] += ly * dp;
-        F[av + 2] += lz * dp;
-      }
+      // Nothing about the pitch: the brake in the air steadies these cars exactly as it does the stock car (the game's
+      // own air brake). It used to lift the nose here on top of that, which tipped the car instead of steadying it.
     }
 
     // Water (see WATER).

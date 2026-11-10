@@ -1,4 +1,6 @@
-// Every block: checks its data in every colour slot, then loads them all in one track and starts a car.
+// Every block: checks its data in every colour slot, puts them all in one track for the code round trip, then loads them
+// in the physics worker and starts a car, in two halves: every block at once is more collision mesh than the physics
+// engine's memory holds (it stops between 4.2 and 4.5 million triangles).
 import { openEditor } from './lib.mjs';
 const hook = `(()=>{const o=Worker.prototype.postMessage;Worker.prototype.postMessage=function(m,...r){if(m&&m.trackParts&&!window.__init)window.__init=m;return o.call(this,m,...r)}})()`;
 const c = await openEditor(9343, 1000, 700, hook);
@@ -28,7 +30,11 @@ const r = await c.evaluate(`(async()=>{
   const code=t.toExportString({name:'All blocks',author:null,lastModified:null});
   const back=TD.fromExportString(code);
   const save=TD.fromSaveString(t.toSaveString());
-  const physics=await new Promise((res)=>{const w=new Worker('simulation_worker.bundle.js');let done=false,t0;
+  const start=TM.parts.find(q=>q.o);
+  const physics=[];
+  for(const half of [0,1]){const t=new TD(0,new Sun(0));let k=0;
+    for(const [n,q] of TM.parts.entries()){if(n%2!=half&&q!=start)continue;const d=H(q.i);t.addPart((k%30)*32,0,Math.floor(k/30)*32,q.i,k%4,0,0,d.detector&&d.detector.type==0?0:null,d.startOffset?k:null);k++;}
+  physics.push(await new Promise((res)=>{const w=new Worker('simulation_worker.bundle.js');let done=false,t0;
     w.addEventListener('error',e=>{if(!done){done=true;res('worker error: '+e.message);}});
     w.addEventListener('message',e=>{if(e.data.messageType==10&&!done){done=true;const ms=performance.now()-t0;w.terminate();res({started:true,ms:Math.round(ms)});}});
     setTimeout(()=>w.postMessage({...window.__init,isRealtime:true}),1500);
@@ -36,7 +42,7 @@ const r = await c.evaluate(`(async()=>{
       w.postMessage({messageType:3,mountainVertices:M.vertices,mountainOffset:{x:M.offset.x,y:M.offset.y,z:M.offset.z},trackData:t.toSaveString(),carId:1,carRecording:null});
       w.postMessage({messageType:5,carId:1,targetSimulationTimeFrames:null});},2500);
     setTimeout(()=>{if(!done){done=true;w.terminate();res('timeout');}},30000);
-  });
+  }));}
   return JSON.stringify({checked,slots,failCount:fail.length,fail:fail.slice(0,20),codeLength:code.length,roundTripSameId:!!back&&back.trackData.getId()==t.getId(),saveRoundTrip:!!save&&save.numberOfParts==t.numberOfParts,physics});
 })()`);
 console.log(r);

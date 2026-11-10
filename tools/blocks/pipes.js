@@ -317,13 +317,12 @@ function pipeSet(put, look) {
   }
 }
 
-// Every pipe piece: the plastic ones in the Plastic kit, the road pipes (stock road grip, surface 8) in Stadium.
+// Every pipe piece: the plastic ones in the Plastic kit, the road pipes (stock road grip, surface 8) with the road kit in
+// the stock Road browser. The road pipes keep the names they shipped under (Stadium...), so their ids stay.
 function buildPipes() {
   const parts = [];
-  // The Stadium ones are the road pipes: "Pipe curve 2" is "Road pipe curve 2" there, "Start, pipe" "Start, road pipe".
-  const road = (l) => l.replace(/[Pp]ipe/, (w) => (w[0] == 'P' ? 'Road pipe' : 'road pipe'));
-  for (const [surface, extra, relabel] of [['Plastic', {}, (l) => l], ['Stadium', { u: 8 }, road]])
-    pipeSet((name, label, tab, sub, mesh, x = {}) => parts.push({ name: surface + name, label: relabel(label), tab, sub, surface, mesh, ...extra, ...x }), surface);
+  for (const [key, surface, extra] of [['Plastic', 'Plastic', {}], ['Stadium', 'RoadKit', { u: 8 }]])
+    pipeSet((name, label, tab, sub, mesh, x = {}) => parts.push({ name: key + name, label, tab, sub, surface, mesh, ...extra, ...x }), key);
   return parts;
 }
 

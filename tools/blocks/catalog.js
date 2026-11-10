@@ -127,7 +127,19 @@ const STYLES = {
     tower: 'Truss tower, 4 layers',
     fence: 'Fence',
   }),
+  // The road kit: the kits' shapes as stock road, for the stock Road browser. Stock road grey all over (the panel
+  // shades and seams are the same grey, so the deck is plain like the stock one), the stock dark barriers, and under
+  // them the stock red and white kerb strips (kerb: the railed road's edge strips; the roads with no rails keep a
+  // plain white edge, which costs the block file nothing over plastic's). No deco of its own.
+  RoadKit: () => ({
+    ...relabel(STYLES.Plastic(), { PlasticDeck: 'TechDeck', PlasticDeckB: 'RoadDeckB', PlasticSeam: 'RoadSeam', PlasticLine: 'TechEdgeWhite', PlasticRail: 'RoadBarrier', PlasticKerb: 'RoadKerb', PlasticUnder: 'RoadUnder' }),
+    kerb: (ring) => (every(5)(ring) ? 'TechEdgeRed' : 'TechEdgeWhite'),
+    deco: null,
+  }),
 };
+// Road kit pieces left out: the ones the stock game already has (the same shape, or its own gate), the kit's deco, and
+// the older pieces the other kits only keep for old tracks.
+const ROAD_KIT_SKIP = /^(RoadStraight|RoadCurve[1-5]|RoadT|RoadCross|RoadMedium(Start|Straight|End)|RoadTilt|RoadTiltCurve[2-5]In|PlatBase|(Start|Checkpoint|Finish)(Road|Plat|PlatWide)|FinishHoop.*|Fx(Roulette|ReactorDown|Reactor2Down|ReactorOriented|Reactor2Oriented).*)$/;
 // A style with every material swapped through R, the geometry left exactly as it was.
 function relabel(base, R) {
   const swap = (f) => (...a) => R[f(...a)];
@@ -218,7 +230,7 @@ function stockGate(st, kind, key, opt = {}) {
       ? () => {
           const r = [railPoly(barrier, -1, RAIL_TOP), railPoly(barrier, 1, RAIL_TOP)];
           r[0].cap = r[1].cap = 'RoadBarrier';
-          return [deckPoly(st, HALF_ROAD, DECK, 1.3867, null, decal), ...r];
+          return [deckPoly(kerbed(st), HALF_ROAD, DECK, 1.3867, null, decal), ...r];
         }
       : key == 'Open'
         ? () => [deckPoly(st, HALF_ROAD, DECK, 0.5, null, decal)]
@@ -340,11 +352,13 @@ function railPoly(st, side, top) {
   };
 }
 
+// A railed road's deck: its edge strips are the kit's kerb where it has one.
+const kerbed = (st) => (st.kerb ? { ...st, line: st.kerb } : st);
 const roadProfile = (st, paint) => {
   const f = () => {
     const r = [railPoly(st, -1, RAIL_TOP), railPoly(st, 1, RAIL_TOP)];
     r[0].cap = r[1].cap = st.solidB;
-    return [deckPoly(st, HALF_ROAD, DECK, 1.3867, paint), ...r];
+    return [deckPoly(kerbed(st), HALF_ROAD, DECK, 1.3867, paint), ...r];
   };
   f.rails = true;
   return f;
@@ -719,7 +733,7 @@ function earClip(pts) {
 function buildSurface(surface) {
   const st = styleFor(surface);
   const parts = [];
-  const putAll = (name, label, tab, sub, mesh, extra = {}) => parts.push({ name: surface + name, label, tab, sub, surface, mesh, ...extra });
+  const putAll = (name, label, tab, sub, mesh, extra = {}) => (surface == 'RoadKit' && ROAD_KIT_SKIP.test(name) ? null : parts.push({ name: surface + name, label, tab, sub, surface, mesh, ...extra }));
   const put = putAll;
   const railed = { key: 'Road', tab: 'Road', profile: roadProfile(st), width: HALF_ROAD, rail: true },
     open = { key: 'Open', tab: 'Open road', profile: openProfile(st), width: HALF_ROAD, rail: false };
@@ -1229,7 +1243,7 @@ function buildSurface(surface) {
   }
 
   // ---- deco and scenery ----------------------------------------------------------------------------------------------
-  decoSet(put, st);
+  if (st.deco) decoSet(put, st);
   return parts;
 }
 

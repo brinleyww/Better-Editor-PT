@@ -74,7 +74,9 @@
     ['Pillars', 'Branches', [1, 2, 3, 4, 5].flatMap((k) => [['PillarBranch' + k, 'Branch ' + k], ['PillarBranch' + k + 'Bottom', 'Branch ' + k + ', bottom'], ['PillarBranch' + k + 'Middle', 'Branch ' + k + ', middle'], ['PillarBranch' + k + 'Top', 'Branch ' + k + ', top']])],
     ['Signs', 'Signs', [['SignArrowLeft', 'Arrow left'], ['SignArrowRight', 'Arrow right'], ['SignArrowUp', 'Arrow up'], ['SignArrowDown', 'Arrow down'], ['SignWarning', 'Warning'], ['SignWrongWay', 'Wrong way']]],
   ];
-  const ROAD_TABS = [...new Set(ROAD_LAYOUT.map((r) => r[0])), 'Other'];
+  // The road kit's blocks (the kits' shapes as stock road, family "RoadKit") share this browser: the ones on a tab of the
+  // same name join the stock blocks there, the rest get the kit's own tabs after the stock ones.
+  const ROAD_TABS = [...new Set(ROAD_LAYOUT.map((r) => r[0])), 'Open road', 'Platform', 'Walls and loops', 'Half-pipe', 'Pipes', 'Effects', 'Vehicle gates', 'Connectors', 'Penalty grass', 'Other'];
   let stockParts = null; // stock id -> menu entry { i, f, t, s, l, o }, built on first use from the game's enum
   const stockPart = (cfg) => {
     if (!stockParts) {
@@ -310,7 +312,7 @@
     g.appendChild(grid);
   }
 
-  const SURFACE_NAMES = { ...FAMILIES, [ROAD]: 'Road' };
+  const SURFACE_NAMES = { ...FAMILIES.map((n) => (n == 'RoadKit' ? 'Road' : n)), [ROAD]: 'Road' };
   // Category names under the editor's icons. Stock categories by their enum number, -1 is the eraser, kits from 9.
   const CATEGORY_NAMES = { '-1': 'Erase', 0: 'Start & gates', 1: 'Road', 2: 'Turns', 3: 'Wide road', 4: 'Planes', 5: 'Blocks', 6: 'Wall track', 7: 'Pillars', 8: 'Signs' };
   FAMILIES.forEach((n, f) => (CATEGORY_NAMES[9 + f] = n));
