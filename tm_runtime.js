@@ -851,7 +851,10 @@ self.TM = (() => {
   // (or within `chain` frames) has that rebound scaled by fade again, so a crash settles instead of hopping forever.
   // While the hit lasts the car's spin is held down (grip), and after the bounce it is zeroed and kept damped for
   // `steady` frames (calm per frame), so the car flies off flat the same way every time instead of tumbling.
-  const BOUNCE = { hit: 0.5, window: 30, minInto: 4, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
+  // A hit stays open through up to `gap` quiet frames (no change over `hit`): at speed a rolled car's roof or a side
+  // touches, lets go for 2 to 4 frames and touches again, and judged in pieces no piece stopped enough of the speed it
+  // started with to count (tmphys bounce: a car rolled 135 degrees landing at 500 and 600 km/h never bounced).
+  const BOUNCE = { hit: 0.5, window: 30, gap: 8, minInto: 3, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
   // Countersteering on plastic and loose ground, once the car slides more than `from` (radians) above minSpeed (units
   // per second): the yaw rate is pulled by `pull` per frame towards catchRate x slip, eased off to at most maxRate
@@ -1046,9 +1049,13 @@ self.TM = (() => {
     return set(vb * den, vc * den);
   }
   // The plastic surface a hit came from: the nearest plastic triangle within reach of the car's centre whose face
-  // points the way the car was pushed (dx,dy,dz, unit). Returns its normal, facing the car, or null.
+  // points the way the car was pushed (dx,dy,dz, unit) and not along the car's up (ux,uy,uz: that is the floor under its
+  // wheels, which pushes on the tyres, not the body). Returns its normal, facing the car, or null. The floor is passed
+  // over rather than taken and thrown away: it is nearer than any wall (about 0.5 units against 1 to 2.3), so a wall
+  // hit whose push leant a little upwards (a car climbing or rolling into the wall, more so at speed) used to find the
+  // floor and never bounced.
   const nearPt = [0, 0, 0];
-  function plasticNormal(walls, x, y, z, dx, dy, dz) {
+  function plasticNormal(walls, x, y, z, dx, dy, dz, ux, uy, uz) {
     const T = walls.tris,
       cx = Math.floor(x / 5),
       cy = Math.floor(y / 5),
@@ -1079,7 +1086,7 @@ self.TM = (() => {
             ((nx /= nl), (ny /= nl), (nz /= nl));
             if (nx * ex + ny * ey + nz * ez < 0) ((nx = -nx), (ny = -ny), (nz = -nz));
             // A surface that pushed the car must face roughly the way it was pushed; the scrape's friction skews that.
-            if (nx * dx + ny * dy + nz * dz < 0.3) continue;
+            if (nx * dx + ny * dy + nz * dz < 0.3 || nx * ux + ny * uy + nz * uz > 0.5) continue;
             best = [nx, ny, nz];
             bestD = d;
           }
@@ -2555,10 +2562,7 @@ self.TM = (() => {
       normalOf = (h) => {
         const m = Math.sqrt(h.sx * h.sx + h.sy * h.sy + h.sz * h.sz);
         if (m < 1e-6 || !c.walls.tris.length) return null;
-        const n = plasticNormal(c.walls, x, y, z, h.sx / m, h.sy / m, h.sz / m);
-        if (!n) return null;
-        const up = (1 - 2 * (qx * qx + qz * qz)) * n[1] + 2 * (qx * qy - qw * qz) * n[0] + 2 * (qy * qz + qw * qx) * n[2];
-        return up > 0.5 ? null : n;
+        return plasticNormal(c.walls, x, y, z, h.sx / m, h.sy / m, h.sz / m, upx, upy, upz);
       };
     if (c.bounceWait > 0) c.bounceWait--;
     // Back on three or four wheels: the next bounce is a fresh one.
@@ -2576,12 +2580,13 @@ self.TM = (() => {
         d = Math.sqrt(dx * dx + dy * dy + dz * dz),
         H = c.hit;
       if (d > BOUNCE.hit && (!H || H.frames < BOUNCE.window)) {
-        if (!H) c.hit = { sx: dx, sy: dy, sz: dz, vx: last.vx, vy: last.vy, vz: last.vz, frames: 1 };
+        if (!H) c.hit = { sx: dx, sy: dy, sz: dz, vx: last.vx, vy: last.vy, vz: last.vz, frames: 1, quiet: 0 };
         else {
           H.sx += dx;
           H.sy += dy;
           H.sz += dz;
           H.frames++;
+          H.quiet = 0;
         }
         // Mid-hit on plastic: hold the spin down now, before the contact has had time to tumble the car.
         const n = c.bounceWait == 0 ? normalOf(c.hit) : null;
@@ -2590,9 +2595,21 @@ self.TM = (() => {
           F[w + 1] *= BOUNCE.grip;
           F[w + 2] *= BOUNCE.grip;
         }
+      } else if (H && d <= BOUNCE.hit && H.quiet < BOUNCE.gap && H.frames < BOUNCE.window) {
+        // a quiet frame inside the hit: it may touch again
+        H.sx += dx;
+        H.sy += dy;
+        H.sz += dz;
+        H.quiet++;
       } else if (H) {
         c.hit = null;
         const n = c.bounceWait == 0 ? normalOf(H) : null;
+        if (TEST && TEST.bounceTrace) {
+          const r2 = (q) => +q.toFixed(2),
+            hitIn = n ? -(H.vx * n[0] + H.vy * n[1] + H.vz * n[2]) : null,
+            stopped = n ? H.sx * n[0] + H.sy * n[1] + H.sz * n[2] : null;
+          postMessage({ tmProbe: { fr: s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16), carId, bounce: { frames: H.frames, sum: [H.sx, H.sy, H.sz].map(r2), vin: [H.vx, H.vy, H.vz].map(r2), n: n && n.map(r2), wait: c.bounceWait, hitIn: hitIn && r2(hitIn), stopped: stopped && r2(stopped), fired: !!n && hitIn > BOUNCE.minInto && stopped > BOUNCE.share * hitIn } } });
+        }
         if (n) {
           const [ax, ay, az] = n,
             hitIn = -(H.vx * ax + H.vy * ay + H.vz * az),
@@ -2623,6 +2640,23 @@ self.TM = (() => {
       F[v] += fx * dv;
       F[v + 1] += fy * dv;
       F[v + 2] += fz * dv;
+    }
+    // Test rigs only: {launch: {at, v, yaw, roll, lift, vy}} sets the car going at frame `at`: v units/s along its nose,
+    // turned yaw radians left, rolled roll radians about its nose, lifted `lift` units, plus vy units/s up, no spin.
+    if (TEST && TEST.launch && (s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16)) == TEST.launch.at) {
+      const Lc = TEST.launch;
+      F[v] = fx * Lc.v;
+      F[v + 1] = fy * Lc.v;
+      F[v + 2] = fz * Lc.v;
+      F[av] = F[av + 1] = F[av + 2] = 0;
+      if (Lc.yaw) turnCar(F, body, v, av, upx, upy, upz, Lc.yaw);
+      if (Lc.roll) {
+        const n = Math.hypot(F[v], F[v + 1], F[v + 2]) || 1;
+        turnBody(F, body, av, F[v] / n, F[v + 1] / n, F[v + 2] / n, Lc.roll);
+      }
+      if (Lc.lift) for (const o of [(body + 52) >> 2, (body + 116) >> 2]) F[o + 1] += Lc.lift;
+      F[v + 1] += Lc.vy || 0;
+      c.hit = null;
     }
     c.last = { x, y, z, vx: F[v], vy: F[v + 1], vz: F[v + 2] };
     c.yawWas = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz; // the spin about the car's up, for yawAcc

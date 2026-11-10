@@ -7,6 +7,7 @@
 // node tools/test/tmphys.mjs feel [label]                  catching drifts, turned bumpers, icing through checkpoints, respawns
 // node tools/test/tmphys.mjs tyres [label] [a,b,c1,c2,d,cp]   wet, iced and muddy tyres: which surface undoes which (TYRES)
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
+// node tools/test/tmphys.mjs bounce [label] [cases]        plastic bounces at 150-600 km/h (TMKMH): side hits on walls, roof landings
 // node tools/test/tmphys.mjs reactor [label] [parts,...]   reactor boosts: hover, seams, ramp flights, down, which way, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
@@ -658,6 +659,39 @@ if (section == 'reactor') {
   }
 }
 
+if (section == 'bounce') {
+  // Plastic bounce at speed (BOUNCE, plasticNormal): the car is launched (TEST launch) at each speed (TMKMH) on a plastic
+  // floor between two plastic walls 21 units apart, or upside down over the floor. side<deg>: heading that many degrees
+  // off the walls; roof: upside down 3 units up, falling at 8 units/s. Reports the bounces that fired and were judged
+  // (bounceTrace), the speed into the wall (floor) before the hit and back out of it 0.25 s after.
+  const kmhs = (process.env.TMKMH || '150,300,400,500,600').split(',').map(Number);
+  const chan = [{ n: 'PlasticStartPlat', x: 0, y: 0, z: 0 }];
+  for (let j = -60; j <= 2; j++) { if (j) chan.push({ n: 'PlasticPlatBase', x: 0, y: 0, z: 4 * j }); chan.push({ n: 'PlasticPlatWallStraight', x: 4, y: 0, z: 4 * j, r: 1 }, { n: 'PlasticPlatWallStraight', x: -4, y: 0, z: 4 * j, r: 3 }); }
+  const flat = floor('PlasticStartPlat', 'PlasticPlatBase', 3, 60);
+  const vAt = (l, i) => { const a = l[Math.max(0, i - 5)], b = l[Math.min(l.length - 1, i + 5)], dt = (b.f - a.f) / 1000; return [(b.x - a.x) / dt, (b.y - a.y) / dt, (b.z - a.z) / dt]; };
+  const r1 = (x) => (x == null ? null : +x.toFixed(1));
+  const cases = [['side10', chan, { yaw: 10 }], ['side25', chan, { yaw: 25 }], ['steerL', chan, { rec: { left: [301] } }], ['steerR', chan, { rec: { right: [301] } }], ['gasSide10', chan, { yaw: 10, rec: { up: [0] } }], ['gasSteerL', chan, { rec: { up: [0], left: [301] } }], ['gasSideFloor', flat, { roll: Math.PI / 2, lift: 3, vy: -8, rec: { up: [0] } }], ['gasRoll135', flat, { roll: (3 * Math.PI) / 4, lift: 3, vy: -8, rec: { up: [0] } }], ['gasRoofSoft', flat, { roll: Math.PI, lift: 2, vy: -3, rec: { up: [0] } }], ['gasRoof', flat, { roll: Math.PI, lift: 3, vy: -8, rec: { up: [0] } }], ['roof', flat, { roll: Math.PI, lift: 3, vy: -8 }]].filter(([n]) => !only || only.includes(n));
+  results.bounce = {};
+  const at0 = 300;
+  for (const [name, parts, L] of cases) {
+    const row = (results.bounce[name] = {});
+    for (const kmh of kmhs) {
+      const launch = { at: at0, v: kmh / 3.6, yaw: L.yaw ? (L.yaw * Math.PI) / 180 : 0, roll: L.roll || 0, lift: L.lift || 0, vy: L.vy || 0 };
+      const A = await run(parts, { launch, bounceTrace: 1 }, [{ id: 1, rec: L.rec || {}, frames: at0 + 2500 }]), l = A[1];
+      const b = A.probes.filter((q) => q.bounce), fired = b.filter((q) => q.bounce.fired);
+      let hit = null;
+      if (/roof|floor|roll/i.test(name)) { for (let i = at0 + 20; i < l.length - 6; i++) if (vAt(l, i)[1] > -1) { hit = i; break; } }
+      else for (let i = at0 + 10; i < l.length - 6; i++) if (Math.abs(l[i].x) > 7.5) { hit = i; break; }
+      const vin = hit != null ? vAt(l, Math.max(at0 + 6, hit - 15)) : vAt(l, at0 + 6), vout = hit != null ? vAt(l, Math.min(l.length - 6, hit + 250)) : null, fr0 = fired[0] ? first(l, (q) => q.f >= fired[0].fr) : null, vb = fr0 != null ? vAt(l, fr0 + 20) : null;
+      row[kmh] = /roof|floor|roll/i.test(name)
+        ? { fired: fired.length, judged: b.length, vyIn: r1(vin[1]), vyOut250: vout && r1(vout[1]), peakUp: hit != null ? r1(Math.max(...l.slice(hit, hit + 1500).map((q) => q.y)) - l[hit].y) : null, kmhOut: vout && r1(Math.hypot(...vout) * 3.6), firstFired: fired[0]?.bounce ?? null, firstJudged: b[0]?.bounce ?? null }
+        : { fired: fired.length, judged: b.length, into: r1(Math.abs(vin[0])), outAfterBounce: vb && r1(-Math.sign(l[hit].x) * vb[0]), out250: vout && r1(-Math.sign(l[hit].x) * vout[0]), kmhIn: hit != null ? r1(l[Math.max(at0 + 6, hit - 15)].v) : null, hitMs: hit != null ? hit - at0 : null, kmhOut: vout && r1(Math.hypot(...vout) * 3.6), firstFired: fired[0]?.bounce ?? null, firstJudged: b[0]?.bounce ?? null };
+      if (process.env.TMALL) row[kmh].all = b.map((q) => ({ fr: q.fr - at0, ...q.bounce }));
+      console.log(name, kmh, JSON.stringify(row[kmh]));
+    }
+  }
+}
+
 if (section == 'verify') {
   // The game's own verifier on a track with the new things: it accepts a run only if the car finishes on exactly that
   // frame. Found by an exact run first, then 21 frames round it are checked, twice.
@@ -688,10 +722,14 @@ if (section == 'verify') {
   tracks.reactorOld = L(['WoodStartPlat', 'WoodPlatBase', 'WoodFxReactorDownPlat', 'WoodFxRoulettePlat', { n: 'WoodCheckpointPlat', cp: 0 }, 'WoodFxReactor2OrientedPlat', 'WoodPlatBase', 'WoodFinishPlat', 'WoodPlatBase', 'WoodPlatBase']);
   // Stock road onto bump road through its connector, then a checkpoint, the bumper and the finish on the crown.
   for (const r of [0, 2]) tracks['bump' + r] = L(['Start', 'Straight', 'Straight', { n: 'StadiumBumpFromRoad', r }, 'StadiumBumpStraight', 'StadiumBumpStraight', { n: 'StadiumCheckpointBump', cp: 0 }, 'StadiumBumpStraight', 'StadiumFxUltraBump', 'StadiumBumpStraight', 'StadiumBumpStraight', 'StadiumFinishBump', 'StadiumBumpStraight', 'StadiumBumpStraight']);
+  // Plastic bounces: a channel between plastic walls, an ultra turbo, then a super bumper throws the car into a wall at
+  // speed; it bounces off it and the other wall on to a checkpoint and the finish.
+  tracks.bounce = L(['PlasticStartPlat', 'PlasticPlatBase', 'PlasticFxUltraPlat', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticFxBumper2Plat', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', { n: 'PlasticCheckpointPlat', cp: 0 }, 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticFinishPlat', 'PlasticPlatBase', 'PlasticPlatBase']);
+  for (let k = 0; k < 18; k++) tracks.bounce.push({ n: 'PlasticPlatWallStraight', x: 4, y: 0, z: -4 * k, r: 1 }, { n: 'PlasticPlatWallStraight', x: -4, y: 0, z: -4 * k, r: 3 });
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];
   results.verify = {};
   for (const [name, parts] of Object.entries(tracks)) {
-    { const l = (await run(parts, null, [{ id: 1, rec: { up: [0] }, frames: 12000 }]))[1]; console.log(name, 'path every 0.5 s (x z y km/h next-cp finish):', l.filter((_, i) => i % 500 == 0).map((q) => [q.x, q.z, q.y, q.v].map((v) => v.toFixed(0)).join(',') + ',' + q.n).join(' | ')); }
+    { const A = await run(parts, name == 'bounce' ? { bounceTrace: 1 } : null, [{ id: 1, rec: { up: [0] }, frames: 12000 }]), l = A[1]; if (name == 'bounce') console.log('bounces fired at (frame, km/h):', A.probes.filter((q) => q.bounce && q.bounce.fired).map((q) => [q.fr, +(Math.hypot(...q.bounce.vin) * 3.6).toFixed(0)]).join(' ')); console.log(name, 'path every 0.5 s (x z y km/h next-cp finish):', l.filter((_, i) => i % 500 == 0).map((q) => [q.x, q.z, q.y, q.v].map((v) => v.toFixed(0)).join(',') + ',' + q.n).join(' | ')); }
   const fins = await c.evaluate(`(async()=>{
     const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
     const probe=()=>new Promise(res=>{const w=new Worker('simulation_worker.bundle.js');let last=null;
