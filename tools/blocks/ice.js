@@ -134,6 +134,30 @@ function bobPolys(st, paint, { flat = 1, wallL = 0, wallR = 0 } = {}) {
   }
   return polys;
 }
+// A bobsleigh wall on its own, for wall rides: one side's curved wall from where the channel floor starts to bank
+// (WALL_FOOT units out from the middle, about 8 degrees) up to the lip and its rim, and the solid behind it out to the
+// block's edge, with no floor and no other side. It stands at one edge of its block: side +1 is a wall on the right of
+// the way the block runs, its foot on the block's left edge at the deck's height (so it joins a platform or road on the
+// next block over, the car riding up it as up the channel's wall), rising to the lip 7 units across; side -1 mirrored.
+const WALL_FOOT = 3;
+function bobWallPolys(st, side) {
+  const C = BOB_CURVE,
+    O = BOB.out,
+    y0 = bobFloor(WALL_FOOT),
+    pts = [[WALL_FOOT, y0], ...C.filter((q) => q[0] > WALL_FOOT + 1e-6).map((q) => [q[0], q[1]])],
+    X = (x) => x - WALL_FOOT - O,
+    Y = (y) => y - y0 + DECK,
+    out = X(O),
+    polys = [];
+  const put = (q, mats) => polys.push({ pts: side > 0 ? q : q.map(([x, y]) => [-x, y]).reverse(), cap: st.side, mats: (e0, ring) => mats(side > 0 ? e0 : MIRROR[e0], ring) });
+  put([[-O, 0], [out, 0], [out, DECK], [-O, DECK]], (e) => (e == 0 ? st.under : e == 1 ? st.side : e == 3 ? 'IceRim' : null));
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const last = i + 2 == pts.length;
+    put([[X(pts[i][0]), Y(pts[i][1])], [out, Y(pts[i][1])], [out, Y(pts[i + 1][1])], [X(pts[i + 1][0]), Y(pts[i + 1][1])]], (e, ring) => (e == 1 ? st.side : e == 2 ? (last ? 'IceRim' : null) : e == 3 ? st.deck(ring) : null));
+  }
+  if (out > X(LIP) + 1e-6) put([[X(LIP), Y(TOP)], [out, Y(TOP)], [out, Y(TOP) + 0.01], [X(LIP), Y(TOP) + 0.01]], () => null);
+  return polys;
+}
 // Decals (effect glyphs) lifted onto the curved floor.
 function onFloor(m) {
   for (const list of m.byMat.values()) for (let i = 0; i < list.length; i++) list[i] = [list[i][0], list[i][1] + bobFloor(list[i][0]) - DECK, list[i][2]];
@@ -162,6 +186,20 @@ function buildIce() {
     // A right turn's outer wall is on the left. The wall is one more layer of ice to ride up on.
     [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWall' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high outer wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
     [30, 50, 70, 90].forEach((r, i) => bob('BobCurveWallIn' + (i + 2), 'Bobsleigh curve ' + (i + 2) + ', high inner wall', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallR: 5 }), [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
+    // Bobsleigh walls on their own (bobWallPolys): straights and curves, a wall on the right or on the left of the way
+    // the block runs; the curves turn right, so the left wall is the outside of the turn and the right wall the inside
+    // (driven the other way round they are left turns).
+    {
+      const TW = 'Bobsleigh walls';
+      for (const side of [1, -1]) {
+        const k = side > 0 ? 'R' : 'L',
+          w = side > 0 ? 'on the right' : 'on the left',
+          P = () => bobWallPolys(st, side);
+        bob('BobWall' + k, 'Bobsleigh wall ' + w, T, TW, roadPart(st, P, [{ line: 20 }]));
+        bob('BobWallX2' + k, 'Bobsleigh wall ' + w + ', 2 long', T, TW, roadPart(st, P, [{ line: 40 }]));
+        [30, 50, 70].forEach((r, i) => bob('BobWallCurve' + (i + 2) + k, 'Bobsleigh wall ' + w + ', curve ' + (i + 2) + ' (radius ' + r + ')', T, TW, roadPart(st, P, [{ r, ang: 90 * DEG, dir: 1 }], { arcStep: bobArc(r) })));
+      }
+    }
     bob('BobStraightWall', 'Bobsleigh, high wall on the left', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5 }), [{ line: 20 }]));
     bob('BobStraightWalls', 'Bobsleigh, high walls both sides', T, 'Curves with wall', roadPart(st, bobProfile(st, null, { wallL: 5, wallR: 5 }), [{ line: 20 }]));
     // Chicanes: two arcs of radius 25 and 53.13 degrees shift the channel one block sideways over two blocks.

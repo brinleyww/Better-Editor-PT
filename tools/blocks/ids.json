@@ -3775,5 +3775,15 @@
  "RoadKitMagnetWallL": 5180,
  "RoadKitMagnetToWallL": 5181,
  "RoadKitMagnetWallR": 5182,
- "RoadKitMagnetToWallR": 5183
+ "RoadKitMagnetToWallR": 5183,
+ "IceBobWallR": 5184,
+ "IceBobWallX2R": 5185,
+ "IceBobWallCurve2R": 5186,
+ "IceBobWallCurve3R": 5187,
+ "IceBobWallCurve4R": 5188,
+ "IceBobWallL": 5189,
+ "IceBobWallX2L": 5190,
+ "IceBobWallCurve2L": 5191,
+ "IceBobWallCurve3L": 5192,
+ "IceBobWallCurve4L": 5193
 }

@@ -854,6 +854,12 @@ if (section == 'verify') {
   // Magnet road: stock road onto magnet road, the quarter pipe up, the loop's top and two ceiling pieces, upside down
   // on the magnet, to a half finish box hanging just past the ceiling's end, which the car crosses still upside down.
   tracks.magnetCeiling = [['Start', 0, 0], ['Straight', 0, -4], ['RoadKitMagnetFromRoad', 0, -8], ['RoadKitMagnetStraight', 0, -12], ['RoadKitMagnetQuarterUp', 0, -16], ['RoadKitMagnetLoopTop', 4, -16], ['RoadKitMagnetCeiling', 7, -12], ['RoadKitMagnetCeiling', 7, -8], ['RoadKitFinishBoxHalf', 6, -4]].map(([n, y, z]) => ({ n, x: 0, y, z }));
+  // Bobsleigh walls on their own: an ice platform lane between a right and a left bobsleigh wall; steering right into the
+  // right wall and back at about 150 km/h, the car rides up it and comes down to the finish.
+  tracks.bobWallsOnly = L(['IceStartPlat', ...Array(30).fill('IcePlatBase')]);
+  tracks.bobWallsOnly[24] = { ...tracks.bobWallsOnly[24], n: 'IceFinishPlat' };
+  for (let k = 0; k < 31; k++) tracks.bobWallsOnly.push({ n: 'IceBobWallR', x: 4, y: 0, z: -4 * k }, { n: 'IceBobWallL', x: -4, y: 0, z: -4 * k });
+  recs.bobWallsOnly = { up: [0], right: [2500, 2850], left: [3500, 3900] };
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];
   results.verify = {};
   // A track's own controls (toggle frames, as rec() takes them): recs[name]; otherwise the gas held from the start.
