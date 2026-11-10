@@ -806,8 +806,12 @@ self.TM = (() => {
   //   before (x0.6, +0.1) keep it off the bump stops: it bounces once on a 30 unit drop and keeps its speed (226 km/h
   //   1 s after, Stadium 227; softer compression dampers bottomed out and lost up to 30%), and soaks up dirt ripples
   //   (106 km/h out where the Stadium car leaves at 85).
-  // air: in the air, steering yaws the car this much harder than nothing (1: no help). The brake in the air is the
-  //   game's own for every car: it steadies the car, and nothing here adds to it.
+  // air: in the air, steering yaws the car this much harder than nothing (1: no help). Every car is at 1 now: the Snow
+  //   (1.2) and Desert (1.8) cars turned at 21 and 48 deg/s on the steering in the air, which felt like Rocket League's
+  //   air control and tipped them over in a jump (the Desert car 45 degrees over 1 s into a jump with the steering held,
+  //   the Stadium car 22), so no car steers in the air, as the Stadium car never did. The brake in the air is the game's
+  //   own for every car: it steadies the car, and nothing here adds to it.
+  // flight: the alt cars' steadier flights (see FLIGHT).
   // ices: the surfaces its tyres ice up on (see ICING); in TM2020 the Stadium car's tyres ice up too (the Snow car's
   //   studs never do). loose: on dirt, grass and snow the engine pulls with this factor instead of accel, and the top end
   //   drag does not count there (the Rally car is geared for loose ground).
@@ -816,9 +820,9 @@ self.TM = (() => {
     Stadium: { grip: [1, 1, 1, 1, 1, 1, 1, 1, 1], iceAssist: 1, accel: null, topSpeed: 0, topDrag: 0, susp: null, air: 1, ices: [3, 4, 7], look: { tint: null } },
     // Snow: x3.5 on ice still slid like plastic and spun when let go (tmphys.mjs), so its studded tyres hold more,
     // the rear most (rearGrip: the rear tyres' own multipliers where given).
-    Snow: { grip: [0.85, 0.85, 0.95, 1, 4.5, 3.5, 1.1, 1.1, 2.4], rearGrip: [0.85, 0.85, 0.95, 1, 5.5, 4.2, 1.1, 1.1, 2.4], iceAssist: 0.3, accel: [[1e9, 0.9]], topSpeed: 230 / 3.6, topDrag: 0.012, susp: { stiff: 0.7, damp: 1, roll: 1, rest: 0.08 }, air: 1.2, ices: [], look: { tint: '#e9eef4' } },
-    Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], loose: 1.05, topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, dampIn: 0.3, roll: 1.5, rest: 0.03 }, air: 1, ices: [3, 4, 7], look: { tint: '#c94a2a' } },
-    Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.02, dampIn: 0.1, roll: 1.2, rest: 0.1 }, air: 1.8, ices: [3, 4, 7], look: { tint: '#d6a24a' } },
+    Snow: { grip: [0.85, 0.85, 0.95, 1, 4.5, 3.5, 1.1, 1.1, 2.4], rearGrip: [0.85, 0.85, 0.95, 1, 5.5, 4.2, 1.1, 1.1, 2.4], iceAssist: 0.3, accel: [[1e9, 0.9]], topSpeed: 230 / 3.6, topDrag: 0.012, susp: { stiff: 0.7, damp: 1, roll: 1, rest: 0.08 }, air: 1, flight: true, ices: [], look: { tint: '#e9eef4' } },
+    Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], loose: 1.05, topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, dampIn: 0.3, roll: 1.5, rest: 0.03 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#c94a2a' } },
+    Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.02, dampIn: 0.1, roll: 1.2, rest: 0.1 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#d6a24a' } },
   };
   // Test rigs only: {veh: {name: {setting: value}}} tries other settings for a vehicle.
   if (TEST && TEST.veh) for (const k in TEST.veh) Object.assign(VEHICLES[k], TEST.veh[k]);
@@ -826,6 +830,13 @@ self.TM = (() => {
   // Air control for the cars that have it (air > 1): after `after` frames off the ground, steering pulls the yaw rate
   // towards yaw x steer, by pull x (air - 1) per frame.
   const AIR = { after: 20, yaw: 1.2, pull: 0.01 };
+  // The alt cars' flights (VEHICLES flight): their softer, taller suspension throws the body off a ramp spinning harder
+  // than the Stadium car (tmphys: off a kicker the Desert car pitched at up to 55 deg/s where the Stadium car leaves at
+  // 24 to 40, and rolled up to 17 deg/s, so long jumps ended in flips). In the air, from the first frame off the ground,
+  // their pitch spin is pulled (pull per frame) back inside +-pitchMax rad/s (the Stadium car's own range) and their roll
+  // spin towards none (roll per frame). Nothing about their shape or hitbox changes, and the Stadium car is left exactly
+  // as it is.
+  const FLIGHT = { pitchMax: 0.62, pull: 0.02, roll: 0.01 };
   // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per entry, square to the way the car is going in the
   // plate's plane, away from the line through the plate's centre along that way (inside `centre` units of it: to the
   // right), plus a hop (units/s). Platforms are driven every way, so the plate's own axes would brake a car crossing a
@@ -1638,7 +1649,9 @@ self.TM = (() => {
       // Wheels on each surface (by part.u), so pushes and drag count each surface by its own share of the wheels.
       on = [0, 0, 0, 0, 0, 0, 0, 0, 0],
       // and what their tyres' states leave of their grip, added up (TYRES.factor), for the grip that grows with speed
-      tyreOn = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+      tyreOn = [0, 0, 0, 0, 0, 0, 0, 0, 0],
+      // the load on the front (steered) wheels on each surface, added up (suspension force, +276), for the extra turn
+      frontLoad = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     let plasticWheels = 0,
       wetRoll = 0, // the wet tyres' extra rolling drag (TYRES wetRoll), share of the speed per second, all wheels added up
       slideWheels = 0, // wheels on wet wood, each by its wetness, and how they handle (TYRES slick)
@@ -1677,6 +1690,7 @@ self.TM = (() => {
       // Test rigs only: {tyres: {wet, ice, mud}} holds every tyre in that state.
       if (TEST && TEST.tyres) Object.assign(t, TEST.tyres);
       if (TEST && TEST.trace) (c.probe ??= { u: [], grip: [] }), (c.probe.u[w] = TYRES.AIR), (c.probe.grip[w] = 0);
+      if (TEST && TEST.trace && c.probe.load) c.probe.load[w] = 0;
       if (!heap[a + 84]) {
         // Off the ground the tyre is in the water while the car's underside is.
         TYRES.step(t, TYRES.AIR, water != null && y - WATER.under < water.surface, heat, c.vehicle, 0.001);
@@ -1713,6 +1727,7 @@ self.TM = (() => {
       // Only until the slide is there, so a slippery deck does not spin round.
       if (w >= 2 && c.kickLeft > 0 && (Math.abs(slip) * 180) / Math.PI < c.kickDeg) grip *= 1 - (1 - c.kickRear) * (c.kickLeft / c.kickFrames);
       if (f != null) tyreOn[f] += tk;
+      if (f != null && w < 2) frontLoad[f] += F[g + 69];
       if (t.wet > 0 && TYRES.row(f).wetRoll) wetRoll += TYRES.row(f).wetRoll * t.wet;
       if (t.wet > 0 && TYRES.row(f).slick) (slideWheels += t.wet), slideOn++, (slideIce = TYRES.row(f).slick);
       normals.push(F[g], F[g + 1], F[g + 2]);
@@ -1735,6 +1750,7 @@ self.TM = (() => {
       if (neoGround(f, t)) neoWheels++;
       F[g + 57] = c.stockGrip * grip;
       if (TEST && TEST.trace) (c.probe.u[w] = f ?? TYRES.ROAD), (c.probe.grip[w] = +grip.toFixed(3));
+      if (TEST && TEST.trace) (c.probe.load ??= [0, 0, 0, 0]), (c.probe.load[w] = Math.round(F[g + 69]));
       // On the ground the tyre is in the water when its contact is under the surface (shallow water's floor).
       TYRES.step(t, f, water != null && F[g + 5] < water.surface, heat, c.vehicle, 0.001);
       if (surface && surface.drag) {
@@ -2004,7 +2020,13 @@ self.TM = (() => {
         base = F[(wheels + 164) >> 2] - F[(wheels + 2 * 284 + 164) >> 2],
         hold = Math.max(0, 1 - Math.abs(slip) / 0.35),
         tyres = tyreOn[u] / on[u],
-        a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * (1 - ngK) * 0.001;
+        // The extra turn is the front tyres' grip, so it needs them on the surface and carrying weight: all of it while
+        // the two front wheels there carry a resting wheel's load between them (a third of what they carry at rest),
+        // none with them off the ground. Going light over a crest or off the lip of a jump, with the rear wheels still
+        // touching, the car used to keep turning the way it was going (17 deg/s at 150 km/h where the stock road's car
+        // turns 2), which felt like steering in the air.
+        light = Math.min(1, frontLoad[u] / ((9.81 / F[(body + 344) >> 2]) / 4)),
+        a = ((fwd * Math.tan(angle)) / base) * k * build * hold * level * tyres * V.grip[u + 1] * (on[u] / 4) * light * (1 - ngK) * 0.001;
       // Not while the game's own steering countersteers a slide against the way the steering is held (its wheels point
       // the other way): the extra turn then turned the car out of its own slide, and a wet car slid on in a straight line.
       if (a != 0 && base > 0.5 && !(steer != 0 && angle * steer < 0)) turnCar(F, body, v, av, gx / gl, gy / gl, gz / gl, a);
@@ -2279,6 +2301,17 @@ self.TM = (() => {
       F[av + 2] += upz * dy;
       // Nothing about the pitch: the brake in the air steadies these cars exactly as it does the stock car (the game's
       // own air brake). It used to lift the nose here on top of that, which tipped the car instead of steadying it.
+    }
+
+    // The alt cars' steadier flights (FLIGHT): pitch spin back inside +-pitchMax, roll spin towards none.
+    if (V.flight && contacts == 0) {
+      const pitch = F[av] * lx + F[av + 1] * ly + F[av + 2] * lz,
+        roll = F[av] * fx + F[av + 1] * fy + F[av + 2] * fz,
+        dp = (Math.max(-FLIGHT.pitchMax, Math.min(FLIGHT.pitchMax, pitch)) - pitch) * FLIGHT.pull,
+        dr = -roll * FLIGHT.roll;
+      F[av] += lx * dp + fx * dr;
+      F[av + 1] += ly * dp + fy * dr;
+      F[av + 2] += lz * dp + fz * dr;
     }
 
     // Water (see WATER).
@@ -2570,7 +2603,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, load: c.probe && c.probe.load ? [...c.probe.load] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 

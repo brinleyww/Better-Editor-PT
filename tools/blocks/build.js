@@ -140,7 +140,7 @@ const MATERIALS = litAll({
   DirtVergeB: '#97693f',
   // Grass kit (TM2020 grass): mown stripes a little fresher than penalty grass, hedge kerbs, brown soil.
   GrassDeck: '#79b244',
-  GrassDeckB: '#70a83d',
+  GrassDeckB: '#699b3b', // the darker mown stripe: 0.87 of GrassDeck, so the stripes read without seams
   GrassSeam: '#5a8f31',
   GrassLine: '#8fc25a',
   GrassKerb: '#3f6f2a',
@@ -221,7 +221,7 @@ const lighten = (hex, k) => {
   return '#' + [16, 8, 0].map((sh) => c(sh).toString(16).padStart(2, '0')).join('');
 };
 const plasticSet = (a) => ({ PlasticDeck: a, PlasticDeckB: shade(a, 0.93), PlasticSeam: lighten(a, 0.45) });
-const grassSet = (a) => ({ GrassDeck: a, GrassDeckB: shade(a, 0.93), GrassSeam: shade(a, 0.76), GrassLine: lighten(a, 0.2) });
+const grassSet = (a) => ({ GrassDeck: a, GrassDeckB: shade(a, 0.87), GrassSeam: shade(a, 0.76), GrassLine: lighten(a, 0.2) });
 const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors, STOCK_MATS) }));
 // Stock barriers recolour with the season the way stock roads do (main.bundle.js environment colours).
 const BARRIER = { 2: { RoadBarrier: '#898989' }, 3: { RoadBarrier: '#211001' } };

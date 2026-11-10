@@ -120,13 +120,23 @@ const STYLES = {
     tower: 'Trestle tower, 4 layers',
     fence: 'Fence, wooden rails',
   }),
-  // TM2020 grass platform: mown grass in stripes, darker mowing lines, dark hedge kerbs over brown soil.
-  Grass: () => ({
-    ...relabel(STYLES.Plastic(), { PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' }),
-    deco: 'grass',
-    tower: 'Truss tower, 4 layers',
-    fence: 'Fence',
-  }),
+  // TM2020 grass platform: mown grass in stripes, dark hedge kerbs over brown soil. The shapes are plastic's, but the
+  // deck is mown in 5-unit stripes running along the road, light and dark across it, with no seams and no bands across,
+  // so it reads as stripes, not plastic's grid of panels. Penalty grass keeps its checker.
+  Grass: () => {
+    const st = relabel(STYLES.Plastic(), { PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' });
+    const stripe = (x) => (Math.floor((x + 50) / 5) % 2 ? 'GrassDeckB' : 'GrassDeck');
+    return {
+      ...st,
+      // cut only where the stripes change (one cut every 5 across, none along): fewer faces than plastic's lattice
+      pattern: st.pattern && { period: 5, band: 0, lateral: PATTERNS.grass.lateral, mat: (ring, x) => stripe(x) },
+      deck: () => 'GrassDeck',
+      patchMat: (i) => ((i >> 1) % 2 ? 'GrassDeckB' : 'GrassDeck'),
+      deco: 'grass',
+      tower: 'Truss tower, 4 layers',
+      fence: 'Fence',
+    };
+  },
   // The road kit: the kits' shapes as stock road, for the stock Road browser. Stock road grey all over (the panel
   // shades and seams are the same grey, so the deck is plain like the stock one), the stock dark barriers, and under
   // them the stock red and white kerb strips (kerb: the railed road's edge strips; the roads with no rails keep a

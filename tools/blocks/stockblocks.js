@@ -24,13 +24,14 @@ const PLASTIC = { deck: 'PlasticDeck', deckB: 'PlasticDeckB', seam: 'PlasticSeam
 const swap = (R) => Object.fromEntries(Object.entries(PLASTIC).map(([k, m]) => [k, R[m]]));
 const WOOD_TONES = ['WoodDeckA', 'WoodDeckB', 'WoodDeckC', 'WoodDeckD'];
 const plankTone = (n) => WOOD_TONES[(((n * 2654435761) >>> 0) % 7) % 4];
+// stripes: grass is mown in stripes instead (5 wide along the piece, light and dark across it, no seams), as its kit is.
 // road: the kit takes the stock road and turn pieces too (all: every one, its own road is not the railed road).
 // tabs: where each of the stock browser's tabs goes in this kit's browser. say: the label of a piece.
 const KITS = [
   { key: 'Plastic', surface: 'Plastic', look: PLASTIC, road: true, tabs: { Road: 'Road', Turns: 'Road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
   { key: 'Wood', surface: 'Wood', planks: true, look: { seam: 'WoodSeam', line: 'WoodBeam', rail: 'WoodBeam', side: 'WoodBeam', under: 'WoodUnder', solid: 'WoodDeckA', wall: 'WoodBeam', trim: 'WoodBeamB' }, road: true, tabs: { Road: 'Road', Turns: 'Road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
   { key: 'Dirt', surface: 'Dirt', look: swap({ PlasticDeck: 'DirtDeck', PlasticDeckB: 'DirtDeckB', PlasticSeam: 'DirtSeam', PlasticLine: 'DirtLine', PlasticRail: 'DirtRail', PlasticKerb: 'DirtKerb', PlasticUnder: 'DirtUnder' }), road: 'all', tabs: { Road: 'Railed road', Turns: 'Railed road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
-  { key: 'Grass', surface: 'Grass', look: swap({ PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' }), road: 'all', tabs: { Road: 'Railed road', Turns: 'Railed road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
+  { key: 'Grass', surface: 'Grass', stripes: true, look: swap({ PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' }), road: 'all', tabs: { Road: 'Railed road', Turns: 'Railed road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
   { key: 'Ice', surface: 'Ice', u: 3, look: swap({ PlasticDeck: 'Ice', PlasticDeckB: 'IceB', PlasticSeam: 'IceLine', PlasticLine: 'IceLine', PlasticRail: 'IceRim', PlasticKerb: 'IceWall', PlasticUnder: 'IceUnder' }), road: false, say: (l) => 'Ice ' + l[0].toLowerCase() + l.slice(1), tabs: { Planes: 'Ice platform', Blocks: 'Ice blocks', 'Wall track': 'Ice wall track' } },
   { key: 'IceSnow', surface: 'Ice', u: 7, look: swap({ PlasticDeck: 'Snow', PlasticDeckB: 'SnowB', PlasticSeam: 'SnowLine', PlasticLine: 'SnowLine', PlasticRail: 'SnowRim', PlasticKerb: 'SnowSide', PlasticUnder: 'SnowUnder' }), road: false, say: (l) => 'Snow ' + l[0].toLowerCase() + l.slice(1), tabs: { Planes: 'Snow platform', Blocks: 'Snow blocks', 'Wall track': 'Snow wall track' } },
 ];
@@ -152,6 +153,11 @@ function pattern(m, kit, tri, n) {
     return;
   }
   // Panels 5 x 5 in two shades, a seam 0.1 wide along every joint.
+  if (kit.stripes) {
+    // Mown stripes: cut only where the stripes change.
+    for (const p of slice([tri], ax[0], every(5, [0]))) emit(Math.floor(centre(p)[ax[0]] / 5) % 2 ? kit.look.deckB : kit.look.deck, p);
+    return;
+  }
   let polys = [tri];
   for (const a of ax) polys = slice(polys, a, every(5, [-0.05, 0.05]));
   for (const p of polys) {
