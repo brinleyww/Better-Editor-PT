@@ -63,6 +63,101 @@ self.TM = (() => {
   const positions = (m) => new Float32Array(bin, m[1], m[2]);
   const indices = (m) => new Uint16Array(bin, m[3], m[4]);
 
+  // ---- penalty grass tufts ----------------------------------------------------------------------------------------
+  // Little clumps of three blades stand on penalty grass (the Grass and GrassB materials), as on Trackmania 2020's, so
+  // it reads as penalty and not as a lawn to drive on. They are only drawn: made here when a part's mesh is built, never
+  // stored in the blocks file, and the physics never sees them. One clump per `per` square units of grass facing up, at
+  // most `max` a part (a big part spreads them thinner); a blade is one triangle seen from both sides, `height` tall,
+  // leaning out up to `lean`, in one of `tones` (times the colour of the grass under it). They ride in the part's own
+  // mesh, so they cost no draw of their own and are culled with it. Not in Low performance mode.
+  const TUFT = { per: 4, max: 200, height: [0.2, 0.42], width: 0.14, lean: 0.18, tones: [1.35, 0.65, 1.12] };
+  const TUFT_ON = new Set(['Grass', 'GrassB']);
+  const tuftCache = new Map();
+  const tuftsWanted = () => {
+    try {
+      if (typeof self.__nswsSettingBoolean == 'function') return self.__nswsSettingBoolean('LowPerformanceMode') !== true;
+      return !(self.TM.cull && self.TM.cull.low);
+    } catch {
+      return true;
+    }
+  };
+  function tuftsOf(p) {
+    if (tuftCache.has(p.i)) return tuftCache.get(p.i);
+    // Grass triangles facing up: [material, ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, area].
+    const faces = [];
+    let area = 0;
+    for (const m of p.m) {
+      if (!TUFT_ON.has(D.materialNames[m[0]])) continue;
+      const P = positions(m),
+        I = indices(m);
+      for (let i = 0; i < I.length; i += 3) {
+        const a = I[i] * 3,
+          b = I[i + 1] * 3,
+          c = I[i + 2] * 3,
+          ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2],
+          vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2],
+          nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx,
+          l = Math.hypot(nx, ny, nz);
+        if (l < 1e-6 || ny / l < 0.3) continue;
+        faces.push([m[0], P[a], P[a + 1], P[a + 2], P[b], P[b + 1], P[b + 2], P[c], P[c + 1], P[c + 2], nx / l, ny / l, nz / l, l / 2]);
+        area += l / 2;
+      }
+    }
+    if (!faces.length) return (tuftCache.set(p.i, null), null);
+    // The same clumps on every machine and every load: a small seeded generator (mulberry32).
+    let seed = (Math.imul(p.i + 1, 0x9e3779b1) ^ 0x5bd1e995) >>> 0;
+    const rnd = () => {
+      seed = (seed + 0x6d2b79f5) >>> 0;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const per = Math.max(TUFT.per, area / TUFT.max),
+      pos = [],
+      mat = [],
+      tone = [];
+    for (const f of faces) {
+      const [mi, ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, A] = f;
+      // Two directions along the face: its first edge, and the one square to that.
+      let tx = bx - ax, ty = by - ay, tz = bz - az;
+      const tl = Math.hypot(tx, ty, tz) || 1;
+      tx /= tl; ty /= tl; tz /= tl;
+      const sx = ny * tz - nz * ty, sy = nz * tx - nx * tz, sz = nx * ty - ny * tx;
+      for (let n = Math.floor(A / per + rnd()); n > 0; n--) {
+        const r = Math.sqrt(rnd()),
+          q = rnd(),
+          wa = 1 - r,
+          wb = r * (1 - q),
+          wc = r * q,
+          x = ax * wa + bx * wb + cx * wc,
+          y = ay * wa + by * wb + cy * wc,
+          z = az * wa + bz * wb + cz * wc,
+          turn = rnd() * 6.2832;
+        for (let k = 0; k < 3; k++) {
+          const ang = turn + k * 2.0944 + (rnd() - 0.5) * 0.9,
+            ca = Math.cos(ang),
+            sa = Math.sin(ang),
+            dx = tx * ca + sx * sa, dy = ty * ca + sy * sa, dz = tz * ca + sz * sa,
+            h = TUFT.height[0] + (TUFT.height[1] - TUFT.height[0]) * rnd(),
+            out = 0.05 + TUFT.lean * (0.4 + 0.6 * rnd()),
+            w = TUFT.width * (0.4 + 0.2 * rnd()),
+            // Half the blade's foot, square to the way it leans; the foot sits a hair under the grass.
+            ex = (sx * ca - tx * sa) * w, ey = (sy * ca - ty * sa) * w, ez = (sz * ca - tz * sa) * w,
+            fx = x + dx * 0.05 - nx * 0.03, fy = y + dy * 0.05 - ny * 0.03, fz = z + dz * 0.05 - nz * 0.03,
+            px = x + dx * out + nx * h, py = y + dy * out + ny * h, pz = z + dz * out + nz * h,
+            shade = Math.floor(rnd() * TUFT.tones.length);
+          pos.push(fx - ex, fy - ey, fz - ez, fx + ex, fy + ey, fz + ez, px, py, pz, fx + ex, fy + ey, fz + ez, fx - ex, fy - ey, fz - ez, px, py, pz);
+          mat.push(mi, mi);
+          tone.push(shade, shade);
+        }
+      }
+    }
+    const made = pos.length ? { pos: new Float32Array(pos), mat, tone } : null;
+    tuftCache.set(p.i, made);
+    return made;
+  }
+
   // Render geometry for one colour slot: non-indexed positions and a matching colour array.
   // `toRgb(hex)` must return linear [r,g,b] (the page passes THREE.Color so it matches stock vertex colours).
   // Water is drawn last, surface before sides, and `groups` ([first vertex, count, material 1]) marks it for the
@@ -71,8 +166,9 @@ self.TM = (() => {
   // 'finish'), and tm_water.js's material() reads it, since every caller asks for that material straight after.
   const WATER_ORDER = { Water: 1, WaterSide: 2, FinishBox: 3 };
   function renderArrays(id, slotColors, toRgb) {
-    const p = byId.get(id);
-    let tris = 0;
+    const p = byId.get(id),
+      tufts = tuftsWanted() ? tuftsOf(p) : null;
+    let tris = tufts ? tufts.pos.length / 3 : 0;
     for (const m of p.m) tris += m[4];
     const pos = new Float32Array(tris * 3),
       col = new Float32Array(tris * 3),
@@ -80,6 +176,21 @@ self.TM = (() => {
       meshes = [...p.m].sort((a, b) => order(a) - order(b)),
       groups = [];
     let o = 0;
+    if (tufts) {
+      pos.set(tufts.pos);
+      const base = new Map();
+      for (let t = 0; t < tufts.mat.length; t++) {
+        const mi = tufts.mat[t];
+        let rgb = base.get(mi);
+        if (!rgb) base.set(mi, (rgb = toRgb(slotColors[D.materialNames[mi]] ?? D.materials[mi])));
+        const k = TUFT.tones[tufts.tone[t]];
+        for (let v = 0; v < 3; v++, o += 3) {
+          col[o] = Math.min(1, rgb[0] * k);
+          col[o + 1] = Math.min(1, rgb[1] * k);
+          col[o + 2] = Math.min(1, rgb[2] * k);
+        }
+      }
+    }
     for (const m of meshes) {
       if (order(m)) {
         const last = groups[groups.length - 1];
