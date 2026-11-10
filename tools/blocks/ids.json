@@ -3758,5 +3758,22 @@
  "RoadKitFxNoGripPlat": 5163,
  "RoadKitFxResetWheelsRoad": 5164,
  "RoadKitFxResetWheelsOpen": 5165,
- "RoadKitFxResetWheelsPlat": 5166
+ "RoadKitFxResetWheelsPlat": 5166,
+ "RoadKitMagnetStraight": 5167,
+ "RoadKitMagnetStraightX2": 5168,
+ "RoadKitMagnetCurve1": 5169,
+ "RoadKitMagnetCurve2": 5170,
+ "RoadKitMagnetCurve3": 5171,
+ "RoadKitMagnetFromRoad": 5172,
+ "RoadKitMagnetQuarterUp": 5173,
+ "RoadKitMagnetWallUp": 5174,
+ "RoadKitMagnetLoopTop": 5175,
+ "RoadKitMagnetLoopDive": 5176,
+ "RoadKitMagnetLoopOut": 5177,
+ "RoadKitMagnetCeiling": 5178,
+ "RoadKitMagnetCeilingX2": 5179,
+ "RoadKitMagnetWallL": 5180,
+ "RoadKitMagnetToWallL": 5181,
+ "RoadKitMagnetWallR": 5182,
+ "RoadKitMagnetToWallR": 5183
 }

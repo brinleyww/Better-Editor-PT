@@ -268,7 +268,9 @@ self.TM = (() => {
       // Plastic collision triangles by 5-unit cell, world coordinates: the bounce reads its surface normal from these.
       walls = { tris: [], cells: new Map() },
       // Level faces of bobsleigh ice by 5-unit column, world coordinates: the tops of its walls (see iceTop).
-      tops = { tris: [], cells: new Map() };
+      tops = { tris: [], cells: new Map() },
+      // Magnet faces (part.mg) by 5-unit cell, world coordinates: they hold the car (MAGNET).
+      mags = { tris: [], cells: new Map() };
     track.forEachPart((x, y, z, id) => {
       if (!isTM(id)) {
         records++;
@@ -278,7 +280,7 @@ self.TM = (() => {
       if (p.p != null) records++;
       for (const m of physicsMeshes(p)) extra += m[4] * 3;
     });
-    fxBegin(carId, zones, cells, extra > 0, spawns, walls, tops);
+    fxBegin(carId, zones, cells, extra > 0, spawns, walls, tops, mags);
     if (extra == 0) return { vertices: mountain, records };
 
     loadSync();
@@ -306,13 +308,14 @@ self.TM = (() => {
           out[o + 2] = M[6] * a + M[7] * b + M[8] * c + wz - off.z;
         }
       }
-      // The bounce's walls: the part's own bounce list (no deco, poles or gate banners) when it has one.
-      if (bouncy)
-        for (const m of p.bw ? [p.bw] : physicsMeshes(p)) {
+      // The bounce's walls: the part's own bounce list (no deco, poles or gate banners) when it has one; the magnet's
+      // faces from the part's magnet list.
+      for (const [grid, list] of [[walls, bouncy ? (p.bw ? [p.bw] : physicsMeshes(p)) : []], [mags, p.mg ? [p.mg] : []]])
+        for (const m of list) {
           const P = positions(m),
             I = indices(m);
           for (let t = 0; t < I.length; t += 3) {
-            const k = walls.tris.length / 9,
+            const k = grid.tris.length / 9,
               T = [];
             for (let j = 0; j < 3; j++) {
               const q = I[t + j] * 3;
@@ -321,15 +324,15 @@ self.TM = (() => {
               T[3 * j + 1] += wy;
               T[3 * j + 2] += wz;
             }
-            walls.tris.push(...T);
+            grid.tris.push(...T);
             const lo = [0, 1, 2].map((a) => Math.floor(Math.min(T[a], T[a + 3], T[a + 6]) / 5)),
               hi = [0, 1, 2].map((a) => Math.floor(Math.max(T[a], T[a + 3], T[a + 6]) / 5));
             for (let cx = lo[0]; cx <= hi[0]; cx++)
               for (let cy = lo[1]; cy <= hi[1]; cy++)
                 for (let cz = lo[2]; cz <= hi[2]; cz++) {
                   const key = cellKey(cx, cy, cz),
-                    l = walls.cells.get(key);
-                  l ? l.push(k) : walls.cells.set(key, [k]);
+                    l = grid.cells.get(key);
+                  l ? l.push(k) : grid.cells.set(key, [k]);
                 }
           }
         }
@@ -878,6 +881,17 @@ self.TM = (() => {
   // started with to count (tmphys bounce: a car rolled 135 degrees landing at 500 and 600 km/h never bounced).
   const BOUNCE = { hit: 0.5, window: 30, gap: 8, minInto: 3, share: 0.45, restitution: 1, pop: 3, cooldown: 150, grip: 0.6, steady: 250, calm: 0.97, chain: 8000, fade: 0.55 };
 
+  // Magnet road (tools/blocks/magnet.js; after TrackMania Turbo's and TM2 Canyon's magnet surfaces): while the car's
+  // middle is within reach of a magnet face (part.mg) that faces the way its up points (it drives on it, or has just left
+  // it: off a lip, over a bump, in the air between two pieces), the world's gravity is taken away and the car is pulled
+  // towards the face along its normal at pull x the game's gravity instead, so it sticks to walls, round loops and upside
+  // down on a ceiling as it would to a floor; on a flat magnet floor that is exactly gravity. In full within full units,
+  // easing out to none at reach. The tyres grip as on the stock road (the magnet parts are surface 8). The car is also
+  // turned to face the face it is held to: its spin square to the face's normal is pulled (hold per frame, in full off
+  // the ground, a quarter of it on two or three wheels, none on four) towards level x the angle between its up and the
+  // normal (rad/s per rad), so off a twist or a bump it comes down on its wheels instead of rolling over onto its roof.
+  const MAGNET = { reach: 3, full: 1.6, pull: 1, facing: 0.5, level: 6, hold: 0.02 };
+  if (TEST && TEST.magnet) Object.assign(MAGNET, TEST.magnet);
   // Countersteering on plastic and loose ground, once the car slides more than `from` (radians) above minSpeed (units
   // per second): the yaw rate is pulled by `pull` per frame towards catchRate x slip, eased off to at most maxRate
   // (rad/s). It builds up over rampIn frames of countersteer and fades over `hold` frames after it, so catching a big
@@ -1115,6 +1129,45 @@ self.TM = (() => {
         }
     return best;
   }
+  // The magnet face nearest the car's middle within reach (MAGNET), skipping faces that do not face the way the car's
+  // up points (a magnet ceiling over a car on the floor, a wall beside it): [distance, normal towards the car], or null.
+  function magnetNear(mags, x, y, z, ux, uy, uz) {
+    const T = mags.tris,
+      cx = Math.floor(x / 5),
+      cy = Math.floor(y / 5),
+      cz = Math.floor(z / 5);
+    let best = null,
+      bestD = MAGNET.reach * MAGNET.reach;
+    const seen = new Set();
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++) {
+          const l = mags.cells.get(cellKey(cx + i, cy + j, cz + k));
+          if (!l) continue;
+          for (const t of l) {
+            if (seen.has(t)) continue;
+            seen.add(t);
+            const b = t * 9;
+            closestOnTri(x, y, z, T, b, nearPt);
+            const ex = x - nearPt[0],
+              ey = y - nearPt[1],
+              ez = z - nearPt[2],
+              d = ex * ex + ey * ey + ez * ez;
+            if (d >= bestD) continue;
+            let nx = (T[b + 4] - T[b + 1]) * (T[b + 8] - T[b + 2]) - (T[b + 5] - T[b + 2]) * (T[b + 7] - T[b + 1]),
+              ny = (T[b + 5] - T[b + 2]) * (T[b + 6] - T[b]) - (T[b + 3] - T[b]) * (T[b + 8] - T[b + 2]),
+              nz = (T[b + 3] - T[b]) * (T[b + 7] - T[b + 1]) - (T[b + 4] - T[b + 1]) * (T[b + 6] - T[b]);
+            const nl = Math.hypot(nx, ny, nz);
+            if (nl < 1e-9) continue;
+            ((nx /= nl), (ny /= nl), (nz /= nl));
+            if (nx * ex + ny * ey + nz * ez < 0) ((nx = -nx), (ny = -ny), (nz = -nz));
+            if (nx * ux + ny * uy + nz * uz < MAGNET.facing) continue;
+            best = [Math.sqrt(d), nx, ny, nz];
+            bestD = d;
+          }
+        }
+    return best;
+  }
   // The top of the bobsleigh ice above a point inside its wall: the lowest face over (x, z) at or above y that does not
   // lean towards or away from the channel (ox, oz: unit, out of the channel; the wall's own faces do), or null.
   function iceTop(tops, x, y, z, ox, oz) {
@@ -1148,11 +1201,11 @@ self.TM = (() => {
   }
 
   const cars = new Map();
-  function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }, tops = { tris: [], cells: new Map() }) {
+  function fxBegin(carId, zones, cells, active, spawns = [], walls = { tris: [], cells: new Map() }, tops = { tris: [], cells: new Map() }, mags = { tris: [], cells: new Map() }) {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, wallH: null, wallRate: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, mags, magK: 0, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, wallH: null, wallRate: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks), no grip too. On a Reset effects block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet, iced and muddy tyres: they are the
@@ -2446,6 +2499,33 @@ self.TM = (() => {
       }
     }
 
+    // Magnet road (MAGNET): the pull towards the face under the car in place of gravity.
+    c.magK = 0;
+    if (c.mags.tris.length) {
+      const m = magnetNear(c.mags, x, y, z, upx, upy, upz);
+      if (m) {
+        const k = 1 - smooth((m[0] - MAGNET.full) / (MAGNET.reach - MAGNET.full)),
+          a = G * k * 0.001;
+        c.magK = k;
+        F[v] -= m[1] * a * MAGNET.pull;
+        F[v + 1] += a - m[2] * a * MAGNET.pull;
+        F[v + 2] -= m[3] * a * MAGNET.pull;
+        const hold = MAGNET.hold * k * (contacts == 0 ? 1 : contacts < 4 ? 0.25 : 0);
+        if (hold > 0) {
+          // about car up x normal, by the angle between them; the spin about the normal is the car's own
+          const ax = upy * m[3] - upz * m[2],
+            ay = upz * m[1] - upx * m[3],
+            az = upx * m[2] - upy * m[1],
+            sn = Math.hypot(ax, ay, az),
+            g = sn > 1e-6 ? (Math.atan2(sn, upx * m[1] + upy * m[2] + upz * m[3]) * MAGNET.level) / sn : 0,
+            sp = F[av] * m[1] + F[av + 1] * m[2] + F[av + 2] * m[3];
+          F[av] += (ax * g - (F[av] - m[1] * sp)) * hold;
+          F[av + 1] += (ay * g - (F[av + 1] - m[2] * sp)) * hold;
+          F[av + 2] += (az * g - (F[av + 2] - m[3] * sp)) * hold;
+        }
+      }
+    }
+
     // Reactor boost (REACTOR): an up boost hovers the car over flat ground (REACTOR_HOVER, the lift goes into the
     // suspension before the next step) and pushes it up in the air on the gas; a down boost presses it into the ground,
     // or down through the air, on the gas. Off the ground steering turns the car and it is held level (REACTOR_AIR).
@@ -2710,7 +2790,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), wallRate: r3(c.wallRate), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, load: c.probe && c.probe.load ? [...c.probe.load] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), wallRate: r3(c.wallRate), mag: r3(c.magK), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, load: c.probe && c.probe.load ? [...c.probe.load] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 

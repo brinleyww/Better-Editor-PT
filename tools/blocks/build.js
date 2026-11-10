@@ -10,6 +10,7 @@ const { buildIce } = require('./ice');
 const { buildPipes } = require('./pipes');
 const { buildExtras } = require('./extras');
 const { buildStockBlocks } = require('./stockblocks');
+const { buildMagnet, MAGNET_MATS } = require('./magnet');
 const { loadStockParts } = require('./stock/parts');
 const { rasterTiles } = require('./geom');
 
@@ -199,6 +200,10 @@ const MATERIALS = litAll({
   RoadSeam: stockHex(0.2957, 0.2957, 0.2957),
   RoadUnder: stockHex(0.2957, 0.2957, 0.2957),
   RoadKerb: stockHex(0.075, 0.075, 0.075),
+  // Magnet road (magnet.js): a violet deck in two panel shades and pale cyan edge strips. Added last.
+  MagnetDeck: '#6a4fd0',
+  MagnetDeckB: '#5c43bd',
+  MagnetLine: '#9fe8ff',
 }, [...STOCK_MATS, 'FinishBox']);
 
 // Drawn but never collided with: the car sinks through water instead of driving on it.
@@ -334,13 +339,13 @@ function main(stock) {
   const reg = fs.existsSync(idsFile) ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : {};
   let nextId = Math.max(FIRST_ID - 1, ...Object.values(reg)) + 1;
   // New kits and sets go at the end: ids are handed out in this order the first time a block is built.
-  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras(), ...buildSurface('RoadKit'), ...buildStockBlocks(stock)];
+  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras(), ...buildSurface('RoadKit'), ...buildStockBlocks(stock), ...buildMagnet()];
   // Collision meshes: the same blocks built again without the surface patterns. The pattern strips are coplanar,
   // so they only cost the physics time; the plain mesh has the same shape with far fewer triangles.
   process.env.BE_PLAIN = '1';
   for (const k of Object.keys(require.cache)) if (k.includes(path.sep + 'blocks' + path.sep)) delete require.cache[k];
   const C = require('./catalog');
-  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass'), ...require('./pipes').buildPipes(), ...require('./extras').buildExtras(), ...C.buildSurface('RoadKit'), ...require('./stockblocks').buildStockBlocks(stock)].map((q) => [q.name, q.mesh]));
+  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass'), ...require('./pipes').buildPipes(), ...require('./extras').buildExtras(), ...C.buildSurface('RoadKit'), ...require('./stockblocks').buildStockBlocks(stock), ...require('./magnet').buildMagnet()].map((q) => [q.name, q.mesh]));
   delete process.env.BE_PLAIN;
   const seen = new Set();
   const matNames = Object.keys(MATERIALS),
@@ -410,6 +415,7 @@ function main(stock) {
         pos = [],
         ind = [],
         bounce = [],
+        magnet = [], // the faces that hold the car (magnet.js MAGNET_MATS)
         pm = plain.get(p.name),
         soft = pm.soft ?? [],
         isSoft = (a, b, c) => soft.some(([lo, hi]) => [0, 1, 2].every((k) => {
@@ -432,6 +438,7 @@ function main(stock) {
             ind.push(i);
             tri.push(i);
           }
+          if (MAGNET_MATS.includes(m)) magnet.push(...tri);
           if (p.tab == 'Deco' || NO_BOUNCE.includes(m) || isSoft(list[t], list[t + 1], list[t + 2])) skipped++;
           else bounce.push(...tri);
         }
@@ -441,6 +448,7 @@ function main(stock) {
         io = push(new Uint16Array(ind));
       p.ph = [-1, po, pos.length, io, ind.length];
       if (skipped) p.bw = [-1, po, pos.length, push(new Uint16Array(bounce)), bounce.length];
+      if (magnet.length) p.mg = [-1, po, pos.length, push(new Uint16Array(magnet)), magnet.length];
       physTris += ind.length / 3;
     }
     totalTris += p.mesh.tris;
@@ -460,6 +468,8 @@ function main(stock) {
     const u = p.u !== undefined ? p.u : (KIT_U[p.surface] ?? null);
     if (u != null) e.u = u;
     if (p.bw && u === 0) e.bw = p.bw;
+    // Magnet faces (tm_runtime.js MAGNET): the car is held to them.
+    if (p.mg) e.mg = p.mg;
     // Another surface inside this part (grass or dirt verges): boxes around its faces, in the part's own frame.
     // [lo, hi] is penalty grass, as it always was; any other surface is [lo, hi, u].
     const boxes = new Map();
@@ -507,7 +517,7 @@ function main(stock) {
     proxies: [...proxies.values()],
     // Tabs in menu order; any tab a block uses that is not listed goes at the end, in the order blocks use it.
     // Ice's own tabs come before the vehicle gates, so its browser still opens on the bobsleigh.
-    tabs: [...new Set(['Road', 'Dirt road', 'Railed road', 'Wide road', 'Open road', 'Narrow road', 'Platform', 'Blocks', 'Wall track', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Pipes', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Bobsleigh', 'Bobsleigh gates', 'Bobsleigh effects', 'Ice platform', 'Ice walls and loops', 'Ice blocks', 'Ice wall track', 'Ice gates', 'Ice effects', 'Snow platform', 'Snow blocks', 'Snow wall track', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', 'Water road', ...table.map((p) => p.t)])],
+    tabs: [...new Set(['Road', 'Dirt road', 'Railed road', 'Wide road', 'Open road', 'Narrow road', 'Platform', 'Blocks', 'Wall track', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Pipes', 'Magnet', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Bobsleigh', 'Bobsleigh gates', 'Bobsleigh effects', 'Ice platform', 'Ice walls and loops', 'Ice blocks', 'Ice wall track', 'Ice gates', 'Ice effects', 'Snow platform', 'Snow blocks', 'Snow wall track', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', 'Water road', ...table.map((p) => p.t)])],
     parts: table,
   };
   fs.writeFileSync(path.join(site, 'tm_parts.js'), '// Generated by tools/blocks/build.js. Do not edit by hand.\nself.TM_DATA = ' + JSON.stringify(data) + ';\n');

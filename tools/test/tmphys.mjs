@@ -10,6 +10,7 @@
 // node tools/test/tmphys.mjs bounce [label] [cases]        plastic bounces at 150-600 km/h (TMKMH): side hits on walls, roof landings
 // node tools/test/tmphys.mjs rair [label] [boosts]          reactor boosts in the air: level, steering, course, speed gain (TMKMH)
 // node tools/test/tmphys.mjs bobexit [label]               leaving a bobsleigh over its wall top at speed (TMKMH, TMDEG)
+// node tools/test/tmphys.mjs magnet [label]                magnet road: driving a wall ride and a ceiling (TMKMH, TMMAG)
 // node tools/test/tmphys.mjs reactor [label] [parts,...]   reactor boosts: hover, seams, ramp flights, down, which way, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
@@ -780,6 +781,36 @@ if (section == 'bobexit') {
     }
 }
 
+if (section == 'magnet') {
+  // Magnet road (MAGNET, tools/blocks/magnet.js), the car launched (TEST launch) at TMKMH on the stock road, gas held:
+  // wall: road to magnet, the twist onto the wall ride (left side up) and 20 wall ride pieces: how long it stays on the
+  //   wall (its up within 30 degrees of sideways, wheels down), its height and speed;
+  // ceiling: road to magnet, the quarter pipe up, the loop's top and 20 ceiling pieces: how long it drives upside down
+  //   on the ceiling (wheels down, up within 30 degrees of straight down).
+  // TMMAG='{"reach":0.001}' turns the magnet off (the car on the same blocks without it).
+  const kmhs = (process.env.TMKMH || '60,150,300').split(',').map(Number);
+  const MAGTRY = process.env.TMMAG ? JSON.parse(process.env.TMMAG) : null;
+  const upOf = (q) => [2 * (q[0] * q[1] - q[3] * q[2]), 1 - 2 * (q[0] * q[0] + q[2] * q[2]), 2 * (q[1] * q[2] + q[3] * q[0])];
+  const wall = [{ n: 'Start', x: 0, y: 0, z: 0 }, { n: 'Straight', x: 0, y: 0, z: -4 }, { n: 'RoadKitMagnetFromRoad', x: 0, y: 0, z: -8 }, { n: 'RoadKitMagnetStraight', x: 0, y: 0, z: -12 }, { n: 'RoadKitMagnetToWallL', x: 0, y: 0, z: -16 }];
+  for (let k = 0; k < 20; k++) wall.push({ n: 'RoadKitMagnetWallL', x: 0, y: 0, z: -32 - 4 * k });
+  const ceil = [{ n: 'Start', x: 0, y: 0, z: 0 }, { n: 'Straight', x: 0, y: 0, z: -4 }, { n: 'RoadKitMagnetFromRoad', x: 0, y: 0, z: -8 }, { n: 'RoadKitMagnetStraight', x: 0, y: 0, z: -12 }, { n: 'RoadKitMagnetQuarterUp', x: 0, y: 0, z: -16 }, { n: 'RoadKitMagnetLoopTop', x: 0, y: 4, z: -16 }];
+  for (let k = 0; k < 20; k++) ceil.push({ n: 'RoadKitMagnetCeiling', x: 0, y: 7, z: -12 + 4 * k });
+  const r1 = (x) => (x == null ? null : +x.toFixed(1));
+  results.magnet = {};
+  for (const [name, parts, want] of [['wall', wall, (u) => Math.abs(u[0]) > 0.86], ['ceiling', ceil, (u) => u[1] < -0.86]])
+    for (const kmh of kmhs) {
+      const A = await run(parts, { launch: { at: 300, v: kmh / 3.6 }, trace: 50, ...(MAGTRY ? { magnet: MAGTRY } : {}) }, [{ id: 1, rec: { up: [0] }, frames: 8000 }]), l = A[1];
+      const on = l.map((q, i) => i > 300 && q.w != 0 && want(upOf(q.q)));
+      let longest = 0, run0 = 0, firstOn = null, lastOn = null;
+      on.forEach((b, i) => { run0 = b ? run0 + 1 : 0; longest = Math.max(longest, run0); if (b) { firstOn ??= i; lastOn = i; } });
+      const seg = firstOn != null ? l.slice(firstOn, lastOn + 1) : [];
+      const row = { msOn: on.filter(Boolean).length, longestMs: longest, kmhOn: firstOn != null ? r1(l[firstOn].v) : null, kmhLeaving: lastOn != null ? r1(l[lastOn].v) : null, yMin: seg.length ? r1(Math.min(...seg.map((q) => q.y))) : null, yMax: seg.length ? r1(Math.max(...seg.map((q) => q.y))) : null, end: [l[l.length - 1].x, l[l.length - 1].y, l[l.length - 1].z].map(r1), magFrames: A.probes.filter((q) => q.mag > 0).length * 50 };
+      if (process.env.TMMAGTR) for (let i = 300; i < l.length; i += 50) { const u = upOf(l[i].q), p = A.probes.find((q) => q.fr >= l[i].f); console.log(' ', i, [l[i].x, l[i].y, l[i].z, l[i].v].map((v) => v.toFixed(1)).join(' '), 'up', u.map((v) => v.toFixed(2)).join(' '), 'w', l[i].w, 'mag', p?.mag); }
+      (results.magnet[name] ??= {})[kmh] = row;
+      console.log(name, kmh, JSON.stringify(row));
+    }
+}
+
 if (section == 'verify') {
   // The game's own verifier on a track with the new things: it accepts a run only if the car finishes on exactly that
   // frame. Found by an exact run first, then 21 frames round it are checked, twice.
@@ -820,6 +851,9 @@ if (section == 'verify') {
   tracks.bobWall = L(['IceStartBob', ...Array(40).fill('IceBobStraight')]);
   tracks.bobWall[30] = { ...tracks.bobWall[30], n: 'IceFinishBob' };
   recs.bobWall = { up: [0], left: [2000, 2400], right: [2700, 2950] };
+  // Magnet road: stock road onto magnet road, the quarter pipe up, the loop's top and two ceiling pieces, upside down
+  // on the magnet, to a half finish box hanging just past the ceiling's end, which the car crosses still upside down.
+  tracks.magnetCeiling = [['Start', 0, 0], ['Straight', 0, -4], ['RoadKitMagnetFromRoad', 0, -8], ['RoadKitMagnetStraight', 0, -12], ['RoadKitMagnetQuarterUp', 0, -16], ['RoadKitMagnetLoopTop', 4, -16], ['RoadKitMagnetCeiling', 7, -12], ['RoadKitMagnetCeiling', 7, -8], ['RoadKitFinishBoxHalf', 6, -4]].map(([n, y, z]) => ({ n, x: 0, y, z }));
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];
   results.verify = {};
   // A track's own controls (toggle frames, as rec() takes them): recs[name]; otherwise the gas held from the start.

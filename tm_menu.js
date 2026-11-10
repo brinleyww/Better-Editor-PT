@@ -76,7 +76,7 @@
   ];
   // The road kit's blocks (the kits' shapes as stock road, family "RoadKit") share this browser: the ones on a tab of the
   // same name join the stock blocks there, the rest get the kit's own tabs after the stock ones.
-  const ROAD_TABS = [...new Set(ROAD_LAYOUT.map((r) => r[0])), 'Open road', 'Platform', 'Walls and loops', 'Half-pipe', 'Pipes', 'Effects', 'Vehicle gates', 'Connectors', 'Penalty grass', 'Other'];
+  const ROAD_TABS = [...new Set(ROAD_LAYOUT.map((r) => r[0])), 'Open road', 'Platform', 'Walls and loops', 'Half-pipe', 'Pipes', 'Magnet', 'Effects', 'Vehicle gates', 'Connectors', 'Penalty grass', 'Other'];
   let stockParts = null; // stock id -> menu entry { i, f, t, s, l, o }, built on first use from the game's enum
   const stockPart = (cfg) => {
     if (!stockParts) {
