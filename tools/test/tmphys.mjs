@@ -8,6 +8,7 @@
 // node tools/test/tmphys.mjs tyres [label] [a,b,c1,c2,d,cp]   wet, iced and muddy tyres: which surface undoes which (TYRES)
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
 // node tools/test/tmphys.mjs bounce [label] [cases]        plastic bounces at 150-600 km/h (TMKMH): side hits on walls, roof landings
+// node tools/test/tmphys.mjs rair [label] [boosts]          reactor boosts in the air: level, steering, course, speed gain (TMKMH)
 // node tools/test/tmphys.mjs reactor [label] [parts,...]   reactor boosts: hover, seams, ramp flights, down, which way, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
@@ -66,8 +67,11 @@ await c.evaluate(`(()=>{
 const rec = (r = {}) => ({ up: r.up ?? [], right: r.right ?? [], down: r.down ?? [], left: r.left ?? [], reset: r.reset ?? [] });
 // TMHOVER='{"grip":1}' tries other REACTOR_HOVER settings without editing the runtime (test-only hook).
 const HOVERTRY = process.env.TMHOVER ? JSON.parse(process.env.TMHOVER) : null;
+// TMRAIR='{"yaw":1}' the same for REACTOR_AIR.
+const RAIRTRY = process.env.TMRAIR ? JSON.parse(process.env.TMRAIR) : null;
 async function run(parts, test, cars) {
   if (HOVERTRY) test = { ...(test || {}), hoverSet: HOVERTRY };
+  if (RAIRTRY) test = { ...(test || {}), rair: RAIRTRY };
   const r = await c.evaluate(`__run(${JSON.stringify({ parts, test, cars: cars.map((x) => ({ ...x, rec: rec(x.rec) })) })}).then(r=>JSON.stringify(r))`);
   const o = JSON.parse(r),
     out = { probes: o.probes };
@@ -688,6 +692,50 @@ if (section == 'bounce') {
         : { fired: fired.length, judged: b.length, into: r1(Math.abs(vin[0])), outAfterBounce: vb && r1(-Math.sign(l[hit].x) * vb[0]), out250: vout && r1(-Math.sign(l[hit].x) * vout[0]), kmhIn: hit != null ? r1(l[Math.max(at0 + 6, hit - 15)].v) : null, hitMs: hit != null ? hit - at0 : null, kmhOut: vout && r1(Math.hypot(...vout) * 3.6), firstFired: fired[0]?.bounce ?? null, firstJudged: b[0]?.bounce ?? null };
       if (process.env.TMALL) row[kmh].all = b.map((q) => ({ fr: q.fr - at0, ...q.bounce }));
       console.log(name, kmh, JSON.stringify(row[kmh]));
+    }
+  }
+}
+
+if (section == 'rair') {
+  // Reactor boosts in the air (REACTOR_AIR): a lane 400 units up, the plate (turned round: a down boost) on its fourth
+  // platform, the car launched (TEST launch) at 150 or 300 km/h (TMKMH) and off the end. Per boost: A gas held; B gas and
+  // full left from 0.3 s after the edge for 2 s; C no gas; D gas, and the car set spinning (1.5 rad/s pitch and roll)
+  // 0.3 s after the edge. Tilt: car up against world up (deg); yaw: the nose's heading about world up (deg/s); course:
+  // the way the car goes along the ground, turned (deg); slip: nose against course at the end of the steer (deg).
+  const kmhs = (process.env.TMKMH || '150,300').split(',').map(Number);
+  const tilt = (q) => Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (q[0] * q[0] + q[2] * q[2])))) * 57.2958;
+  const rollOf = (q) => Math.asin(Math.max(-1, Math.min(1, 2 * (q[0] * q[1] + q[3] * q[2])))) * 57.2958;
+  const vAt = (l, i) => { const a = l[Math.max(0, i - 5)], b = l[Math.min(l.length - 1, i + 5)], dt = (b.f - a.f) / 1000; return [(b.x - a.x) / dt, (b.y - a.y) / dt, (b.z - a.z) / dt]; };
+  const hs = (l, i) => { const v = vAt(l, i); return Math.hypot(v[0], v[2]) * 3.6; };
+  const course = (l, i) => { const v = vAt(l, i); return Math.atan2(v[0], v[2]); };
+  const r1 = (x) => (x == null ? null : +x.toFixed(1));
+  const cfgs = [['none', 'WoodPlatBase', 0], ['up', 'WoodFxReactorUpPlat', 0], ['superUp', 'WoodFxReactor2UpPlat', 0], ['down', 'WoodFxReactorUpPlat', 2], ['superDown', 'WoodFxReactor2UpPlat', 2]].filter(([n]) => !only || only.includes(n));
+  const at0 = 300, Y = 80;
+  results.rair = {};
+  for (const [name, plate, r] of cfgs) {
+    const parts = [{ n: 'PlaneStart', x: 0, y: Y, z: 0 }, { n: 'Plane', x: 0, y: Y, z: -4 }, { n: 'Plane', x: 0, y: Y, z: -8 }, { n: plate, x: 0, y: Y, z: -12, r }, { n: 'Plane', x: 0, y: Y, z: -16 }];
+    for (const kmh of kmhs) {
+      // launched at 300 frames, then set to the speed again 30 frames before the edge, so it leaves at that speed
+      const A0 = (await run(parts, { launch: { at: at0, v: kmh / 3.6 } }, [{ id: 1, rec: { up: [0] }, frames: 4000 }]))[1], e0 = first(A0, (q) => q.w == 0 && q.z < -85, at0);
+      const launch = [{ at: at0, v: kmh / 3.6 }, { at: e0 - 30, v: kmh / 3.6 }];
+      const A = await run(parts, { launch, trace: 100 }, [{ id: 1, rec: { up: [0] }, frames: 8000 }]), a = A[1];
+      const off = first(a, (q) => q.w == 0 && q.z < -85, at0), land = first(a, (q) => q.w != 0, off) ?? a.length - 1;
+      const end = Math.min(land - 6, off + 5500), w = (i) => Math.min(i, end);
+      const boost = A.probes.filter((q) => q.fr > off && q.fr < off + 500).map((q) => q.reactor).find((x) => x) ?? null;
+      const s0 = off + 300, B = (await run(parts, { launch }, [{ id: 1, rec: { up: [0], left: [s0, s0 + 2000] }, frames: 8000 }]))[1];
+      const bEnd = Math.min(s0 + 2000, (first(B, (q) => q.w != 0, off) ?? B.length) - 6);
+      const C = (await run(parts, { launch }, [{ id: 1, rec: { up: [0, off - 50] }, frames: 9000 }]))[1], cOff = first(C, (q) => q.w == 0 && q.z < -85, at0);
+      const cEnd = Math.min((first(C, (q) => q.w != 0, cOff) ?? C.length) - 6, cOff + 3000);
+      const Dl = [...launch, { at: off + 300, spin: [1.5, 0, 1.5] }], D = (await run(parts, { launch: Dl }, [{ id: 1, rec: { up: [0] }, frames: 8000 }]))[1];
+      const row = {
+        boost, airMs: land - off, kmhAtEdge: r1(hs(a, off)),
+        A: { tiltMax: r1(Math.max(...a.slice(off + 200, end).map((q) => tilt(q.q)))), tilt1s: r1(tilt(a[w(off + 1000)].q)), tilt3s: r1(tilt(a[w(off + 3000)].q)), kmhGain3s: r1(hs(a, w(off + 3000)) - hs(a, off)), kmhGainEnd: r1(hs(a, end) - hs(a, off)), climb3s: r1(a[w(off + 3000)].y - a[off].y), climb5s: r1(a[w(off + 5000)].y - a[off].y), vy3s: r1(vAt(a, w(off + 3000))[1]), vy5s: r1(vAt(a, w(off + 5000))[1]), msMeasured: end - off },
+        B: { yawDegPerSec: rate(B, s0 + 500, bEnd), courseTurnDeg: r1(Math.abs(wrap(course(B, bEnd) - course(B, s0))) * 57.2958), slipEndDeg: r1(Math.abs(wrap(heading(B[bEnd].q) - course(B, bEnd))) * 57.2958), maxRollDeg: r1(Math.max(...B.slice(s0, bEnd).map((q) => Math.abs(rollOf(q.q))))), maxTiltDeg: r1(Math.max(...B.slice(s0, bEnd).map((q) => tilt(q.q)))), kmhGain: r1(hs(B, bEnd) - hs(B, s0)), ms: bEnd - s0 },
+        C: { kmhGain3s: r1(hs(C, cEnd) - hs(C, cOff)), climb3s: r1(C[cEnd].y - C[cOff].y), ms: cEnd - cOff },
+        D: { tilt0_25s: r1(tilt(D[off + 550].q)), tilt0_5s: r1(tilt(D[off + 800].q)), tilt1s: r1(tilt(D[off + 1300].q)), tilt2s: r1(tilt(D[Math.min(D.length - 1, off + 2300)].q)) },
+      };
+      (results.rair[name] ??= {})[kmh] = row;
+      console.log(name, kmh, JSON.stringify(row));
     }
   }
 }

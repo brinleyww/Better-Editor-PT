@@ -503,7 +503,7 @@ self.TM = (() => {
   // (REACTOR_HOVER), gas or not, and drives on; on a ramp or a wall it drives as normal, so ramps still launch it; in the
   // air, only while the gas is held, the jets push it up along world up: G x (base + extra x (1 - vy / vcap)), the extra
   // part no lower than -under, so the car settles into a slow climb of about vcap units/s instead of flying off (a
-  // reactor floats, a super one climbs clearly faster). DOWN: only while the gas is held, on the ground it presses the
+  // reactor floats, a super one climbs clearly faster), plus what the car's own downforce takes (REACTOR_AIR down). DOWN: only while the gas is held, on the ground it presses the
   // car into the ground (along the wheels' mean contact normal, so it sticks to walls and over crests), in the air it
   // pushes it down along world down; press: units/s^2. level: 1 reactor, 2 super. G: the game's gravity
   // (tools/test/tmphys.mjs reactor: in free fall the car gains 15.5 units/s^2 at 2 units/s, less the faster it falls, as
@@ -578,10 +578,28 @@ self.TM = (() => {
   // SLIDE_DRIVE's give-back).
   const REACTOR_HOVER = { lift: 0.45, flat: [1, 3], holdFlat: [1, 3], ease: 0.012, easeDown: 0.06, rise: 1.5, drop: 12, grip: 0.95, damp: 1.6, hold: 0.05, level: 10, heave: 8, brake: 18, airFrom: 60, airFull: 250, turn: 0.35, push: 12, pushUntil: 58, over: 0.1, drive: 1 };
   if (TEST && TEST.hoverSet) Object.assign(REACTOR_HOVER, TEST.hoverSet);
-  // ReactorAirControl: with all four wheels off the ground while a reactor is on, steering yaws the car about its own up
-  // (towards yaw rad/s, pull: share of the gap per frame) and the car is held steady instead of tumbling: its pitch and
-  // roll spin is pulled (calm per frame) towards level x its tilt (rad/s per rad, towards world-flat).
-  const REACTOR_AIR = { yaw: 2, pull: 0.02, calm: 0.01, level: 3 };
+  // ReactorAirControl, after TM2020's reactor flight: with all four wheels off the ground while a reactor is on (up or
+  // down, gas or not), the car flies level and turns flat.
+  //   Level: its pitch and roll spin (about world axes square to world up) is pulled (hold per frame) towards level x
+  //     its tilt (rad/s per rad, about car up x world up), so it is set straight within a few tenths of a second and
+  //     any tumble it took off with is damped away.
+  //   Turning: its spin about world up is pulled (pull per frame) towards yaw x the steering (rad/s, + left), none off
+  //     the steering, so it turns at a steady rate and never rolls (it used to turn about its own up at 2 rad/s, and on
+  //     the turn alone, so the car spun round while it flew on the way it was going: 138 degrees sideways after 2 s).
+  //   Inertia and acceleration, only on the gas: the push follows the nose. The jets push along the nose's heading over
+  //     the ground (thrust [reactor, super] units/s^2, fading to none between top[0] and top[1] units/s), the speed over
+  //     the ground the game's own damping took since the last frame is given back (up to keep x the speed per second,
+  //     so a hit in the air still slows the car; the damping takes about 0.09 a second), so the car keeps its
+  //     momentum, and the way it goes over the ground swings round to the nose at align x the angle between them
+  //     (rad/s), keeping its speed: the course bends after the nose over about half a second instead of snapping.
+  //     Up and down are the boost's own (REACTOR push, press); an up boost's push also holds up what the car's own
+  //     downforce pulls it down with, flying level (down x the speed over the ground squared, units/s^2: about 6.7 at
+  //     380 km/h, so a reactor flight sank 14 units in 3 s at 300 km/h and could not climb). Off the gas the car flies on the way it was going and
+  //     the game's damping slows it as in any jump.
+  //   All of it comes in with the vertical push (REACTOR_HOVER airFrom, airFull: over seams and kerbs nothing) for the
+  //   push and align, at once for level and turning, and dies away with the boost (REACTOR fade).
+  const REACTOR_AIR = { yaw: 1.2, pull: 0.02, hold: 0.03, level: 8, thrust: [4, 7], top: [80, 150], keep: 0.2, align: 2.5, down: 5.8e-4 };
+  if (TEST && TEST.rair) Object.assign(REACTOR_AIR, TEST.rair);
   // Water, after Trackmania 2020. How deep the car is decides how much it counts (k, 0 to 1: deep water counts fully once
   // the car's underside is `depth` units under). Drag grows with speed, lin x v + quad x v^2 (units/s^2), so it bleeds
   // speed away without setting a top speed; the engine only pulls (1 - engine x k) as hard; lift holds the car up against
@@ -1478,6 +1496,10 @@ self.TM = (() => {
       c.vehicle = c.cpVehicle;
       c.hover = 0; // a hover lift ends at once: the car comes back on its own wheels
       c.reactorEnd = 0;
+      // and no plastic bounce carries over: a hit still being added up would be judged at the checkpoint and fling the car
+      c.hit = null;
+      c.steady = c.bounceWait = c.chainLeft = 0;
+      c.chainLevel = 1;
       for (const t of c.tyres) t.wet = t.ice = t.mud = 0;
     }
     const cp = s.getUint16(pos - 2, true);
@@ -2412,7 +2434,8 @@ self.TM = (() => {
     // Reactor boost (REACTOR): an up boost hovers the car over flat ground (REACTOR_HOVER, the lift goes into the
     // suspension before the next step) and pushes it up in the air on the gas; a down boost presses it into the ground,
     // or down through the air, on the gas. Off the ground steering turns the car and it is held level (REACTOR_AIR).
-    let hoverWant = 0;
+    let hoverWant = 0,
+      airSp = null; // the speed over the ground a reactor flight leaves the car with (REACTOR_AIR keep)
     if (c.reactorLeft > 0) {
       c.reactorLeft--;
       const R = c.reactor,
@@ -2446,7 +2469,7 @@ self.TM = (() => {
           const P = R.push,
             t = Math.min(1, (c.air - H.airFrom) / (H.airFull - H.airFrom)),
             k = P.base + P.extra * Math.max(-P.under, Math.min(1, 1 - F[v + 1] / P.vcap));
-          F[v + 1] += G * k * t * t * (3 - 2 * t) * fade * 0.001;
+          F[v + 1] += (G * k + REACTOR_AIR.down * (F[v] * F[v] + F[v + 2] * F[v + 2])) * t * t * (3 - 2 * t) * fade * 0.001;
         }
       } else if (c.gas) {
         const k = R.press * fade * 0.001;
@@ -2492,36 +2515,40 @@ self.TM = (() => {
         }
       }
       if (contacts == 0) {
+        // Flying on the jets (REACTOR_AIR): level, flat turns, and on the gas a push and a course that follow the nose.
         const A = REACTOR_AIR,
           w = av,
-          yaw = F[w] * upx + F[w + 1] * upy + F[w + 2] * upz,
-          dy = (steer * A.yaw - yaw) * A.pull;
-        // Pitch and roll spin: what is left of the spin once its part about the car's up is taken out.
-        const px = F[w] - upx * yaw,
-          py = F[w + 1] - upy * yaw,
-          pz = F[w + 2] - upz * yaw;
-        let tx = 0,
-          ty = 0,
-          tz = 0;
-        // Towards level: about car up x world up, as fast as level x the tilt.
-        const ax = -upz,
-          az = upx,
-          n = Math.hypot(ax, az);
-        if (n > 1e-6) {
-          const a = (Math.atan2(n, upy) * A.level) / n;
-          tx = ax * a;
-          tz = az * a;
+          // towards level: about car up x world up (-upz, 0, upx), as fast as level x the tilt
+          n = Math.hypot(upx, upz),
+          a = n > 1e-6 ? (Math.atan2(n, upy) * A.level) / n : 0,
+          hold = A.hold * fade;
+        F[w] += (-upz * a - F[w]) * hold;
+        F[w + 2] += (upx * a - F[w + 2]) * hold;
+        F[w + 1] += (steer * A.yaw - F[w + 1]) * A.pull * fade;
+        const hn = Math.hypot(fx, fz);
+        if (c.gas && c.air > H.airFrom && hn > 0.2) {
+          const t = smooth((c.air - H.airFrom) / (H.airFull - H.airFrom)) * fade,
+            hx = fx / hn,
+            hz = fz / hn,
+            sp = Math.hypot(F[v], F[v + 2]),
+            back = c.airSp != null && sp > 1 ? Math.max(0, Math.min(c.airSp - sp, A.keep * sp * 0.001)) * t : 0,
+            keep = sp > 1 ? 1 + back / sp : 1,
+            push = A.thrust[R.level - 1] * (1 - smooth((sp - A.top[0]) / (A.top[1] - A.top[0]))) * t * 0.001;
+          F[v] = F[v] * keep + hx * push;
+          F[v + 2] = F[v + 2] * keep + hz * push;
+          const s2 = Math.hypot(F[v], F[v + 2]);
+          airSp = s2;
+          if (s2 > 1) {
+            const d = Math.atan2(hx, hz) - Math.atan2(F[v], F[v + 2]),
+              b = Math.atan2(Math.sin(d), Math.cos(d)) * A.align * t * 0.001,
+              h = Math.atan2(F[v], F[v + 2]) + b;
+            F[v] = s2 * Math.sin(h);
+            F[v + 2] = s2 * Math.cos(h);
+          }
         }
-        // only the part square to the car's up (turning about up is the steering's)
-        const k2 = tx * upx + ty * upy + tz * upz;
-        tx -= upx * k2;
-        ty -= upy * k2;
-        tz -= upz * k2;
-        F[w] += upx * dy + (tx - px) * A.calm;
-        F[w + 1] += upy * dy + (ty - py) * A.calm;
-        F[w + 2] += upz * dy + (tz - pz) * A.calm;
       }
     }
+    c.airSp = airSp;
     // An up boost just ended (run out, a reset plate, a checkpoint): in the air its upward speed goes over `end` frames
     // (a straight line down to none), so the car peaks and falls at once. Only upward speed: nothing is added downwards
     // and the speed along the ground stays.
@@ -2641,10 +2668,14 @@ self.TM = (() => {
       F[v + 1] += fy * dv;
       F[v + 2] += fz * dv;
     }
-    // Test rigs only: {launch: {at, v, yaw, roll, lift, vy}} sets the car going at frame `at`: v units/s along its nose,
-    // turned yaw radians left, rolled roll radians about its nose, lifted `lift` units, plus vy units/s up, no spin.
-    if (TEST && TEST.launch && (s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16)) == TEST.launch.at) {
-      const Lc = TEST.launch;
+    // Test rigs only: {launch: {at, v, yaw, roll, lift, vy}} (or a list of them) sets the car going at frame `at`: v units/s
+    // along its nose, turned yaw radians left, rolled roll radians about its nose, lifted `lift` units, plus vy units/s up,
+    // no spin; {at, spin: [x, y, z]} only sets its spin (rad/s, world axes).
+    if (TEST && TEST.launch) for (const Lc of [].concat(TEST.launch)) if ((s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16)) == Lc.at) {
+      if (Lc.spin) {
+        [F[av], F[av + 1], F[av + 2]] = Lc.spin;
+        continue;
+      }
       F[v] = fx * Lc.v;
       F[v + 1] = fy * Lc.v;
       F[v + 2] = fz * Lc.v;
