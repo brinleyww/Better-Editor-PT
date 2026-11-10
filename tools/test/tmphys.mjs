@@ -9,6 +9,7 @@
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
 // node tools/test/tmphys.mjs bounce [label] [cases]        plastic bounces at 150-600 km/h (TMKMH): side hits on walls, roof landings
 // node tools/test/tmphys.mjs rair [label] [boosts]          reactor boosts in the air: level, steering, course, speed gain (TMKMH)
+// node tools/test/tmphys.mjs bobexit [label]               leaving a bobsleigh over its wall top at speed (TMKMH, TMDEG)
 // node tools/test/tmphys.mjs reactor [label] [parts,...]   reactor boosts: hover, seams, ramp flights, down, which way, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
 import fs from 'node:fs';
@@ -72,6 +73,7 @@ const RAIRTRY = process.env.TMRAIR ? JSON.parse(process.env.TMRAIR) : null;
 async function run(parts, test, cars) {
   if (HOVERTRY) test = { ...(test || {}), hoverSet: HOVERTRY };
   if (RAIRTRY) test = { ...(test || {}), rair: RAIRTRY };
+  if (process.env.TMSURF && !(test && test.surf)) test = { ...(test || {}), surf: JSON.parse(process.env.TMSURF) };
   const r = await c.evaluate(`__run(${JSON.stringify({ parts, test, cars: cars.map((x) => ({ ...x, rec: rec(x.rec) })) })}).then(r=>JSON.stringify(r))`);
   const o = JSON.parse(r),
     out = { probes: o.probes };
@@ -740,6 +742,44 @@ if (section == 'rair') {
   }
 }
 
+if (section == 'bobexit') {
+  // Leaving a bobsleigh over the top of its wall (ICE_TOP, the bobsleigh ice's follow): a straight channel, the car
+  // launched (TEST launch) at each speed (TMKMH) heading that many degrees into its left wall, gas held. maxH: the car's
+  // highest point over its start height (the lip is 4.6 up); out: it went over the rim (|x| past 10.5); climb at the
+  // lip: its upward speed as it passed 4 units up (units/s); kmh 1.5 s on.
+  const kmhs = (process.env.TMKMH || '100,200,300').split(',').map(Number), degs = (process.env.TMDEG || '5,12,25').split(',').map(Number);
+  const parts = [{ n: 'IceStartBob', x: 0, y: 0, z: 0 }];
+  for (let j = 1; j < 50; j++) parts.push({ n: 'IceBobStraight', x: 0, y: 0, z: -4 * j });
+  const vAt = (l, i) => { const a = l[Math.max(0, i - 5)], b = l[Math.min(l.length - 1, i + 5)], dt = (b.f - a.f) / 1000; return [(b.x - a.x) / dt, (b.y - a.y) / dt, (b.z - a.z) / dt]; };
+  const r1 = (x) => (x == null ? null : +x.toFixed(1));
+  const at0 = 300;
+  results.bobexit = {};
+  for (const deg of degs)
+    for (const kmh of kmhs) {
+      const l = (await run(parts, { launch: { at: at0, v: kmh / 3.6, yaw: (deg * Math.PI) / 180 } }, [{ id: 1, rec: { up: [0] }, frames: at0 + 2500 }]))[1], y0 = l[at0].y;
+      let top = at0;
+      for (let i = at0; i < l.length; i++) if (l[i].y > l[top].y) top = i;
+      const out = first(l, (q) => Math.abs(q.x) > 10.5, at0), lip = first(l, (q) => q.y - y0 > 4, at0);
+      const row = { maxH: r1(l[top].y - y0), out: out != null, climbAtLip: lip != null ? r1(vAt(l, lip)[1]) : null, airMs: l.slice(at0, at0 + 2500).filter((q) => q.w == 0).length, kmh1_5s: r1(l[Math.min(l.length - 1, at0 + 1500)].v), x1_5s: r1(l[Math.min(l.length - 1, at0 + 1500)].x) };
+      (results.bobexit[deg] ??= {})[kmh] = row;
+      console.log('deg', deg, 'kmh', kmh, JSON.stringify(row));
+    }
+  // Ten straights into a curve, nobody steering (as physics.mjs bob), gas held from rest or launched at TMCKMH: the
+  // highest the car rides in the curve over its start height, and its speed coming out of the curve's far end.
+  for (const [curve, len] of [['IceBobCurve2', 8], ['IceBobCurve3', 12], ['IceBobCurveWall3', 12]])
+    for (const kmh of [0, ...(process.env.TMCKMH || '250,350').split(',').map(Number)]) {
+      const cp = [{ n: 'IceStartBob', x: 0, y: 0, z: 0 }];
+      for (let j = 1; j <= 10; j++) cp.push({ n: 'IceBobStraight', x: 0, y: 0, z: -4 * j });
+      cp.push({ n: curve, x: 0, y: 0, z: -44 });
+      const RR = await run(cp, { ...(kmh ? { launch: { at: 300, v: kmh / 3.6 } } : {}), ...(process.env.TMBOBTR ? { trace: 5 } : {}) }, [{ id: 1, rec: { up: [0] }, frames: 9000 }]), l = RR[1], y0 = l[200].y, zin = -44 * 5 + 10;
+      if (process.env.TMBOBTR) for (const q of RR.probes) { const s = l[first(l, (p) => p.f >= q.fr) ?? 0]; if (s && s.z < zin + 20 && s.z > zin - len * 5 - 5) console.log(q.fr, 'y', (s.y - y0).toFixed(2), 'x', s.x.toFixed(1), 'z', s.z.toFixed(1), 'w', s.w, 'rate', q.wallRate); }
+      const i0 = first(l, (q) => q.z < zin), seg = l.filter((q) => q.z < zin && q.z > zin - len * 5 - 5);
+      const row = { kmhIn: i0 != null ? r1(l[i0].v) : null, maxVy: seg.length > 12 ? r1(Math.max(...seg.slice(6, -6).map((q) => vAt(l, l.indexOf(q))[1]))) : null, maxH: seg.length ? r1(Math.max(...seg.map((q) => q.y)) - y0) : null, kmhOut: seg.length ? r1(seg[seg.length - 1].v) : null, airMsInCurve: seg.filter((q) => q.w == 0).length };
+      (results.bobexit[curve] ??= {})[kmh || 'rest'] = row;
+      console.log(curve, kmh || 'from rest', JSON.stringify(row));
+    }
+}
+
 if (section == 'verify') {
   // The game's own verifier on a track with the new things: it accepts a run only if the car finishes on exactly that
   // frame. Found by an exact run first, then 21 frames round it are checked, twice.
@@ -774,12 +814,20 @@ if (section == 'verify') {
   // speed; it bounces off it and the other wall on to a checkpoint and the finish.
   tracks.bounce = L(['PlasticStartPlat', 'PlasticPlatBase', 'PlasticFxUltraPlat', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticFxBumper2Plat', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', { n: 'PlasticCheckpointPlat', cp: 0 }, 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticPlatBase', 'PlasticFinishPlat', 'PlasticPlatBase', 'PlasticPlatBase']);
   for (let k = 0; k < 18; k++) tracks.bounce.push({ n: 'PlasticPlatWallStraight', x: 4, y: 0, z: -4 * k, r: 1 }, { n: 'PlasticPlatWallStraight', x: -4, y: 0, z: -4 * k, r: 3 });
+  // Bobsleigh: a straight channel, steering left into its wall at about 150 km/h and back: the car rides up to the lip
+  // (the wall-top hold, by how much the channel bends under it) and comes back down to the finish.
+  const recs = {};
+  tracks.bobWall = L(['IceStartBob', ...Array(40).fill('IceBobStraight')]);
+  tracks.bobWall[30] = { ...tracks.bobWall[30], n: 'IceFinishBob' };
+  recs.bobWall = { up: [0], left: [2000, 2400], right: [2700, 2950] };
   if (only) for (const k in tracks) if (!only.includes(k)) delete tracks[k];
   results.verify = {};
+  // A track's own controls (toggle frames, as rec() takes them): recs[name]; otherwise the gas held from the start.
   for (const [name, parts] of Object.entries(tracks)) {
-    { const A = await run(parts, name == 'bounce' ? { bounceTrace: 1 } : null, [{ id: 1, rec: { up: [0] }, frames: 12000 }]), l = A[1]; if (name == 'bounce') console.log('bounces fired at (frame, km/h):', A.probes.filter((q) => q.bounce && q.bounce.fired).map((q) => [q.fr, +(Math.hypot(...q.bounce.vin) * 3.6).toFixed(0)]).join(' ')); console.log(name, 'path every 0.5 s (x z y km/h next-cp finish):', l.filter((_, i) => i % 500 == 0).map((q) => [q.x, q.z, q.y, q.v].map((v) => v.toFixed(0)).join(',') + ',' + q.n).join(' | ')); }
+    const R0 = rec(recs[name] || { up: [0] });
+    { const A = await run(parts, name == 'bounce' ? { bounceTrace: 1 } : null, [{ id: 1, rec: R0, frames: 12000 }]), l = A[1]; if (name == 'bounce') console.log('bounces fired at (frame, km/h):', A.probes.filter((q) => q.bounce && q.bounce.fired).map((q) => [q.fr, +(Math.hypot(...q.bounce.vin) * 3.6).toFixed(0)]).join(' ')); console.log(name, 'path every 0.5 s (x z y km/h next-cp finish):', l.filter((_, i) => i % 500 == 0).map((q) => [q.x, q.z, q.y, q.v].map((v) => v.toFixed(0)).join(',') + ',' + q.n).join(' | ')); }
   const fins = await c.evaluate(`(async()=>{
-    const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec({up:[0],right:[],down:[],left:[],reset:[]}).serialize();
+    const Rec=__req(1754).A,t=__mk(${JSON.stringify(parts)}),M=__req(6421).A.createMountainVertices(t.getBounds()),rec=new Rec(${JSON.stringify(R0)}).serialize();
     const probe=()=>new Promise(res=>{const w=new Worker('simulation_worker.bundle.js');let last=null;
       w.addEventListener('message',e=>{if(e.data.messageType!=10)return;for(const b of e.data.carStateBuffers){const s=__req(3899).VO(new Uint8Array(b).subarray(4)).carState;if(s.finishFrames!=null&&last==null){last=s.finishFrames;w.terminate();res(last);}}});
       w.postMessage({...window.__init,isRealtime:false});

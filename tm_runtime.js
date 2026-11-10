@@ -779,10 +779,14 @@ self.TM = (() => {
     // starts where the wall's normal has `from` upward (0.5: a 60 degree wall) and grows with the square of the way
     // from there to straight up, so the car rides freely up the lower and middle wall and is held at the lip. Measured
     // from the top of the wall (ICE_TOP) it never starts more than about 2 units under it, so the upright upper wall of
-    // the high-wall pieces can be ridden too.
+    // the high-wall pieces can be ridden too. The hold takes out at most followMax units/s^2 of the climb (x the same
+    // near^2), plus followCurve x what the channel's bend asks of the car (its speed over the ground x how fast the wall's
+    // facing turns under the wheels, see fxStep): round a curve the walls carry the car as before, but where the channel
+    // runs straight a hard climb up the wall goes on over the lip, so the car can fly out over the top (steering into a
+    // straight's wall at 25 degrees and 300 km/h it was held 0.1 under the lip; now it flies 43 units up).
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
-    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5 } },
+    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5, followMax: 120, followCurve: 150 } },
     // The four below are this project's estimates of TM2020's surfaces relative to its Tech road (= PolyTrack's stock road);
     // TM2020's own tunings sit in encrypted packs and were not read. Targets: grip as the share of stock cornering
     // grip, times as multiples of the stock car's 0-100 / 0-200 / 120-0 braking distance (tools/test/tmphys.mjs).
@@ -806,7 +810,7 @@ self.TM = (() => {
     { gripFront: 1, gripRear: 1, launch: 0, launchUntil: 0, bounce: false },
   ];
   // Test rigs only: {surf: {u: {setting: value}}} tries other settings for a surface.
-  if (TEST && TEST.surf) for (const k in TEST.surf) Object.assign(SURFACES[k], TEST.surf[k]);
+  if (TEST && TEST.surf) for (const k in TEST.surf) for (const [n, val] of Object.entries(TEST.surf[k])) SURFACES[k][n] = n == 'ice' ? { ...SURFACES[k].ice, ...val } : val;
   // TM2020's cars. The Stadium car is PolyTrack's own; the others change how it drives, after TM2020's Snow, Rally and
   // Desert cars. Every number here is this project's estimate of how TM2020's cars relate to the Stadium car (their
   // tunings are in encrypted packs that were not read).
@@ -1148,7 +1152,7 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, reactorEnd: 0, hover: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, turnRamp: 0, turnSide: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, wallH: null, wallRate: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks), no grip too. On a Reset effects block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet, iced and muddy tyres: they are the
@@ -1965,6 +1969,16 @@ self.TM = (() => {
         const ax = nx / (nl || 1),
           ay = ny / (nl || 1),
           az = nz / (nl || 1);
+        // How fast the wall's facing turns under the wheels (rad/s, smoothed over about 20 ms), for followCurve: on a
+        // straight it stays put, round a curve it turns at speed / radius.
+        if (ice.follow && nl > 0 && ay < 0.9) {
+          const hh = Math.atan2(ax, az);
+          if (c.wallH != null) {
+            const dh = hh - c.wallH;
+            c.wallRate += (Math.abs(Math.atan2(Math.sin(dh), Math.cos(dh))) * 1000 - c.wallRate) * 0.05;
+          }
+          c.wallH = hh;
+        } else (c.wallH = null), (c.wallRate *= 0.995);
         if (ice.follow && nl > 0 && ay < ice.from) {
           let wx = -ax * ay,
             wy = 1 - ay * ay,
@@ -1989,7 +2003,8 @@ self.TM = (() => {
             const top = ol > 0.05 ? iceTop(c.tops, points[h] + (ox / ol) * ICE_TOP.reach, points[h + 1] - ICE_TOP.below, points[h + 2] + (oz / ol) * ICE_TOP.reach, ox / ol, oz / ol) : null;
             if (top != null) near = Math.min(near, 1 - (top - points[h + 1] - ICE_TOP.hold) / ICE_TOP.band);
             const before = Math.hypot(F[v], F[v + 1], F[v + 2]),
-              d = near > 0 ? up * Math.min(1, ice.follow * 0.001 * near * near) : 0;
+              cap = (ice.followMax ?? 1e9) + (ice.followCurve ?? 0) * Math.hypot(F[v], F[v + 2]) * c.wallRate,
+              d = near > 0 ? Math.min(up * Math.min(1, ice.follow * 0.001 * near * near), cap * 0.001 * near * near) : 0;
             F[v] -= wx * d;
             F[v + 1] -= wy * d;
             F[v + 2] -= wz * d;
@@ -2695,7 +2710,7 @@ self.TM = (() => {
       const fr = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
       // per wheel; full: the exact values too (to compare against the page's own)
       const r3 = (q) => +q.toFixed(3);
-      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, load: c.probe && c.probe.load ? [...c.probe.load] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
+      if (fr % TEST.trace == 0) postMessage({ tmProbe: { fr, carId, vehicle: c.vehicle, reactor: c.reactorLeft > 0 ? Object.keys(REACTOR).find((k) => REACTOR[k] === c.reactor) : null, reactorLeft: c.reactorLeft, reactorEnd: c.reactorEnd, hover: r3(c.hover), wallRate: r3(c.wallRate), gas: c.gas, neo: c.neo, kick: c.kickLeft, kickDeg: r3(c.kickDeg), ssGap: c.ssGap, canTap: c.canTap, held: c.steerHeld, wet: c.tyres.map((t) => r3(t.wet)), ice: c.tyres.map((t) => r3(t.ice)), mud: c.tyres.map((t) => r3(t.mud)), u: c.probe ? [...c.probe.u] : null, grip: c.probe ? [...c.probe.grip] : null, load: c.probe && c.probe.load ? [...c.probe.load] : null, ...(TEST.full ? { tyres: c.tyres.map((t) => [t.wet, t.ice, t.mud]) } : {}) } });
     }
   }
 
