@@ -25571,6 +25571,7 @@
               f.set(this, []),
               p.set(this, new Map()),
               (0, r.GG)(this, h, new Worker("simulation_worker.bundle.js"), "f"),
+              self.TM.shareBlocks((0, r.gn)(this, h, "f")),
               (0, r.gn)(this, h, "f").addEventListener("error", (e) => {
                 throw new Error("Simulation error: " + e.message);
               }),

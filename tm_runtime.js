@@ -33,9 +33,31 @@ self.TM = (() => {
   let bin = null;
   // TM_BASE: where another site (Not So Weekly Shorts) loads this from; unset here.
   const binUrl = () => (self.TM_BASE || '') + 'models/tm_blocks.bin';
+  // The page hands its copy of the file to its physics workers as a blob: URL ({tmBin} message, or TM_BIN_URL set by the
+  // embedding site's own worker code). A worker that downloads the file again stays busy, and its cars frozen, until it has it.
+  const isPage = typeof document != 'undefined';
+  let blobUrl = null;
+  const shared = new Set();
+  const blocksUrl = () => (isPage && bin ? (blobUrl ??= URL.createObjectURL(new Blob([bin]))) : null);
+  const tell = (worker) => {
+    try {
+      const tmBin = blocksUrl();
+      if (tmBin) worker.postMessage({ tmBin });
+    } catch {}
+  };
+  const shareBlocks = (worker) => {
+    shared.add(worker);
+    tell(worker);
+  };
+  if (!isPage && typeof self.addEventListener == 'function')
+    self.addEventListener('message', (e) => {
+      const u = e.data?.tmBin;
+      if (typeof u == 'string' && u.startsWith('blob:')) self.TM_BIN_URL = u;
+    });
   const accept = (buffer) => {
-    if (buffer.byteLength != D.binBytes) throw new Error('models/tm_blocks.bin does not match tm_parts.js');
+    if (buffer?.byteLength != D.binBytes) throw new Error('models/tm_blocks.bin does not match tm_parts.js');
     bin = buffer;
+    for (const worker of shared) tell(worker);
   };
   let loading = null;
   const load = () => {
@@ -54,11 +76,20 @@ self.TM = (() => {
   // Workers have no await point before their first message, so they read the file synchronously when needed.
   const loadSync = () => {
     if (bin) return;
-    const x = new XMLHttpRequest();
-    x.open('GET', binUrl(), false);
-    x.responseType = 'arraybuffer';
-    x.send(null);
-    accept(x.response);
+    const read = (url) => {
+      const x = new XMLHttpRequest();
+      x.open('GET', url, false);
+      x.responseType = 'arraybuffer';
+      x.send(null);
+      return x.response;
+    };
+    let buffer = null;
+    if (self.TM_BIN_URL)
+      try {
+        buffer = read(self.TM_BIN_URL);
+      } catch {}
+    if (buffer?.byteLength != D.binBytes) buffer = read(binUrl());
+    accept(buffer);
   };
   const positions = (m) => new Float32Array(bin, m[1], m[2]);
   const indices = (m) => new Uint16Array(bin, m[3], m[4]);
@@ -2592,6 +2623,8 @@ self.TM = (() => {
     parts: D.parts,
     byId,
     load,
+    blocksUrl,
+    shareBlocks,
     renderArrays,
     prepareCar,
     physicsId,

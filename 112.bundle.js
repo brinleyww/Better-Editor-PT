@@ -2157,7 +2157,7 @@
                 { name: n, author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },
                 (0, i.gn)(this, jt, "f").getTrackData(),
               );
-              return (ok && (0, i.GG)(this, Ye, !0, "f"), { saved: !!ok, name: n, reason: ok ? null : "failed" });
+              return (ok && ((0, i.GG)(this, Ye, !0, "f"), (self.__beOwnName = n)), { saved: !!ok, name: n, reason: ok ? null : "failed" });
             }));
         }),
         (si = function () {
@@ -3177,6 +3177,7 @@
                           ((0, i.gn)(this, ge, "f").disabled = !0),
                           ((0, i.gn)(this, fe, "f").disabled = !0),
                           (0, i.gn)(this, Kt, "m", In).call(this, t),
+                          (self.__beOwnName = t?.name ?? null),
                           (0, i.GG)(this, Ye, !0, "f"));
                         const s = (0, i.gn)(this, jt, "f").getStart();
                         if (null != s) this.resetView(s.x, s.y, s.z);
@@ -3276,7 +3277,8 @@
                     },
                     n = (0, i.gn)(this, jt, "f").getTrackData();
                   (0, i.gn)(this, $t, "f").saveCustomTrack(e, n)
-                    ? ((0, i.gn)(this, te, "f").tryActivatePersistentStorage(),
+                    ? ((self.__beOwnName = t),
+                      (0, i.gn)(this, te, "f").tryActivatePersistentStorage(),
                       (0, i.gn)(this, Kt, "m", Yn).call(
                         this,
                         (0, i.gn)(this, Vt, "f").get("Track saved!"),
@@ -3323,7 +3325,7 @@
                     "f",
                   ));
               else {
-                (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e)
+                (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e) && self.__beOwnName !== e
                   ? (((0, i.gn)(this, re, "f").inert = !0),
                     (0, i.gn)(this, ne, "f").showConfirm(
                       (0, i.gn)(this, Vt, "f").get('Are you sure you want to overwrite "{0}"?', [e]),
@@ -3671,7 +3673,7 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = null),
+          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = self.__beOwnName = null),
             (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),

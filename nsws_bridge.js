@@ -68,6 +68,12 @@
         if (mode === "normal" || !parentOrigin) return false;
         const t = currentTrack();
         if (!t) return false;
+        // No start block: the editor's own Test says so, where NSWS could only fail to start the race.
+        try {
+            if (self.__beTrackData.fromExportString(t.code).trackData.getStartTransform() == null) return false;
+        } catch {
+            return false;
+        }
         post({ type: "test", mode, name: t.name, code: t.code });
         return true;
     };
