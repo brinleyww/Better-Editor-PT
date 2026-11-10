@@ -1120,6 +1120,7 @@
                 Ut.add(t),
                 Bt.render(Ut, _t),
                 Ut.remove(t),
+                Ut.getObjectByName("be-finish-frame")?.removeFromParent(),
                 e(Bt.domElement.toDataURL()));
             }, 25);
           });
@@ -3177,7 +3178,14 @@
                           ((0, i.gn)(this, ge, "f").disabled = !0),
                           ((0, i.gn)(this, fe, "f").disabled = !0),
                           (0, i.gn)(this, Kt, "m", In).call(this, t),
-                          (self.__beOwnName = t?.name ?? null),
+                          (self.__beOwnName = (() => {
+                            try {
+                              const c = null != t?.name ? (0, i.gn)(this, $t, "f").loadCustomTrack(t.name) : null;
+                              return null != c && c.trackData.getId() === e.getId() ? t.name : null;
+                            } catch {
+                              return null;
+                            }
+                          })()),
                           (0, i.GG)(this, Ye, !0, "f"));
                         const s = (0, i.gn)(this, jt, "f").getStart();
                         if (null != s) this.resetView(s.x, s.y, s.z);
@@ -3318,8 +3326,21 @@
                           (0, i.gn)(this, Kt, "m", _n).call(this, n),
                           (0, i.gn)(this, ye, "f")?.dispose(),
                           (0, i.GG)(this, ye, null, "f"),
-                          t(e),
-                          ((0, i.gn)(this, re, "f").className = "editor-ui"));
+                          ((0, i.gn)(this, re, "f").className = "editor-ui"),
+                          (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e) && self.__beOwnName !== e
+                            ? (((0, i.gn)(this, re, "f").inert = !0),
+                              (0, i.gn)(this, ne, "f").showConfirm(
+                                (0, i.gn)(this, Vt, "f").get('Are you sure you want to overwrite "{0}"?', [e]),
+                                (0, i.gn)(this, Vt, "f").get("Cancel"),
+                                (0, i.gn)(this, Vt, "f").get("Confirm"),
+                                () => {
+                                  (0, i.gn)(this, re, "f").inert = !1;
+                                },
+                                () => {
+                                  (t(e), ((0, i.gn)(this, re, "f").inert = !1));
+                                },
+                              ))
+                            : t(e));
                       },
                     ),
                     "f",
@@ -3520,7 +3541,7 @@
                           ? ((0, i.gn)(this, te, "f").tryActivatePersistentStorage(), self.__beStartEditor())
                           : (0, i.gn)(this, Kt, "m", Yn).call(this, (0, i.gn)(this, Vt, "f").get("Failed to save!"), !1);
                       };
-                      name !== before && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)
+                      name !== self.__beOwnName && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)
                         ? (((0, i.gn)(this, re, "f").inert = !0),
                           (0, i.gn)(this, ne, "f").showConfirm(
                             (0, i.gn)(this, Vt, "f").get('Are you sure you want to overwrite "{0}"?', [name]),
