@@ -872,8 +872,8 @@ self.TM.vehicles = (() => {
         c.rLeft = R ? Math.max(1, R.frames - Math.round((1 - rt) * steps)) : 0;
       }
     }
-    // The hover lift, as the runtime's c.hover (REACTOR_HOVER): an up boost lifts the car over flat ground (the wheels'
-    // mean contact normal near world up), fully while off the ground, and the lift moves at the runtime's rates.
+    // The hover lift of an older runtime (its REACTOR_HOVER; the current one has none, so this stays 0): an up boost lifted
+    // the car over flat ground (the wheels' mean contact normal near world up), fully while off the ground.
     let ground = false,
       nx = 0,
       ny = 0,
@@ -1427,8 +1427,8 @@ self.TM.vehicles = (() => {
   // They die away over the last half second. The boost itself is worked out in step() like the vehicle: the plate the
   // car's origin enters and the way it crosses it, ended by a reset plate, a checkpoint, a respawn, the reset key or the
   // finish.
-  // The runtime's tables and pick (tm_runtime.js REACTOR, REACTOR_PLATES, REACTOR_HOVER, reactorPick); an older runtime
-  // had one boost per plate type and no hover.
+  // The runtime's tables and pick (tm_runtime.js REACTOR, REACTOR_PLATES, reactorPick); an older runtime had one boost
+  // per plate type. Only an older runtime hovered (REACTOR_HOVER): the current one has none, so the lift stays 0.
   const REACTOR = TM.REACTOR ?? {
     ReactorUp: { level: 1, dir: 1, frames: 6000 },
     ReactorDown: { level: 1, dir: -1, frames: 6000 },

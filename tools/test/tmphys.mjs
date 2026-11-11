@@ -67,12 +67,9 @@ await c.evaluate(`(()=>{
 
 // ---- running and reading runs ---------------------------------------------------------------------------------------
 const rec = (r = {}) => ({ up: r.up ?? [], right: r.right ?? [], down: r.down ?? [], left: r.left ?? [], reset: r.reset ?? [] });
-// TMHOVER='{"grip":1}' tries other REACTOR_HOVER settings without editing the runtime (test-only hook).
-const HOVERTRY = process.env.TMHOVER ? JSON.parse(process.env.TMHOVER) : null;
 // TMRAIR='{"yaw":1}' the same for REACTOR_AIR.
 const RAIRTRY = process.env.TMRAIR ? JSON.parse(process.env.TMRAIR) : null;
 async function run(parts, test, cars) {
-  if (HOVERTRY) test = { ...(test || {}), hoverSet: HOVERTRY };
   if (RAIRTRY) test = { ...(test || {}), rair: RAIRTRY };
   if (process.env.TMSURF && !(test && test.surf)) test = { ...(test || {}), surf: JSON.parse(process.env.TMSURF) };
   const r = await c.evaluate(`__run(${JSON.stringify({ parts, test, cars: cars.map((x) => ({ ...x, rec: rec(x.rec) })) })}).then(r=>JSON.stringify(r))`);
@@ -447,7 +444,7 @@ if (section == 'feel') {
 }
 
 if (section == 'reactor') {
-  // Reactor boosts (tm_runtime.js REACTOR, REACTOR_HOVER, reactorPick). Each part runs on its own when its name is in
+  // Reactor boosts (tm_runtime.js REACTOR, REACTOR_AIR, reactorPick; hover: the flat floor, now no hover). Each part runs on its own when its name is in
   // the 4th argument (hover, seams, ramp, down, pick, ends, loop; all by default). Heights are of the car's origin
   // over its ride height before the plate (hover, seams) or over the ramp's lip (ramp).
   // hover: on a wide stock floor (Plane), gas held, with the reactor, the super reactor and no plate: how the hover
@@ -578,6 +575,9 @@ if (section == 'reactor') {
         const D = await run(parts, { trace: 20 }, [{ id: 1, rec: { up: [0, off + 500] }, frames: off + 5000 }]), d = D[1], dl = first(d, (q) => q.w != 0, off + 100);
         out[name].gasOffLanding = dl == null ? null : { msInAir: dl - off, boostOn: probeAt(D.probes, dl)?.reactor ?? null, kmh: +d[dl].v.toFixed(0), fallSpeed: r2(-vy(d, dl - 10)), maxOverFloorAfter: r2(Math.max(...d.slice(dl + 50, dl + 1500).map((q) => q.y - d[100].y))), wheelsOffAfter: d.slice(dl + 20, dl + 1500).filter((q) => q.w == 0).length, hOverFloor: { '0.2s': r2(at(d, dl + 200).y - d[100].y), '0.5s': r2(at(d, dl + 500).y - d[100].y), '1s': r2(at(d, dl + 1000).y - d[100].y), '1.5s': r2(at(d, dl + 1500).y - d[100].y) }, hover1s: probeAt(D.probes, dl + 1000)?.hover ?? null };
       }
+      // no input from the lip on (the gas let go as the car leaves it): how its attitude drifts, tilt (deg) after the lip
+      const N = (await run(parts, null, [{ id: 1, rec: { up: [0, off] }, frames: off + 3000 }]))[1], nLand = first(N, (q) => q.w != 0, off + 50) ?? N.length - 1, nt = (ms) => (off + ms < nLand ? +tilt(N[off + ms].q).toFixed(1) : 'landed');
+      out[name].noInput = { tilt: { '0.5s': nt(500), '1s': nt(1000), '1.5s': nt(1500), '2s': nt(2000) }, airMs: nLand - off, peakOverLip: r2(Math.max(...N.slice(off, nLand).map((q) => q.y)) - yLip) };
       // steering left in the air from 0.5 s after the lip for 2 s
       const S = (await run(parts, null, [{ id: 1, rec: { up: [0], left: [off + 500, off + 2500] }, frames: off + 3000 }]))[1];
       out[name].airSteer = { airborneAt1_5s: S[off + 1500].w == 0, yawDegPerSec: rate(S, off + 1000, off + 2000), maxTilt: +Math.max(...S.slice(off + 500, off + 2500).map((q) => tilt(q.q))).toFixed(1) };
@@ -702,7 +702,7 @@ if (section == 'bounce') {
 if (section == 'rair') {
   // Reactor boosts in the air (REACTOR_AIR): a lane 400 units up, the plate (turned round: a down boost) on its fourth
   // platform, the car launched (TEST launch) at 150 or 300 km/h (TMKMH) and off the end. Per boost: A gas held; B gas and
-  // full left from 0.3 s after the edge for 2 s; C no gas; D gas, and the car set spinning (1.5 rad/s pitch and roll)
+  // full left from 0.3 s after the edge for 2 s; C no gas or steering (tilt: how its attitude drifts); D gas, and the car set spinning (1.5 rad/s pitch and roll)
   // 0.3 s after the edge. Tilt: car up against world up (deg); yaw: the nose's heading about world up (deg/s); course:
   // the way the car goes along the ground, turned (deg); slip: nose against course at the end of the steer (deg).
   const kmhs = (process.env.TMKMH || '150,300').split(',').map(Number);
@@ -734,7 +734,7 @@ if (section == 'rair') {
         boost, airMs: land - off, kmhAtEdge: r1(hs(a, off)),
         A: { tiltMax: r1(Math.max(...a.slice(off + 200, end).map((q) => tilt(q.q)))), tilt1s: r1(tilt(a[w(off + 1000)].q)), tilt3s: r1(tilt(a[w(off + 3000)].q)), kmhGain3s: r1(hs(a, w(off + 3000)) - hs(a, off)), kmhGainEnd: r1(hs(a, end) - hs(a, off)), climb3s: r1(a[w(off + 3000)].y - a[off].y), climb5s: r1(a[w(off + 5000)].y - a[off].y), vy3s: r1(vAt(a, w(off + 3000))[1]), vy5s: r1(vAt(a, w(off + 5000))[1]), msMeasured: end - off },
         B: { yawDegPerSec: rate(B, s0 + 500, bEnd), courseTurnDeg: r1(Math.abs(wrap(course(B, bEnd) - course(B, s0))) * 57.2958), slipEndDeg: r1(Math.abs(wrap(heading(B[bEnd].q) - course(B, bEnd))) * 57.2958), maxRollDeg: r1(Math.max(...B.slice(s0, bEnd).map((q) => Math.abs(rollOf(q.q))))), maxTiltDeg: r1(Math.max(...B.slice(s0, bEnd).map((q) => tilt(q.q)))), kmhGain: r1(hs(B, bEnd) - hs(B, s0)), ms: bEnd - s0 },
-        C: { kmhGain3s: r1(hs(C, cEnd) - hs(C, cOff)), climb3s: r1(C[cEnd].y - C[cOff].y), ms: cEnd - cOff },
+        C: { kmhGain3s: r1(hs(C, cEnd) - hs(C, cOff)), climb3s: r1(C[cEnd].y - C[cOff].y), tilt1s: r1(tilt(C[Math.min(cEnd, cOff + 1000)].q)), tilt2s: r1(tilt(C[Math.min(cEnd, cOff + 2000)].q)), ms: cEnd - cOff },
         D: { tilt0_25s: r1(tilt(D[off + 550].q)), tilt0_5s: r1(tilt(D[off + 800].q)), tilt1s: r1(tilt(D[off + 1300].q)), tilt2s: r1(tilt(D[Math.min(D.length - 1, off + 2300)].q)) },
       };
       (results.rair[name] ??= {})[kmh] = row;
@@ -832,8 +832,9 @@ if (section == 'verify') {
   // Reactor boosts: the super plate turned round (a down boost pressing the car), a checkpoint, the reactor plate (an up
   // boost: the car hovers), the finish 3 on.
   tracks.reactor = L(['WoodStartPlat', 'WoodPlatBase', { n: 'WoodFxReactor2UpPlat', r: 2 }, 'WoodPlatBase', { n: 'WoodCheckpointPlat', cp: 0 }, 'WoodFxReactorUpPlat', 'WoodPlatBase', 'WoodPlatBase', 'WoodFinishPlat', 'WoodPlatBase', 'WoodPlatBase']);
-  // The super reactor plate, then a kicker the car flies off with the gas held: the boost holds it up in the air for the
-  // rest of its 6 s, then it comes down on a long floor with the finish far on.
+  // The super reactor plate, then a kicker the car flies off on the gas: the jets lift it and push it on, the gas is let
+  // go 0.25 s into the flight and the air brake held 0.7 s (steadying its pitch, as in any jump), it comes down, still
+  // boosted, onto a long floor and drives on to the finish on the gas again (recs.reactorAir; finish frame 12170).
   tracks.reactorAir = L(['WoodStartPlat', 'WoodPlatBase', 'WoodFxReactor2UpPlat', 'WoodPlatBase', 'WoodPlatBase', 'WoodPlatGentleStart']);
   for (let k = 0; k < 36; k++) for (const x of [-4, 0, 4]) tracks.reactorAir.push({ n: k == 30 ? 'WoodFinishPlat' : 'WoodPlatBase', x, y: 0, z: -4 * (9 + k) });
   // The plates the menu no longer offers, as old tracks have them: a down plate, the turbo roulette, a checkpoint, an
@@ -851,6 +852,7 @@ if (section == 'verify') {
   tracks.bobWall = L(['IceStartBob', ...Array(40).fill('IceBobStraight')]);
   tracks.bobWall[30] = { ...tracks.bobWall[30], n: 'IceFinishBob' };
   recs.bobWall = { up: [0], left: [2000, 2400], right: [2700, 2950] };
+  recs.reactorAir = { up: [0, 3700, 8000], down: [3900, 4600] };
   // Magnet road: stock road onto magnet road, the quarter pipe up, the loop's top and two ceiling pieces, upside down
   // on the magnet, to a half finish box hanging just past the ceiling's end, which the car crosses still upside down.
   tracks.magnetCeiling = [['Start', 0, 0], ['Straight', 0, -4], ['RoadKitMagnetFromRoad', 0, -8], ['RoadKitMagnetStraight', 0, -12], ['RoadKitMagnetQuarterUp', 0, -16], ['RoadKitMagnetLoopTop', 4, -16], ['RoadKitMagnetCeiling', 7, -12], ['RoadKitMagnetCeiling', 7, -8], ['RoadKitFinishBoxHalf', 6, -4]].map(([n, y, z]) => ({ n, x: 0, y, z }));
