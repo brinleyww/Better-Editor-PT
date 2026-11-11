@@ -571,7 +571,9 @@ self.TM = (() => {
   //   The vertical push (REACTOR lift, press) and the push along the nose come in between `from` and `full` frames off
   //   the ground (over seams and kerbs nothing); turning after AIR.after frames, as the alt cars' air control. All of it
   //   dies away with the boost (REACTOR fade).
-  const REACTOR_AIR = { from: 60, full: 250, thrust: [8, 12], yaw: 1.2, pull: 0.02 };
+  // nose: on an up boost with the gas held in the air, this share per frame of the pitch spin that drops the nose is taken
+  // away (only while the nose is dropping), so a climbing car noses down less; nothing else about its attitude is held.
+  const REACTOR_AIR = { from: 60, full: 250, thrust: [8, 12], yaw: 1.2, pull: 0.02, nose: 0.0004 };
   if (TEST && TEST.rair) Object.assign(REACTOR_AIR, TEST.rair);
   // Water, after Trackmania 2020. How deep the car is decides how much it counts (k, 0 to 1: deep water counts fully once
   // the car's underside is `depth` units under). Drag grows with speed, lin x v + quad x v^2 (units/s^2), so it bleeds
@@ -2493,6 +2495,16 @@ self.TM = (() => {
           F[v] += fx * k;
           F[v + 1] += fy * k;
           F[v + 2] += fz * k;
+        }
+        // up boost: the nose drops less (only the spin that is dropping it, about the car's own pitch axis)
+        if (R.dir > 0 && A.nose && aired > 0) {
+          const drop = F[av + 2] * fx - F[av] * fz;
+          if (drop < 0) {
+            const p = (F[av] * lx + F[av + 1] * ly + F[av + 2] * lz) * A.nose * aired;
+            F[av] -= lx * p;
+            F[av + 1] -= ly * p;
+            F[av + 2] -= lz * p;
+          }
         }
       }
       // turning in the air: only the spin about the car's own up
