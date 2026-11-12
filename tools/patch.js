@@ -349,8 +349,33 @@ apply('main.bundle.js', [
     `__tmPlacedParts() {
             return new Set((0, v.gn)(this, l, "f").map((e) => e.trackPartData));
           }
+          // Changes whenever anything a track code holds changes, so an unchanged track is not compressed again
+          // (self.__beEditorCurrent). Parts only change through setPart, clear and the removal helper, which count edits.
+          __beSig() {
+            const sun = (0, v.gn)(this, o, "f");
+            return this.environment + "|" + sun.x + "," + sun.y + "," + sun.z + "|" + (this.__beEdits ?? 0) + "|" + (0, v.gn)(this, l, "f").length;
+          }
           setPart(e, t, n, i, r, a, o, d, f) {
+            this.__beEdits = (this.__beEdits ?? 0) + 1;
             const p = (0, v.gn)(this, s, "f").getPart(i);`,
+  ],
+  [
+    'edit count: clear',
+    `clear() {
+            (((0, v.gn)(this, l, "f").length = 0),`,
+    `clear() {
+            ((this.__beEdits = (this.__beEdits ?? 0) + 1),
+              ((0, v.gn)(this, l, "f").length = 0),`,
+  ],
+  [
+    'edit count: part removed',
+    `(g = function (e) {
+            if (e < 0 || e >= (0, v.gn)(this, l, "f").length)
+              throw new Error("Track part index out of bounds");`,
+    `(g = function (e) {
+            if (e < 0 || e >= (0, v.gn)(this, l, "f").length)
+              throw new Error("Track part index out of bounds");
+            this.__beEdits = (this.__beEdits ?? 0) + 1;`,
   ],
 ]);
 
@@ -395,7 +420,7 @@ apply('112.bundle.js', [
   ['editor tools close with the editor', 'dispose() {\n          ((0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());', 'dispose() {\n          (self.TM.tools.close(), (0, i.gn)(this, bi, "f").dispose(), (0, i.gn)(this, pi, "f").clear());'],
   // nsws_bridge.js opens saved tracks straight into the editor.
   ['exit goes back to NSWS when embedded', '        (Un = function (t) {\n          const e = () => {', '        (Un = function (t) {\n          if (self.__beExitHook?.()) return;\n          const e = () => {'],
-  ['editor test hook and current track', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x));', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), self.__beTestHook?.() || (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x),\n            (self.__beEditorCurrent = () => {\n              const t = (0, i.gn)(this, un, "f"),\n                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") };\n              return { name: t, author: e.author, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) };\n            }));'],
+  ['editor test hook and current track', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x));', '            x.addEventListener("click", () => {\n              ((0, i.gn)(this, Ft, "f").playUIClick(), self.__beTestHook?.() || (0, i.gn)(this, Kt, "m", Hn).call(this));\n            }),\n            k.appendChild(x),\n            (self.__beEditorCurrent = () => {\n              const t = (0, i.gn)(this, un, "f"),\n                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },\n                // NSWS asks for the open track every few seconds and compressing a big one takes tens of ms (a stutter while\n                // editing or driving a Test), so the code is made again only when the track or its details changed.\n                key = (0, i.gn)(this, jt, "f").__beSig() + "|" + e.name + "|" + (e.author ?? "") + "|" + (e.lastModified?.getTime() ?? ""),\n                c = self.__beCurrentCode;\n              return (\n                c?.key !== key && (self.__beCurrentCode = { key, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) }),\n                { name: t, author: e.author, code: self.__beCurrentCode.code }\n              );\n            }));'],
   ['editor track loader', '                "cancel",\n                !0,\n                () => {\n                  (((0, i.gn)(this, re, "f").className = "editor-ui"), (0, i.gn)(this, we, "f").hide());\n                },\n                (t, e, n) => {', '                "cancel",\n                !0,\n                () => {\n                  (((0, i.gn)(this, re, "f").className = "editor-ui"), (0, i.gn)(this, we, "f").hide());\n                },\n                (self.__beEditorOpen = (t, e, n) => {'],
   ['editor track loader end', '                      .finally(() => {\n                        ((0, i.gn)(this, be, "f")?.dispose(), (0, i.GG)(this, be, null, "f"));\n                      }));\n                },\n              ),\n              "f",', '                      .finally(() => {\n                        ((0, i.gn)(this, be, "f")?.dispose(), (0, i.GG)(this, be, null, "f"));\n                      }));\n                }),\n              ),\n              "f",'],
   // nsws_bridge.js autosave: saves the open track under its name when it has unsaved changes.

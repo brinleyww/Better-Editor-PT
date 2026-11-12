@@ -2778,8 +2778,15 @@
             k.appendChild(x),
             (self.__beEditorCurrent = () => {
               const t = (0, i.gn)(this, un, "f"),
-                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") };
-              return { name: t, author: e.author, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) };
+                e = { name: t ?? "Unnamed Track", author: (0, i.gn)(this, mn, "f"), lastModified: (0, i.gn)(this, vn, "f") },
+                // NSWS asks for the open track every few seconds and compressing a big one takes tens of ms (a stutter while
+                // editing or driving a Test), so the code is made again only when the track or its details changed.
+                key = (0, i.gn)(this, jt, "f").__beSig() + "|" + e.name + "|" + (e.author ?? "") + "|" + (e.lastModified?.getTime() ?? ""),
+                c = self.__beCurrentCode;
+              return (
+                c?.key !== key && (self.__beCurrentCode = { key, code: (0, i.gn)(this, jt, "f").getTrackData().toExportString(e) }),
+                { name: t, author: e.author, code: self.__beCurrentCode.code }
+              );
             }));
           const y = document.createElement("button");
           ((y.className = "button"),

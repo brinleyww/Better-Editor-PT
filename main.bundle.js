@@ -27073,7 +27073,8 @@
             (0, v.GG)(this, o, e.clone(), "f");
           }
           clear() {
-            (((0, v.gn)(this, l, "f").length = 0),
+            ((this.__beEdits = (this.__beEdits ?? 0) + 1),
+              ((0, v.gn)(this, l, "f").length = 0),
               (0, v.gn)(this, c, "f").clear(),
               (0, v.gn)(this, h, "f").clear());
             for (const { mesh: e } of (0, v.gn)(this, p, "f"))
@@ -27121,7 +27122,14 @@
           __tmPlacedParts() {
             return new Set((0, v.gn)(this, l, "f").map((e) => e.trackPartData));
           }
+          // Changes whenever anything a track code holds changes, so an unchanged track is not compressed again
+          // (self.__beEditorCurrent). Parts only change through setPart, clear and the removal helper, which count edits.
+          __beSig() {
+            const sun = (0, v.gn)(this, o, "f");
+            return this.environment + "|" + sun.x + "," + sun.y + "," + sun.z + "|" + (this.__beEdits ?? 0) + "|" + (0, v.gn)(this, l, "f").length;
+          }
           setPart(e, t, n, i, r, a, o, d, f) {
+            this.__beEdits = (this.__beEdits ?? 0) + 1;
             const p = (0, v.gn)(this, s, "f").getPart(i);
             if (o != x.A.Default && !p.colors.has(o)) throw new Error("Track part color does not exist");
             const g = T.hT(r, a),
@@ -27414,6 +27422,7 @@
           (g = function (e) {
             if (e < 0 || e >= (0, v.gn)(this, l, "f").length)
               throw new Error("Track part index out of bounds");
+            this.__beEdits = (this.__beEdits ?? 0) + 1;
             const t = (0, v.gn)(this, l, "f")[e];
             (0, v.gn)(this, l, "f").splice(e, 1);
             t.trackPartData.configuration.tiles.rotated(t.rotation, t.rotationAxis).forEach((e, n, i) => {

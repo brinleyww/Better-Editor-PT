@@ -336,6 +336,7 @@ self.TM.tools = (() => {
   const standalone = window.parent === window;
   let saver = null;
   let wasDirty = false;
+  let savedCode = null;
 
   function autosave() {
     if (!ed || testing || !self.__beEditorDirty || !self.__beEditorCurrent) return;
@@ -343,9 +344,16 @@ self.TM.tools = (() => {
     if (dirty) {
       try {
         const t = self.__beEditorCurrent();
-        store.set(RECOVERY_KEY, JSON.stringify({ name: t.name, code: t.code, time: Date.now() }));
+        // Written again only after a change, not every 4 s while the track stays unsaved.
+        if (t.code !== savedCode) {
+          store.set(RECOVERY_KEY, JSON.stringify({ name: t.name, code: t.code, time: Date.now() }));
+          savedCode = t.code;
+        }
       } catch {}
-    } else if (wasDirty) store.set(RECOVERY_KEY, null); // saved, or the changes were thrown away on purpose
+    } else if (wasDirty) {
+      store.set(RECOVERY_KEY, null); // saved, or the changes were thrown away on purpose
+      savedCode = null;
+    }
     wasDirty = dirty;
   }
 
