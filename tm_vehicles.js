@@ -1630,9 +1630,9 @@ self.TM.vehicles = (() => {
     cars.set(car, { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost, react: T.react ?? [], rInside: new Uint8Array(T.react?.length ?? 0), reactor: null, rLeft: 0, ngLeft: 0, lift: 0, rGround: false, jet: null });
   }
   // Ghosts and replays: the game sets up (track) only the cars it simulates itself, so a ghost or a replayed car never
-  // comes to track and only ever gets its states. It is followed for its tyres and spray over the tables of a car set up in
-  // the same scene, and keeps the game's own look: a vehicle look's parts would not fade with it as the game fades a
-  // ghost near the player.
+  // comes to track and only ever gets its states. It is followed over the tables of a car set up in the same scene, and
+  // wears the vehicle its run drove as too: follow() gives the look's own materials the ghost's see-through every frame,
+  // and the rest of the look is the car's own materials, which the game fades itself.
   const scenes = new WeakMap(); // scene wrapper -> the tables of the last car set up in it
   const lifted = new WeakSet(); // states whose wheels are already drawn up by a hover lift
   const adopted = new WeakSet(); // cars tried for that, once each
@@ -1697,7 +1697,7 @@ self.TM.vehicles = (() => {
         console.warn('Reactor jets off:', e);
       }
     if (wheelsOf(c.rig) && c.look) dressWheels(c, sw, three, c.rig.tyres[0]?.opacity ?? 1);
-    if (c.vehicle != c.worn && !c.ghost) {
+    if (c.vehicle != c.worn) {
       c.worn = c.vehicle;
       wear(c, sw, three);
     }
@@ -1715,7 +1715,7 @@ self.TM.vehicles = (() => {
   function dispose(car) {
     const c = cars.get(car);
     // Before the car's own dispose walks its meshes, so these come off the scene's material list here.
-    if (c?.rig && !c.ghost) takeOff(c, c.sw);
+    if (c?.rig) takeOff(c, c.sw);
     if (c) letGo(c), dropJets(c);
     cars.delete(car);
   }
@@ -1747,7 +1747,7 @@ self.TM.vehicles = (() => {
     // The vehicle the page shows for a car ('Stadium', 'Snow', 'Rally', 'Desert'), null for a car it does not follow.
     of: (car) => {
       const c = cars.get(car);
-      return c && !c.ghost ? c.vehicle : null;
+      return c ? c.vehicle : null;
     },
     tyres: (car) => cars.get(car)?.tyre ?? null,
     // Hovering on a reactor boost the jets carry the car, so its wheels show no skid smoke and leave no skid marks: the
