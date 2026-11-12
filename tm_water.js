@@ -436,20 +436,25 @@ self.TM.water = (() => {
         }
         // How far the joined boxes go from q along d (each part -1, 0 or 1, so the distance is the larger of the
         // in-plane offsets), starting at t, where q's own box ends; at most cap.
+        // Written with plain fixed loops, no early return and no per-component indexing: Direct3D's shader compiler
+        // (ANGLE on Windows) got the old form wrong and stopped after the first box, so every inside corner of a wall
+        // of boxes drew a frame square.
         float beFinRun(vec3 q, vec3 d, float t, float cap) {
-          for (int k = 0; k < 6 && t < cap; k++) {
+          bool going = true;
+          for (int k = 0; k < 6; k++) {
+            if (!going || t >= cap) break;
             vec3 x = q + d * (t + 0.01);
             float tn = -1.0;
-            for (int i = 0; i < beFinCount; i++) {
+            for (int i = 0; i < ${SEAM_MAX}; i++) {
+              if (i >= beFinCount) break;
               vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
               if (any(lessThan(x, lo - 0.001)) || any(greaterThan(x, hi + 0.001))) continue;
-              vec3 e = mix(lo, hi, step(0.0, d)) - q;
-              float te = 1e9;
-              for (int a = 0; a < 3; a++) if (d[a] != 0.0) te = min(te, e[a] * d[a]);
+              vec3 e = (mix(lo, hi, step(0.0, d)) - q) * d;
+              float te = min(d.x != 0.0 ? e.x : 1e9, min(d.y != 0.0 ? e.y : 1e9, d.z != 0.0 ? e.z : 1e9));
               tn = max(tn, te);
             }
-            if (tn < 0.0) return t;
-            t = tn;
+            if (tn < 0.0) going = false;
+            else t = tn;
           }
           return min(t, cap);
         }
