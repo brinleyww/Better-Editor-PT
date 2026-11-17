@@ -1625,9 +1625,39 @@ self.TM.vehicles = (() => {
     }
   }
   // A car's own state over its track's tables (T).
-  function setUp(car, T, ghost) {
+  function fresh(T, ghost) {
     const tyre = [0, 1, 2, 3].map(() => ({ wet: 0, ice: 0, mud: 0 }));
-    cars.set(car, { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost, react: T.react ?? [], rInside: new Uint8Array(T.react?.length ?? 0), reactor: null, rLeft: 0, ngLeft: 0, lift: 0, rGround: false, jet: null });
+    return { T, gates: T.gates, water: T.water, surfaces: T.surfaces, tyre, inside: new Uint8Array(T.gates.length), f: -1, n: 0, x: 0, y: 0, z: 0, rate: 0, vehicle: 'Stadium', cpVehicle: 'Stadium', worn: 'Stadium', rig: null, tries: 0, parts: null, wheelParts: null, tinted: false, wu: [null, null, null, null], soaking: false, spray: T.decks ? sprayState(T.decks) : null, pool: null, ghost, react: T.react ?? [], rInside: new Uint8Array(T.react?.length ?? 0), reactor: null, rLeft: 0, ngLeft: 0, lift: 0, rGround: false, jet: null };
+  }
+  function setUp(car, T, ghost) {
+    cars.set(car, fresh(T, ghost));
+  }
+
+  // Replays and ghosts: the game keeps every state of a run in a buffer and can jump a car straight to any of them
+  // (dragging Watch's timeline), so working the vehicle out from the drawn states alone misses a gate the jump went past.
+  // NSWS hands each state here as the buffer takes it, always in order, with the buffer's track (buffer.__tmTrack), and
+  // the vehicle the run has at that state goes on it (tmVehicle) for update() to take. Only the gates are followed.
+  const gateTables = new WeakMap(); // track data -> { gates } (null with no vehicle gates)
+  const stamping = new WeakMap(); // buffer -> its run's state so far
+  function stamp(buffer, s) {
+    const data = buffer?.__tmTrack;
+    if (!data || !s?.position) return;
+    let T = gateTables.get(data);
+    if (T === undefined) {
+      try {
+        const gates = TM.zones(data).filter((z) => z.type in GATES);
+        T = gates.length ? { gates, water: [], react: [], surfaces: null, decks: null } : null;
+      } catch (e) {
+        T = null;
+      }
+      gateTables.set(data, T);
+    }
+    if (!T) return;
+    let c = stamping.get(buffer);
+    if (!c) stamping.set(buffer, (c = fresh(T, true)));
+    step(c, s);
+    c.f = s.frames;
+    s.tmVehicle = c.vehicle;
   }
   // Ghosts and replays: the game sets up (track) only the cars it simulates itself, so a ghost or a replayed car never
   // comes to track and only ever gets its states. It is followed over the tables of a car set up in the same scene, and
@@ -1660,6 +1690,11 @@ self.TM.vehicles = (() => {
       const steps = c.f < 0 ? 0 : Math.max(0, state.frames - c.f);
       c.car = car;
       step(c, state);
+      // A replay's state knows its vehicle (stamp), however the car got to it.
+      if (state.tmVehicle && state.tmVehicle != c.vehicle) {
+        for (const w of c.tyre) (w.ice = 0), TYRES && (w.wet = w.mud = 0);
+        c.vehicle = c.cpVehicle = state.tmVehicle;
+      }
       if (steps > 0 && steps < 1000) soak(c, state, steps / 1000);
       // The spray has its own guard: if it fails, only it goes off and the car keeps its looks.
       if (c.pool)
@@ -1750,6 +1785,7 @@ self.TM.vehicles = (() => {
       return c ? c.vehicle : null;
     },
     tyres: (car) => cars.get(car)?.tyre ?? null,
+    stamp,
     // Hovering on a reactor boost the jets carry the car, so its wheels show no skid smoke and leave no skid marks: the
     // game draws both from the state's skidInfo as the state comes in (VisualCar.setCarState, before the car's update),
     // so tm_hud.js hands every state here once it has read it, and while the car hovers its skidInfo reads 1 (gripping);
