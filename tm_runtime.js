@@ -31,14 +31,32 @@ self.TM = (() => {
 
   // ---- geometry --------------------------------------------------------------------------------------------------
   let bin = null;
+  // The parts whose bytes bin holds, or null when it holds the whole file. Not So Weekly Shorts hands over a buffer the
+  // size of the file with only one track's parts filled in (useBlocks), so a week track downloads its own blocks only.
+  let have = null;
+  // Every mesh of a part ([material, position offset, floats, index offset, indices]) and its byte ranges in the file.
+  const meshesOf = (p) => [...p.m, p.ph, p.bw, p.mg].filter(Boolean);
+  const rangesOf = (id) => {
+    const p = byId.get(id);
+    return p ? meshesOf(p).flatMap((m) => [[m[1], m[1] + m[2] * 4], [m[3], m[3] + m[4] * 2]]) : [];
+  };
+  const fits = (set, ids) => set == null || (ids != null && ids.every((id) => !isTM(id) || set.has(id)));
+  const hasBlocks = (ids) => bin != null && fits(have, ids);
   // TM_BASE: where another site (Not So Weekly Shorts) loads this from; unset here.
   const binUrl = () => (self.TM_BASE || '') + 'models/tm_blocks.bin';
   // The page hands its copy of the file to its physics workers as a blob: URL ({tmBin} message, or TM_BIN_URL set by the
   // embedding site's own worker code). A worker that downloads the file again stays busy, and its cars frozen, until it has it.
+  // A copy with only some parts in it names them after #tm= in the URL itself, so every worker that is handed the URL,
+  // however it gets there, knows what it holds.
   const isPage = typeof document != 'undefined';
   let blobUrl = null;
   const shared = new Set();
-  const blocksUrl = () => (isPage && bin ? (blobUrl ??= URL.createObjectURL(new Blob([bin]))) : null);
+  const blocksUrl = () =>
+    isPage && bin ? (blobUrl ??= URL.createObjectURL(new Blob([bin]))) + (have ? '#tm=' + [...have].sort((a, b) => a - b).join(',') : '') : null;
+  const partsIn = (url) => {
+    const h = /#tm=([\d,]*)$/.exec(url);
+    return h ? new Set(h[1] ? h[1].split(',').map(Number) : []) : null;
+  };
   const tell = (worker) => {
     try {
       const tmBin = blocksUrl();
@@ -54,14 +72,20 @@ self.TM = (() => {
       const u = e.data?.tmBin;
       if (typeof u == 'string' && u.startsWith('blob:')) self.TM_BIN_URL = u;
     });
-  const accept = (buffer) => {
+  const accept = (buffer, parts = null) => {
     if (buffer?.byteLength != D.binBytes) throw new Error('models/tm_blocks.bin does not match tm_parts.js');
     bin = buffer;
+    have = parts ? new Set(parts) : null;
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    blobUrl = null;
     for (const worker of shared) tell(worker);
   };
+  // The page's way in for a file it put together itself: a buffer the size of the whole file holding the bytes of the
+  // parts listed (rangesOf). Called again with the same buffer after more parts were written into it.
+  const useBlocks = (buffer, parts) => accept(buffer, parts);
   let loading = null;
   const load = () => {
-    if (bin) return Promise.resolve();
+    if (bin && !have) return Promise.resolve();
     return (loading ??= fetch(binUrl())
       .then((r) => {
         if (!r.ok) throw new Error('Failed to load ' + binUrl() + ': ' + r.status);
@@ -73,9 +97,10 @@ self.TM = (() => {
         throw e;
       }));
   };
-  // Workers have no await point before their first message, so they read the file synchronously when needed.
-  const loadSync = () => {
-    if (bin) return;
+  // Workers have no await point before their first message, so they read the file synchronously when needed. ids: the
+  // parts about to be used (null: all of them). The page's copy is read only when it holds them; else the whole file.
+  const loadSync = (ids = null) => {
+    if (hasBlocks(ids)) return;
     const read = (url) => {
       const x = new XMLHttpRequest();
       x.open('GET', url, false);
@@ -83,13 +108,13 @@ self.TM = (() => {
       x.send(null);
       return x.response;
     };
-    let buffer = null;
-    if (self.TM_BIN_URL)
+    const page = self.TM_BIN_URL;
+    if (page && fits(partsIn(page), ids))
       try {
-        buffer = read(self.TM_BIN_URL);
+        const buffer = read(page.replace(/#.*$/, ''));
+        if (buffer?.byteLength == D.binBytes) return accept(buffer, partsIn(page));
       } catch {}
-    if (buffer?.byteLength != D.binBytes) buffer = read(binUrl());
-    accept(buffer);
+    accept(read(binUrl()));
   };
   const positions = (m) => new Float32Array(bin, m[1], m[2]);
   const indices = (m) => new Uint16Array(bin, m[3], m[4]);
@@ -197,6 +222,7 @@ self.TM = (() => {
   // 'finish'), and tm_water.js's material() reads it, since every caller asks for that material straight after.
   const WATER_ORDER = { Water: 1, WaterSide: 2, FinishBox: 3 };
   function renderArrays(id, slotColors, toRgb) {
+    if (!hasBlocks([id])) console.warn('Better Editor part ' + id + ' is drawn before its blocks loaded');
     const p = byId.get(id),
       tufts = tuftsWanted() ? tuftsOf(p) : null;
     let tris = tufts ? tufts.pos.length / 3 : 0;
@@ -270,20 +296,22 @@ self.TM = (() => {
       // Level faces of bobsleigh ice by 5-unit column, world coordinates: the tops of its walls (see iceTop).
       tops = { tris: [], cells: new Map() },
       // Magnet faces (part.mg) by 5-unit cell, world coordinates: they hold the car (MAGNET).
-      mags = { tris: [], cells: new Map() };
+      mags = { tris: [], cells: new Map() },
+      used = new Set();
     track.forEachPart((x, y, z, id) => {
       if (!isTM(id)) {
         records++;
         return;
       }
       const p = byId.get(id);
+      used.add(id);
       if (p.p != null) records++;
       for (const m of physicsMeshes(p)) extra += m[4] * 3;
     });
     fxBegin(carId, zones, cells, extra > 0, spawns, walls, tops, mags);
     if (extra == 0) return { vertices: mountain, records };
 
-    loadSync();
+    loadSync([...used]);
     const out = new Float32Array(mountain.length + extra);
     out.set(mountain, 0);
     let o = mountain.length;
@@ -2760,6 +2788,10 @@ self.TM = (() => {
     parts: D.parts,
     byId,
     load,
+    useBlocks,
+    hasBlocks,
+    blocksParts: () => (have ? [...have] : null),
+    rangesOf,
     blocksUrl,
     shareBlocks,
     renderArrays,
