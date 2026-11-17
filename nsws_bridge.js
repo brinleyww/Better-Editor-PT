@@ -389,14 +389,42 @@
         if (out.length) s.manager.updateSettings(out);
     }
 
+    // The asset library (tm_assets.js) reads, likes and publishes through NSWS, with the player's NSWS account; the token
+    // stays on the NSWS page. Only a page that said it answers these (hello assets: 1) gets them.
+    let assetsParent = false;
+    let assetSeq = 0;
+    const assetWaits = new Map();
+    self.__beBridgeAssets = (op, args) => {
+        if (!parentOrigin || !assetsParent) return null;
+        const reqId = "a" + ++assetSeq;
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                assetWaits.delete(reqId);
+                reject(new Error("Not So Weekly Shorts didn't answer. Try again."));
+            }, op === "publish" || op === "update" ? 100000 : 35000);
+            assetWaits.set(reqId, { resolve, reject, timer });
+            post({ type: "assets", reqId, op, args: args || {} });
+        });
+    };
+
     window.addEventListener("message", (e) => {
         const msg = e.data;
         if (e.source !== window.parent || !msg || msg.nsws !== "be" || !ORIGIN.test(e.origin)) return;
         parentOrigin = e.origin;
         const reply = (body) => post(Object.assign({ type: msg.type, reqId: msg.reqId }, body));
+        if (msg.type === "assets-reply") {
+            const w = assetWaits.get(msg.reqId);
+            if (!w) return;
+            assetWaits.delete(msg.reqId);
+            clearTimeout(w.timer);
+            if (msg.ok) w.resolve(msg.data);
+            else w.reject(Object.assign(new Error(msg.error || "Something went wrong."), { status: msg.status || 0, data: msg.data || null }));
+            return;
+        }
         if (msg.type === "hello") {
+            if (msg.assets === 1) assetsParent = true;
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 5, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
+            post({ type: "ready", version: 6, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
         } else if (msg.type === "list") {
             reply({ tracks: listTracks(), loaded: !!self.__beTrackStore, store: storeId() });

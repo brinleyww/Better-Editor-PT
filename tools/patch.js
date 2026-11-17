@@ -25,7 +25,7 @@ const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 const FAMILIES = '(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])';
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_cull.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_cull.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="tm_assets.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
 ]);
 
@@ -571,6 +571,63 @@ apply('112.bundle.js', [
   ['unnamed save asks before overwriting', '                          (0, i.GG)(this, ye, null, "f"),\n                          t(e),\n                          ((0, i.gn)(this, re, "f").className = "editor-ui"));', '                          (0, i.GG)(this, ye, null, "f"),\n                          ((0, i.gn)(this, re, "f").className = "editor-ui"),\n                          (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e) && self.__beOwnName !== e\n                            ? (((0, i.gn)(this, re, "f").inert = !0),\n                              (0, i.gn)(this, ne, "f").showConfirm(\n                                (0, i.gn)(this, Vt, "f").get(\'Are you sure you want to overwrite "{0}"?\', [e]),\n                                (0, i.gn)(this, Vt, "f").get("Cancel"),\n                                (0, i.gn)(this, Vt, "f").get("Confirm"),\n                                () => {\n                                  (0, i.gn)(this, re, "f").inert = !1;\n                                },\n                                () => {\n                                  (t(e), ((0, i.gn)(this, re, "f").inert = !1));\n                                },\n                              ))\n                            : t(e));'],
   // Clear all's save-first prompt: compare with the track that is open, not the name field (renamed into another track).
   ['clear all asks for another track', '                      name !== before && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)', '                      name !== self.__beOwnName && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)'],
+  // tm_assets.js (public assets): the copy tool's box selection picks an asset's blocks, an asset from the library goes
+  // to the paste tool like a copied selection, and a paste of it tells the library the asset was used.
+  [
+    'asset library: editor hooks',
+    '            N.appendChild(T),\n            (0, i.GG)(this, de, document.createElement("button"), "f"),',
+    `            N.appendChild(T),
+            (self.__beAssetEditor = {
+              select: () => {
+                ((0, i.GG)(this, An, !0, "f"),
+                  (0, i.GG)(this, Mn, !1, "f"),
+                  (0, i.GG)(this, En, null, "f"),
+                  (0, i.GG)(this, Wn, null, "f"),
+                  (0, i.gn)(this, Kt, "m", $n).call(this, null));
+              },
+              selecting: () => (0, i.gn)(this, An, "f") || (0, i.gn)(this, Mn, "f"),
+              cancel: () => {
+                ((0, i.GG)(this, An, !1, "f"), (0, i.GG)(this, Mn, !1, "f"), (0, i.GG)(this, En, null, "f"));
+              },
+              part: (id) => {
+                try {
+                  return (0, i.gn)(this, Jt, "f").getPart(id) ?? null;
+                } catch {
+                  return null;
+                }
+              },
+              paste: (parts, tag) => {
+                const b = [];
+                for (const t of parts)
+                  (0, i.gn)(this, Jt, "f")
+                    .getPart(t.id)
+                    .configuration.tiles.rotated(t.rotation, t.rotationAxis)
+                    .forEach((e, n, s) => {
+                      b.push([e + t.offset.x, n + t.offset.y, s + t.offset.z]);
+                    });
+                const c = { parts, tiles: new ct.A(b), tag };
+                return (
+                  (0, i.GG)(this, Cn, c, "f"),
+                  ((0, i.gn)(this, de, "f").disabled = !1),
+                  (0, i.gn)(this, Kt, "m", Dn).call(this),
+                  c
+                );
+              },
+              clipboard: () => (0, i.gn)(this, Wn, "f"),
+            }),
+            (0, i.GG)(this, de, document.createElement("button"), "f"),`,
+  ],
+  ['asset library: empty selection', '          if (0 == h.length) return;', '          if (0 == h.length) return void (self.__beAssetPicking && self.__beAssetPicked(null));'],
+  [
+    'asset library: selection picked',
+    '          const k = new ct.A(b);\n          ((0, i.GG)(this, Cn, { parts: w, tiles: k }, "f"),',
+    '          const k = new ct.A(b);\n          if (self.__beAssetPicking) return void self.__beAssetPicked({ parts: w, tiles: k });\n          ((0, i.GG)(this, Cn, { parts: w, tiles: k }, "f"),',
+  ],
+  [
+    'asset library: asset placed',
+    '            (e.length > 0 || n.length > 0) &&\n              ((0, i.gn)(this, wn, "f").push({ removed: e, added: n }),',
+    '            n.length > 0 && self.__beAssetPlaced?.((0, i.gn)(this, Wn, "f")),\n            (e.length > 0 || n.length > 0) &&\n              ((0, i.gn)(this, wn, "f").push({ removed: e, added: n }),',
+  ],
 ]);
 
 // The worker keeps its own copy of the part table and track reader, under different minified names.

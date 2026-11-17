@@ -1484,7 +1484,7 @@
             n > a && ([n, a] = [a, n]),
             (0, i.gn)(this, dn, "f") && ((t -= 2), (n -= 2), (s += 1), (a += 1)));
           const h = (0, i.gn)(this, jt, "f").getPartsWithin(t, e, n, s, o, a);
-          if (0 == h.length) return;
+          if (0 == h.length) return void (self.__beAssetPicking && self.__beAssetPicked(null));
           if (r) {
             const r = (0, i.gn)(this, jt, "f").deletePartsWithin(t, e, n, s, o, a);
             (r.length > 0 &&
@@ -1522,6 +1522,7 @@
               });
           }
           const k = new ct.A(b);
+          if (self.__beAssetPicking) return void self.__beAssetPicked({ parts: w, tiles: k });
           ((0, i.GG)(this, Cn, { parts: w, tiles: k }, "f"),
             ((0, i.gn)(this, de, "f").disabled = !1),
             (0, i.gn)(this, Kt, "m", Dn).call(this));
@@ -1614,6 +1615,7 @@
           }
           ((0, i.gn)(this, Kt, "m", si).call(this),
             (0, i.gn)(this, Kt, "m", ii).call(this),
+            n.length > 0 && self.__beAssetPlaced?.((0, i.gn)(this, Wn, "f")),
             (e.length > 0 || n.length > 0) &&
               ((0, i.gn)(this, wn, "f").push({ removed: e, added: n }),
               ((0, i.gn)(this, bn, "f").length = 0),
@@ -3600,6 +3602,44 @@
                 (0, i.gn)(this, Kt, "m", $n).call(this, null));
             }),
             N.appendChild(T),
+            (self.__beAssetEditor = {
+              select: () => {
+                ((0, i.GG)(this, An, !0, "f"),
+                  (0, i.GG)(this, Mn, !1, "f"),
+                  (0, i.GG)(this, En, null, "f"),
+                  (0, i.GG)(this, Wn, null, "f"),
+                  (0, i.gn)(this, Kt, "m", $n).call(this, null));
+              },
+              selecting: () => (0, i.gn)(this, An, "f") || (0, i.gn)(this, Mn, "f"),
+              cancel: () => {
+                ((0, i.GG)(this, An, !1, "f"), (0, i.GG)(this, Mn, !1, "f"), (0, i.GG)(this, En, null, "f"));
+              },
+              part: (id) => {
+                try {
+                  return (0, i.gn)(this, Jt, "f").getPart(id) ?? null;
+                } catch {
+                  return null;
+                }
+              },
+              paste: (parts, tag) => {
+                const b = [];
+                for (const t of parts)
+                  (0, i.gn)(this, Jt, "f")
+                    .getPart(t.id)
+                    .configuration.tiles.rotated(t.rotation, t.rotationAxis)
+                    .forEach((e, n, s) => {
+                      b.push([e + t.offset.x, n + t.offset.y, s + t.offset.z]);
+                    });
+                const c = { parts, tiles: new ct.A(b), tag };
+                return (
+                  (0, i.GG)(this, Cn, c, "f"),
+                  ((0, i.gn)(this, de, "f").disabled = !1),
+                  (0, i.gn)(this, Kt, "m", Dn).call(this),
+                  c
+                );
+              },
+              clipboard: () => (0, i.gn)(this, Wn, "f"),
+            }),
             (0, i.GG)(this, de, document.createElement("button"), "f"),
             ((0, i.gn)(this, de, "f").className = "button"),
             ((0, i.gn)(this, de, "f").disabled = !0),
