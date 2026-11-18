@@ -1068,6 +1068,48 @@ if (section == 'tyres') {
   }
 }
 
+// Physics v26: the brake on ice (ICE_BRAKE), turbo plates that push only while the car is on them, overlapping parts.
+if (section == 'v26') {
+  const turned = (l, a, b) => { let t = 0; for (let i = a + 1; i <= b; i++) t += wrap(heading(l[i].q) - heading(l[i - 1].q)); return +((t * 180) / Math.PI).toFixed(0); };
+  const path = (l, a, b) => { const [ax, az] = vel(l, a), [bx, bz] = vel(l, b); return +((wrap(Math.atan2(bx, bz) - Math.atan2(ax, az)) * 180) / Math.PI).toFixed(0); };
+  // Ice: from 2.5 s of gas, 2.5 s of left with the gas (1) or the brake (2): how far the nose turns (deg).
+  // Then from a 1 s held left slide, 0.8 s of countersteer off the gas (3) or with the brake (4): how far the path turns.
+  const ice = floor('IceStartPlat', 'IcePlatBase', 10, 40, 10);
+  const r = await run(ice, null, [
+    { id: 1, rec: { up: [0], left: [2500] }, frames: 5000 },
+    { id: 2, rec: { up: [0, 2500], down: [2500], left: [2500] }, frames: 5000 },
+    { id: 3, rec: { up: [0, 3500], left: [2500, 3500], right: [3500] }, frames: 4300 },
+    { id: 4, rec: { up: [0, 3500], down: [3500], left: [2500, 3500], right: [3500] }, frames: 4300 },
+  ]);
+  results.ice = {
+    gasLeftNoseDeg: turned(r[1], 2500, 4999),
+    brakeLeftNoseDeg: turned(r[2], 2500, 4999),
+    counterPathDeg: path(r[3], 3500, 4290),
+    counterBrakePathDeg: path(r[4], 3500, 4290),
+    counterSlipEnd: [+slipAt(r[3], 4290).toFixed(0), +slipAt(r[4], 4290).toFixed(0)],
+    kmhEnd: [+r[3][4290].v.toFixed(0), +r[4][4290].v.toFixed(0)],
+  };
+  console.log('ice', JSON.stringify(results.ice));
+  // Turbo plate in a wood lane (z -110 to -130) against plain wood: km/h entering, leaving, and 1 s after it.
+  const lane = (mid) => ['WoodStartPlat', ...Array(5).fill('WoodPlatBase'), mid, ...Array(30).fill('WoodPlatBase')].map((n, i) => ({ n, x: 0, y: 0, z: -4 * i }));
+  results.plate = {};
+  for (const mid of ['WoodPlatBase', 'WoodFxTurboPlat']) {
+    const l = (await run(lane(mid), null, [{ id: 1, rec: { up: [0] }, frames: 8000 }]))[1],
+      a = first(l, (q) => q.z < -110 + 2.2),
+      b = first(l, (q) => q.z < -130 - 2.2);
+    results.plate[mid] = { enter: +l[a].v.toFixed(1), leave: +l[b].v.toFixed(1), after1s: +l[Math.min(l.length - 1, b + 1000)].v.toFixed(1) };
+    console.log('plate', mid, JSON.stringify(results.plate[mid]));
+  }
+  // Overlap: a Reset plate (deck 0.25 high) placed over ice (0.21) in the same tiles, the ice listed first: the wheels
+  // should read wood (1) where the plate is, ice (3) before it.
+  const parts = [{ n: 'WoodStartPlat', x: 0, y: 0, z: 0 }];
+  for (let i = 1; i < 12; i++) parts.push({ n: 'IcePlatBase', x: 0, y: 0, z: -4 * i });
+  for (let i = 4; i < 8; i++) parts.push({ n: 'WoodFxResetPlat', x: 0, y: 0, z: -4 * i });
+  const o = await run(parts, { trace: 50 }, [{ id: 1, rec: { up: [0] }, frames: 6000 }]);
+  results.overlap = o.probes.filter((q) => q.u).map((q) => +o[1][q.fr]?.z.toFixed(0) + ':' + q.u.join(''));
+  console.log('overlap z:u', results.overlap.join(' '));
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 const file = path.join(OUT, 'tmphys_' + label + '.json');
 fs.writeFileSync(file, JSON.stringify(results, null, 1));

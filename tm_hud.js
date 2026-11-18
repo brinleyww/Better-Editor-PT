@@ -89,6 +89,8 @@ self.TM.hud = (() => {
       z: 0,
       boost: null,
       boostLeft: 0,
+      plate: null, // the strongest turbo plate the car is on
+      holds: {}, // turbo plate zone -> the turbo it gives (a roulette's pick on entry)
       reactor: null,
       reactorLeft: 0,
       thrust: false, // the reactor is pushing (the gas is held)
@@ -177,6 +179,7 @@ self.TM.hud = (() => {
     c.lastCp = cp;
 
     let water = null;
+    c.plate = null;
     for (let i = 0; i < c.zones.length; i++) {
       const q = c.zones[i],
         wet = q.type == 'Water' || q.type == 'Shallow',
@@ -184,6 +187,14 @@ self.TM.hud = (() => {
       if ((q.type == 'Water' || q.type == 'Shallow') && p.x >= q.min[0] && p.x <= q.max[0] && p.z >= q.min[2] && p.z <= q.max[2] && p.y >= q.min[1] - 1 && p.y <= q.surface + 3) water = q;
       if (!hit) {
         c.inside[i] = 0;
+        if (q.hold) delete c.holds[i];
+        continue;
+      }
+      if (q.hold) {
+        // a turbo plate: on only while the car touches it (the runtime's TURBO push)
+        if (!c.inside[i]) c.holds[i] = q.type == 'Roulette' ? ROULETTE[s.frames % 3] : q.type;
+        c.inside[i] = 1;
+        if (ROULETTE.indexOf(c.holds[i]) > ROULETTE.indexOf(c.plate)) c.plate = c.holds[i];
         continue;
       }
       if (c.inside[i]) continue;
@@ -479,7 +490,8 @@ self.TM.hud = (() => {
   }
   function banner(c) {
     const on = c && !c.done;
-    setChip(BOOST, on && c.boostLeft > 0 ? LABEL[c.boost] : null, on && c.boost ? c.boostLeft / TURBO[c.boost].frames : 0);
+    if (on && c.plate) setChip(BOOST, LABEL[c.plate], 1);
+    else setChip(BOOST, on && c.boostLeft > 0 ? LABEL[c.boost] : null, on && c.boost ? c.boostLeft / TURBO[c.boost].frames : 0);
     setChip(REACT, on && c.reactorLeft > 0 ? LABEL[c.reactor] : null, on && c.reactor ? c.reactorLeft / REACTOR[c.reactor].frames : 0);
     // Off the gas the reactor's bar dims: the boost is still on, but not pushing.
     const idle = !!(on && c.reactorLeft > 0 && !c.thrust);
@@ -809,7 +821,7 @@ self.TM.hud = (() => {
       return {
         frames: c.f,
         vehicle: c.vehicle,
-        boost: c.boostLeft > 0 ? c.boost : null,
+        boost: c.plate || (c.boostLeft > 0 ? c.boost : null),
         reactor: c.reactorLeft > 0 ? c.reactor : null,
         reactorLeft: c.reactorLeft, // physics frames left, as the runtime's (tm_vehicles.js times the wheel jets by it)
         reactorThrust: c.thrust,

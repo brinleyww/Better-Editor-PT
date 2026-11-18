@@ -315,13 +315,19 @@ self.TM = (() => {
     const out = new Float32Array(mountain.length + extra);
     out.set(mountain, 0);
     let o = mountain.length;
+    // Cells a stock part takes up (its tiles), for markOverlaps.
+    const stock = new Set();
     track.forEachPart((x, y, z, id, rot, axis) => {
-      if (!isTM(id)) return;
+      if (!isTM(id)) {
+        rotatedTiles(id, rot, axis).forEach((tx, ty, tz) => stock.add(cellKey(x + tx, y + ty, z + tz)));
+        return;
+      }
       const p = byId.get(id),
         M = D.rotations[axis][rot],
         wx = x * 5,
         wy = y * 5,
-        wz = z * 5;
+        wz = z * 5,
+        o0 = o;
       const bouncy = p.u != null && SURFACES[p.u].bounce;
       for (const m of physicsMeshes(p)) {
         const P = positions(m),
@@ -396,7 +402,7 @@ self.TM = (() => {
               }
           }
         }
-      addCells(cells, p, x, y, z, M, rotatedTiles(id, rot, axis));
+      addCells(cells, p, x, y, z, M, rotatedTiles(id, rot, axis), [o0, o]);
       if (p.sd && p.d) {
         // A gate whose road is not square to the grid: remember where it is and which way its road runs.
         const c = rotate(M, p.d.center[0], p.d.center[1], p.d.center[2]);
@@ -404,17 +410,66 @@ self.TM = (() => {
       }
       if (p.x) zones.push(zoneOf(p, wx, wy, wz, M));
     });
+    markOverlaps(cells, stock, out, off);
     return { vertices: out, records };
   }
-  // The surface cells of one placed part (tile coordinates x, y, z; tiles: its rotated footprint).
-  function addCells(cells, p, x, y, z, M, tiles) {
-    if (p.u == null && !p.r) return;
-    const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r } : null };
+  // The surface cells of one placed part (tile coordinates x, y, z; tiles: its rotated footprint). span: where its
+  // collision triangles sit in the physics' vertex array (prepareCar); with it a part with no surface of its own gets an
+  // entry too, so markOverlaps sees it covering another part's surface.
+  function addCells(cells, p, x, y, z, M, tiles, span = null) {
+    if (p.u == null && !p.r && !span) return;
+    const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r } : null, span };
     tiles.forEach((tx, ty, tz) => {
       const k = cellKey(x + tx, y + ty, z + tz),
         l = cells.get(k);
       l ? l.push(entry) : cells.set(k, [entry]);
     });
+  }
+  // Overlapping parts: where a cell holds more than one part (ours, or ours and a stock part) and one of ours has a
+  // surface of its own, a wheel takes the surface of the part whose collision face it rests on, which is the face drawn
+  // on top, not the first part listed (cellAt). l.over maps each entry of such a cell to its part's triangles that come
+  // within OVER.reach of the cell (world coordinates, 9 numbers each); l.stock: a stock part is there too.
+  // touch: how near a face the contact must be to count as resting on it; faces within tie of the nearest are a tie
+  // (the same face twice, as two parts placed in the same spot), which the order of the parts settles as before.
+  const OVER = { reach: 0.5, touch: 0.02, tie: 0.002 };
+  function markOverlaps(cells, stock, out, off) {
+    const entries = new Set();
+    for (const [k, l] of cells) {
+      if (l.length + (stock.has(k) ? 1 : 0) < 2 || !l.some((e) => e.u != null || e.r)) continue;
+      l.over = new Map(l.map((e) => [e, []]));
+      l.stock = stock.has(k);
+      for (const e of l) if (e.span) entries.add(e);
+    }
+    const R = OVER.reach;
+    for (const e of entries)
+      for (let i = e.span[0]; i < e.span[1]; i += 9) {
+        const T = [];
+        for (let j = 0; j < 9; j += 3) T.push(out[i + j] + off.x, out[i + j + 1] + off.y, out[i + j + 2] + off.z);
+        const lo = [0, 1, 2].map((a) => Math.floor((Math.min(T[a], T[a + 3], T[a + 6]) - R) / 5)),
+          hi = [0, 1, 2].map((a) => Math.floor((Math.max(T[a], T[a + 3], T[a + 6]) + R) / 5));
+        for (let cx = lo[0]; cx <= hi[0]; cx++)
+          for (let cy = lo[1]; cy <= hi[1]; cy++)
+            for (let cz = lo[2]; cz <= hi[2]; cz++) {
+              const L = cells.get(cellKey(cx, cy, cz))?.over?.get(e);
+              if (L) L.push(...T);
+            }
+      }
+    for (const l of cells.values()) if (l.over) for (const [e, L] of l.over) l.over.set(e, new Float64Array(L));
+  }
+  // How far (x, y, z) is from the nearest of the triangles T (9 numbers each), or Infinity past OVER.touch.
+  const overPt = [0, 0, 0];
+  function faceGap(T, x, y, z) {
+    const t = OVER.touch;
+    let best = Infinity;
+    for (let i = 0; i < T.length; i += 9) {
+      if (x < Math.min(T[i], T[i + 3], T[i + 6]) - t || x > Math.max(T[i], T[i + 3], T[i + 6]) + t) continue;
+      if (y < Math.min(T[i + 1], T[i + 4], T[i + 7]) - t || y > Math.max(T[i + 1], T[i + 4], T[i + 7]) + t) continue;
+      if (z < Math.min(T[i + 2], T[i + 5], T[i + 8]) - t || z > Math.max(T[i + 2], T[i + 5], T[i + 8]) + t) continue;
+      closestOnTri(x, y, z, T, i, overPt);
+      const d = Math.hypot(x - overPt[0], y - overPt[1], z - overPt[2]);
+      if (d < best) best = d;
+    }
+    return best <= t ? best : Infinity;
   }
   // A placed part's effect box in world space. fwd, right and up are the part's own +z, +x and +y turned the way it
   // is placed (bumpers kick along right), centre the middle of the box.
@@ -423,6 +478,8 @@ self.TM = (() => {
       s = rotate(M, p.x.size[0] / 2, p.x.size[1] / 2, p.x.size[2] / 2);
     return {
       type: p.x.type,
+      // a turbo plate, which pushes only while the car is on it (TURBO); the turbo gates keep their timed boost
+      hold: (p.x.type in TURBO || p.x.type == 'Roulette') && !p.n.includes('Gate'),
       min: [wx + c[0] - Math.abs(s[0]), wy + c[1] - Math.abs(s[1]), wz + c[2] - Math.abs(s[2])],
       max: [wx + c[0] + Math.abs(s[0]), wy + c[1] + Math.abs(s[1]), wz + c[2] + Math.abs(s[2])],
       surface: p.x.surface != null ? wy + rotate(M, 0, p.x.surface, 0)[1] : null, // water level
@@ -525,8 +582,12 @@ self.TM = (() => {
 
   // ---- surfaces and effect plates -----------------------------------------------------------------------------------
   // All of this runs per physics frame (1 ms) around updateCarModel, so ghosts and verification see the same thing.
-  // Turbos push hardest the moment you cross them and fade to nothing. accel is the average over `frames`.
-  const TURBO = { Turbo: { accel: 28, frames: 1000 }, Super: { accel: 42, frames: 1400 }, Ultra: { accel: 52, frames: 1800 } };
+  // Turbo plates (zone hold) push the car along its nose only while it touches the plate with a wheel on the ground:
+  // push units/s^2, nothing after it leaves. Crossing a 20-long plate at 180 km/h (about 24 units with the car's length)
+  // gains what the old timed boost gave, +100 / +150 / +190 km/h; slower cars stay on longer and gain more.
+  // Turbo gates (the arches, 3 long) keep the timed boost: hardest the moment you cross them, fading to nothing over
+  // `frames`, accel the average.
+  const TURBO = { Turbo: { accel: 28, frames: 1000, push: 60 }, Super: { accel: 42, frames: 1400, push: 90 }, Ultra: { accel: 52, frames: 1800, push: 110 } };
   // Reactor boosts, after TM2020's oriented ReactorBoost(2): two plates, the reactor boost and the super one. Which way it
   // boosts depends on the way you cross the plate: along its arrow it is an UP boost, against it a DOWN boost. It lasts
   // `frames` from the plate whether it is used or not; a later reactor plate replaces it with a fresh timer.
@@ -900,6 +961,8 @@ self.TM = (() => {
   // slide off as speed (a 30 degree slide at 200 km/h caught by 300 ms of countersteer was at 184 km/h 1 s later, now
   // 218; straight again after 0.97 s, now 0.37).
   const SLIDE = { minSpeed: 8, from: 0.1, catchRate: 3, maxRate: 2.2, pull: 0.012, rampIn: 180, hold: 300 };
+  // The brake on ice: spins and tighter slides (see fxStep, iceBrake).
+  const ICE_BRAKE = { minSpeed: 8, ramp: 250, fall: 150, spin: { yaw: 4, pull: 0.006, free: 0.85 }, counter: { yaw: 0.35, align: 2 } };
   if (TEST && TEST.slide) Object.assign(SLIDE, TEST.slide);
   // The extra turn of a surface's `turn` (wood) builds up the longer the steering is held one way, so a long turn grips
   // more than a short one: in full after `frames` frames (eased in), and it drops `fade` times as fast when the steering
@@ -1027,10 +1090,17 @@ self.TM = (() => {
   // Tile coordinates fit well inside these ranges, and the key stays an exact double.
   const cellKey = (x, y, z) => (x + 50000) * 1e10 + (y + 5000) * 1e5 + (z + 50000);
   // Surface under a point: regions inside a part win (each box [lo, hi, u]; a box without u is penalty grass), then the
-  // part's own surface.
-  const cellAt = (cells, x, y, z) => {
-    const l = cells.get(cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5)));
+  // part's own surface. (px, py, pz): the wheel's contact point, where parts overlap (markOverlaps): only the parts whose
+  // faces it rests on count, and resting on none of ours where a stock part is too, it is on the stock part.
+  const cellAt = (cells, x, y, z, px, py, pz) => {
+    let l = cells.get(cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5)));
     if (!l) return null;
+    if (l.over && px != null) {
+      const gaps = l.map((e) => faceGap(l.over.get(e), px, py, pz)),
+        near = Math.min(...gaps);
+      if (near < Infinity) l = l.filter((e, i) => gaps[i] <= near + OVER.tie);
+      else if (l.stock) return null;
+    }
     for (const e of l) {
       if (!e.r) continue;
       const { M } = e.r,
@@ -1202,7 +1272,7 @@ self.TM = (() => {
     // vehicle: the car it is now; cpVehicle: the car it was when it crossed its last checkpoint (a respawn goes back
     // to that); tyres: each wheel's tyre state (TYRES); susp0: the stock suspension, read on the first frame.
     const start = (TEST && TEST.vehicle) || 'Stadium';
-    cars.set(carId, { zones, cells, active, spawns, walls, tops, mags, magK: 0, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, wallH: null, wallRate: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
+    cars.set(carId, { zones, cells, active, spawns, walls, tops, mags, magK: 0, lastCp: 0, hit: null, reactor: null, reactorLeft: 0, slow: false, slowTick: 0, lastState: null, ctl: null, tyres: [0, 1, 2, 3].map(TYRES.fresh), waterGuard: 0, overWater: false, skim: 0, yawWas: null, slipWas: null, slipRate: 0, boost: null, boostLeft: 0, holds: {}, iceSpin: 0, iceSide: 0, noEngine: false, noBrake: false, noSteer: false, cruise: false, fragile: false, noGripLeft: 0, inside: new Set(), speed: 0, pulseReset: false, stockGrip: null, gas: false, justReset: false, last: null, bounceWait: 0, steady: 0, chainLeft: 0, chainLevel: 1, air: 0, landing: 0, bug: 0, bugV: 0, catchRamp: 0, gripRamp: 0, gripSide: 0, gripIdle: 1e6, kickLeft: 0, kickFrames: 1, kickRear: 1, kickSide: 0, kickDeg: 0, kickWant: null, ctlFrames: 0, steerWas: 0, steerHeld: 0, steerGap: 1e6, neoArmed: false, neoAt: -1, neoSide: 0, brakeAt: -1e9, downRaw: false, tapSide: 0, noBrakeLeft: 0, canNeo: false, canTap: false, tapV: 0, tapAt: -1e9, downWas: false, autoSide: 0, pathWas: null, ssGap: 1e6, ssKeep: 0, neo: false, wallH: null, wallRate: 0, vehicle: start, cpVehicle: start, susp0: null, suspSet: false });
   }
   // Every effect on the car ends (effect blocks), no grip too. On a Reset effects block, a checkpoint and a respawn.
   // The vehicle stays (TM2020 keeps the car through effect resets), and so do wet, iced and muddy tyres: they are the
@@ -1232,7 +1302,7 @@ self.TM = (() => {
     if (out.reset) {
       // The car it was at the checkpoint comes back in fxStep (justReset), however near the checkpoint it already was.
       clear(c);
-      c.bug = c.catchRamp = c.gripRamp = c.kickLeft = c.noBrakeLeft = 0;
+      c.bug = c.catchRamp = c.gripRamp = c.kickLeft = c.noBrakeLeft = c.iceSpin = 0;
       c.kickWant = null;
       c.neo = false;
       c.justReset = true;
@@ -1593,7 +1663,8 @@ self.TM = (() => {
     c.lastCp = cp;
 
     const inside = c.inside;
-    let kick = null; // a bumper's kick, applied below once the car's velocity is at hand
+    let kick = null, // a bumper's kick, applied below once the car's velocity is at hand
+      plate = null; // the strongest turbo plate the car is on (TURBO push)
     const sqx = s.getFloat32(pos + 12, true),
       sqy = s.getFloat32(pos + 16, true),
       sqz = s.getFloat32(pos + 20, true),
@@ -1606,22 +1677,30 @@ self.TM = (() => {
       if (wet && x >= q.min[0] && x <= q.max[0] && z >= q.min[2] && z <= q.max[2] && y >= q.min[1] - 1 && y <= q.surface + 3) water = q;
       if (!hit) {
         inside.delete(i);
+        if (q.hold) delete c.holds[i];
         continue;
       }
-      if (inside.has(i)) continue;
+      if (inside.has(i)) {
+        const b = q.hold && TURBO[c.holds[i]];
+        if (b && (!plate || b.push > plate.push)) plate = b;
+        continue;
+      }
       inside.add(i);
       if (TEST && TEST.trace) postMessage({ tmProbe: { fr: s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16), carId, enter: q.type } });
       switch (q.type) {
         case 'Turbo':
         case 'Super':
         case 'Ultra':
-          c.boost = TURBO[q.type];
-          c.boostLeft = c.boost.frames;
-          break;
         case 'Roulette': {
           // The roulette lands on one of three turbos depending on the exact frame you cross it.
-          const f = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16);
-          c.boost = TURBO[['Turbo', 'Super', 'Ultra'][f % 3]];
+          const f = s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16),
+            t = q.type == 'Roulette' ? ['Turbo', 'Super', 'Ultra'][f % 3] : q.type;
+          if (q.hold) {
+            c.holds[i] = t;
+            if (!plate || TURBO[t].push > plate.push) plate = TURBO[t];
+            break;
+          }
+          c.boost = TURBO[t];
           c.boostLeft = c.boost.frames;
           break;
         }
@@ -1797,7 +1876,7 @@ self.TM = (() => {
       }
       contacts++;
       // A little way under the contact point is inside the deck, whichever way the deck faces.
-      const f = cellAt(c.cells, F[g + 4] - F[g] * 0.1, F[g + 5] - F[g + 1] * 0.1, F[g + 6] - F[g + 2] * 0.1),
+      const f = cellAt(c.cells, F[g + 4] - F[g] * 0.1, F[g + 5] - F[g + 1] * 0.1, F[g + 6] - F[g + 2] * 0.1, F[g + 4], F[g + 5], F[g + 6]),
         surface = f == null ? null : SURFACES[f];
       if (f != null) on[f]++;
       let grip = surface ? (w < 2 ? surface.gripFront : surface.gripRear) : 1; // wheels 0 and 1 steer
@@ -1961,14 +2040,29 @@ self.TM = (() => {
       iceWeight = ngK;
       iceWheels = contacts;
     }
+    // The brake on ice (and no grip), above minSpeed (units/s): steering into the turn with it, the spin's target grows
+    // from ice.yaw to spin.yaw (rad/s) and its pull to spin.pull over `ramp` frames, and the path's swing back to the
+    // nose (ice.align) loses up to spin.free of its strength, so a held brake and steer turns the car right round (a 360)
+    // where gas and steer settle into a slide (about 36 degrees on platform ice); let go and it dies away over `fall`
+    // frames. Countersteering with it, the nose comes back counter.yaw as fast and the path swings round to the nose
+    // counter.align as fast, so the slide's line tightens.
+    // A spin keeps going on the same steering past half a turn, where the car slides backwards and that steering reads as
+    // countersteering (iceSide: the way it started). A spin only starts going forwards, so reversing on ice (the brake
+    // held) steers as before.
+    const iceBrake = !slick && (iceWheels >= 2 || iceWeight < 1) && !!c.ctl?.down && spd > ICE_BRAKE.minSpeed,
+      spinning = iceBrake && steer != 0 && (c.iceSpin > 0 && steer == c.iceSide ? true : !counter && (c.iceSpin > 0 || fwd > 0));
+    if (spinning && c.iceSpin == 0) c.iceSide = steer;
+    c.iceSpin = spinning && steer == c.iceSide ? Math.min(1, c.iceSpin + 1 / ICE_BRAKE.ramp) : Math.max(0, c.iceSpin - 1 / ICE_BRAKE.fall);
     if (iceWheels >= 2 || iceWeight < 1) {
       // A car whose tyres hold on ice (the Snow car) gets only iceAssist of the steering and slide help; the spin still
       // dies away off the steering.
       const yaw = F[av] * upx + F[av + 1] * upy + F[av + 2] * upz,
         help = V.iceAssist,
+        sp = slick ? 0 : c.iceSpin,
+        tight = iceBrake && counter && fwd > 0 && !(spinning && steer == c.iceSide),
         d0 =
           steer != 0
-            ? (steer * ice.yaw * Math.min(1, spd / 15) * (slick && !c.gas ? slick.lift : 1) - yaw) * ice.pull
+            ? (steer * (ice.yaw + (ICE_BRAKE.spin.yaw - ice.yaw) * sp) * (tight ? ICE_BRAKE.counter.yaw : 1) * Math.min(1, spd / 15) * (slick && !c.gas ? slick.lift : 1) - yaw) * (ice.pull + (ICE_BRAKE.spin.pull - ice.pull) * sp)
             : slick && Math.abs(slip) < 1.2 && spd > 3
               ? (held(slick, slip, 0) - yaw) * slick.selfPull
               : -yaw * ice.spin,
@@ -1979,7 +2073,7 @@ self.TM = (() => {
       F[av + 1] += upy * d;
       F[av + 2] += upz * d;
       const sn = Math.sin(Math.abs(slip)),
-        turn = Math.sign(slip) * Math.min(Math.abs(slip), (help != 1 ? help : 1) * ice.align * sn * 0.001 * (iceWheels / 4));
+        turn = Math.sign(slip) * Math.min(Math.abs(slip), (help != 1 ? help : 1) * ice.align * (1 - ICE_BRAKE.spin.free * sp) * (tight ? ICE_BRAKE.counter.align : 1) * sn * 0.001 * (iceWheels / 4));
       if (spd > 1 && turn != 0 && Math.abs(slip) < 1.4) {
         turnVelocity(F, v, upx, upy, upz, turn);
         const keep = 1 - ice.loss * sn * sn * 0.001 * (iceWheels / 4);
@@ -2633,6 +2727,12 @@ self.TM = (() => {
     if (c.boostLeft > 0) {
       c.boostLeft--;
       const dv = c.boost.accel * 2 * (c.boostLeft / c.boost.frames) * 0.001;
+      F[v] += fx * dv;
+      F[v + 1] += fy * dv;
+      F[v + 2] += fz * dv;
+    }
+    if (plate && contacts > 0) {
+      const dv = plate.push * 0.001;
       F[v] += fx * dv;
       F[v + 1] += fy * dv;
       F[v + 2] += fz * dv;
