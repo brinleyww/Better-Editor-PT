@@ -27119,6 +27119,9 @@
                   startOrder: e.startOrder,
                 }));
           }
+          __bePlaced() {
+            return (0, v.gn)(this, l, "f");
+          }
           __tmPlacedParts() {
             return new Set((0, v.gn)(this, l, "f").map((e) => e.trackPartData));
           }

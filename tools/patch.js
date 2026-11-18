@@ -27,6 +27,8 @@ const FAMILIES = '(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice"
 apply('index.html', [
   ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_cull.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="tm_assets.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
+  // Not So Weekly Shorts' Cuppa Build Off: the finish guard (only does anything when NSWS asks, through nsws_bridge.js).
+  ['NSWS cup guard', '<script defer="defer" src="nsws_bridge.js"></script>', '<script defer="defer" src="nsws_bridge.js"></script><script defer="defer" src="nsws_cup.js"></script>'],
 ]);
 
 apply('main.bundle.js', [
@@ -377,6 +379,8 @@ apply('main.bundle.js', [
               throw new Error("Track part index out of bounds");
             this.__beEdits = (this.__beEdits ?? 0) + 1;`,
   ],
+  // nsws_cup.js reads the placed parts (tiles, road ends, starts and finishes) without building a TrackData.
+  ['placed parts list', '__tmPlacedParts() {', '__bePlaced() {\n            return (0, v.gn)(this, l, "f");\n          }\n          __tmPlacedParts() {'],
 ]);
 
 apply('112.bundle.js', [
@@ -627,6 +631,60 @@ apply('112.bundle.js', [
     'asset library: asset placed',
     '            (e.length > 0 || n.length > 0) &&\n              ((0, i.gn)(this, wn, "f").push({ removed: e, added: n }),',
     '            n.length > 0 && self.__beAssetPlaced?.((0, i.gn)(this, Wn, "f")),\n            (e.length > 0 || n.length > 0) &&\n              ((0, i.gn)(this, wn, "f").push({ removed: e, added: n }),',
+  ],
+  // nsws_cup.js (Cuppa Build Off): the editor parts the finish guard uses, and its lock. While locked (the last seconds of
+  // building with no finish yet) picking any part gives a finish, and nothing else can be placed or pasted.
+  [
+    'cup guard: editor hooks',
+    '            (self.__beAssetEditor = {',
+    `            (self.__beCupEditor = {
+              scene: () => (0, i.gn)(this, jt, "f"),
+              types: () => (0, i.gn)(this, Jt, "f"),
+              choose: (id) => {
+                const g = (0, i.gn)(this, Gn, "f"),
+                  n = g.findIndex((e) => e.id === id);
+                return (
+                  n >= 0 &&
+                  ((0, i.gn)(this, Kt, "m", Qn).call(this, g[n].category), (0, i.gn)(this, Kt, "m", $n).call(this, n), !0)
+                );
+              },
+              commit: (removed, added) => {
+                ((removed.length > 0 || added.length > 0) &&
+                  ((0, i.gn)(this, wn, "f").push({ removed, added }),
+                  ((0, i.gn)(this, bn, "f").length = 0),
+                  ((0, i.gn)(this, ge, "f").disabled = 0 == (0, i.gn)(this, wn, "f").length),
+                  ((0, i.gn)(this, fe, "f").disabled = 0 == (0, i.gn)(this, bn, "f").length)),
+                  (0, i.gn)(this, Kt, "m", ii).call(this));
+              },
+            }),
+            (self.__beAssetEditor = {`,
+  ],
+  ['cup guard: hooks cleared', '((self.__beAutosave = self.__beEditorOpen = ', '((self.__beCupEditor = self.__beAutosave = self.__beEditorOpen = '],
+  ['cup guard: part pick', '        ($n = function (t) {\n', '        ($n = function (t) {\n          self.__beCupLock && (t = self.__beCupLock.pick(t, (0, i.gn)(this, Gn, "f")));\n'],
+  ['cup guard: category pick', '        (Qn = function (t) {\n', '        (Qn = function (t) {\n          self.__beCupLock && (t = self.__beCupLock.category(t, (0, i.gn)(this, Gn, "f")));\n'],
+  ['cup guard: no paste', '        (Dn = function () {\n          null != (0, i.gn)(this, Cn, "f") &&', '        (Dn = function () {\n          !self.__beCupLock?.active() &&\n          null != (0, i.gn)(this, Cn, "f") &&'],
+  ['cup guard: no paste placed', '          if (null == (0, i.gn)(this, Wn, "f") || null == (0, i.gn)(this, rn, "f")) return;', '          if (null == (0, i.gn)(this, Wn, "f") || null == (0, i.gn)(this, rn, "f") || self.__beCupLock?.active()) return;'],
+  [
+    'cup guard: only a finish is placed',
+    `                else if (
+                  null == (0, i.gn)(this, fn, "f") ||
+                  (0, i.gn)(this, fn, "f").x != t.x ||
+                  (0, i.gn)(this, fn, "f").y != t.y ||
+                  (0, i.gn)(this, fn, "f").z != t.z ||
+                  (0, i.gn)(this, fn, "f").id != e.id ||
+                  (0, i.gn)(this, fn, "f").rotation != (0, i.gn)(this, ln, "f") ||
+                  (0, i.gn)(this, fn, "f").rotationAxis != (0, i.gn)(this, cn, "f")
+                ) {`,
+    `                else if (
+                  !self.__beCupLock?.refuse(e.id) &&
+                  (null == (0, i.gn)(this, fn, "f") ||
+                    (0, i.gn)(this, fn, "f").x != t.x ||
+                    (0, i.gn)(this, fn, "f").y != t.y ||
+                    (0, i.gn)(this, fn, "f").z != t.z ||
+                    (0, i.gn)(this, fn, "f").id != e.id ||
+                    (0, i.gn)(this, fn, "f").rotation != (0, i.gn)(this, ln, "f") ||
+                    (0, i.gn)(this, fn, "f").rotationAxis != (0, i.gn)(this, cn, "f"))
+                ) {`,
   ],
 ]);
 

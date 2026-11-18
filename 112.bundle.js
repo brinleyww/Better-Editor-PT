@@ -1528,6 +1528,7 @@
             (0, i.gn)(this, Kt, "m", Dn).call(this));
         }),
         (Dn = function () {
+          !self.__beCupLock?.active() &&
           null != (0, i.gn)(this, Cn, "f") &&
             ((0, i.gn)(this, Kt, "m", $n).call(this, null),
             (0, i.GG)(this, ln, 0, "f"),
@@ -1539,7 +1540,7 @@
             (0, i.gn)(this, Kt, "m", ni).call(this));
         }),
         (On = function () {
-          if (null == (0, i.gn)(this, Wn, "f") || null == (0, i.gn)(this, rn, "f")) return;
+          if (null == (0, i.gn)(this, Wn, "f") || null == (0, i.gn)(this, rn, "f") || self.__beCupLock?.active()) return;
           const t = (0, i.gn)(this, rn, "f"),
             e = [],
             n = [];
@@ -2039,6 +2040,7 @@
           }
         }),
         (Qn = function (t) {
+          self.__beCupLock && (t = self.__beCupLock.category(t, (0, i.gn)(this, Gn, "f")));
           if ((0, i.gn)(this, Nn, "f") != t || null == t) {
             (0, i.GG)(this, Nn, t, "f");
             for (const e of (0, i.gn)(this, zn, "f"))
@@ -2075,6 +2077,7 @@
           }
         }),
         ($n = function (t) {
+          self.__beCupLock && (t = self.__beCupLock.pick(t, (0, i.gn)(this, Gn, "f")));
           null != t &&
             ((0, i.GG)(this, An, !1, "f"),
             (0, i.GG)(this, Mn, !1, "f"),
@@ -3602,6 +3605,26 @@
                 (0, i.gn)(this, Kt, "m", $n).call(this, null));
             }),
             N.appendChild(T),
+            (self.__beCupEditor = {
+              scene: () => (0, i.gn)(this, jt, "f"),
+              types: () => (0, i.gn)(this, Jt, "f"),
+              choose: (id) => {
+                const g = (0, i.gn)(this, Gn, "f"),
+                  n = g.findIndex((e) => e.id === id);
+                return (
+                  n >= 0 &&
+                  ((0, i.gn)(this, Kt, "m", Qn).call(this, g[n].category), (0, i.gn)(this, Kt, "m", $n).call(this, n), !0)
+                );
+              },
+              commit: (removed, added) => {
+                ((removed.length > 0 || added.length > 0) &&
+                  ((0, i.gn)(this, wn, "f").push({ removed, added }),
+                  ((0, i.gn)(this, bn, "f").length = 0),
+                  ((0, i.gn)(this, ge, "f").disabled = 0 == (0, i.gn)(this, wn, "f").length),
+                  ((0, i.gn)(this, fe, "f").disabled = 0 == (0, i.gn)(this, bn, "f").length)),
+                  (0, i.gn)(this, Kt, "m", ii).call(this));
+              },
+            }),
             (self.__beAssetEditor = {
               select: () => {
                 ((0, i.GG)(this, An, !0, "f"),
@@ -3741,7 +3764,7 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = self.__beOwnName = null),
+          ((self.__beCupEditor = self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = self.__beOwnName = null),
             (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),
@@ -4014,13 +4037,14 @@
                     ),
                     (0, i.GG)(this, pn, { x: t.x, y: t.y, z: t.z }, "f"));
                 else if (
-                  null == (0, i.gn)(this, fn, "f") ||
-                  (0, i.gn)(this, fn, "f").x != t.x ||
-                  (0, i.gn)(this, fn, "f").y != t.y ||
-                  (0, i.gn)(this, fn, "f").z != t.z ||
-                  (0, i.gn)(this, fn, "f").id != e.id ||
-                  (0, i.gn)(this, fn, "f").rotation != (0, i.gn)(this, ln, "f") ||
-                  (0, i.gn)(this, fn, "f").rotationAxis != (0, i.gn)(this, cn, "f")
+                  !self.__beCupLock?.refuse(e.id) &&
+                  (null == (0, i.gn)(this, fn, "f") ||
+                    (0, i.gn)(this, fn, "f").x != t.x ||
+                    (0, i.gn)(this, fn, "f").y != t.y ||
+                    (0, i.gn)(this, fn, "f").z != t.z ||
+                    (0, i.gn)(this, fn, "f").id != e.id ||
+                    (0, i.gn)(this, fn, "f").rotation != (0, i.gn)(this, ln, "f") ||
+                    (0, i.gn)(this, fn, "f").rotationAxis != (0, i.gn)(this, cn, "f"))
                 ) {
                   if ((0, i.gn)(this, gn, "f"))
                     for (const { parts: o } of n) {

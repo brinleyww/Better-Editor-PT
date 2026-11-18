@@ -424,7 +424,7 @@
         if (msg.type === "hello") {
             if (msg.assets === 1) assetsParent = true;
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 6, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
+            post({ type: "ready", version: 7, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
         } else if (msg.type === "list") {
             reply({ tracks: listTracks(), loaded: !!self.__beTrackStore, store: storeId() });
@@ -469,7 +469,20 @@
             reply({ track: currentTrack() });
         } else if (msg.type === "pause") {
             setPaused(!!msg.paused);
+            // A Build Off's finish lock (nsws_cup.js) ends when the editor is put away.
+            if (msg.paused) self.__beCup?.unlock();
             reply({ ok: true });
+        } else if (msg.type === "cup") {
+            // Cuppa Build Off: status, lock, unlock and fill (nsws_cup.js).
+            let result;
+            try {
+                const cup = self.__beCup;
+                result = cup && ["status", "lock", "unlock", "fill"].includes(msg.op) ? cup[msg.op](msg) : { ok: false, error: "closed" };
+            } catch (err) {
+                console.warn("NSWS cup:", err);
+                result = { ok: false, error: "failed" };
+            }
+            if (msg.reqId) reply(result);
         } else if (msg.type === "settings") {
             try {
                 applySettings(msg.settings);

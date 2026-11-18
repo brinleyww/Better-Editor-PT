@@ -2933,5 +2933,18 @@ self.TM = (() => {
     extTrackIds,
     palette: (p) => D.palettes[p.f],
     ranges: (p) => p.c,
+    // A new block's collision triangles in its own frame, 9 floats each, or null while its bytes are not here. Not So
+    // Weekly Shorts' Build Off (nsws_cup.js) reads where a road piece ends from them.
+    physicsTris: (id) => {
+      const p = byId.get(id);
+      if (!p || !hasBlocks([id])) return null;
+      const out = [];
+      for (const m of physicsMeshes(p)) {
+        const P = positions(m),
+          I = indices(m);
+        for (let i = 0; i < I.length; i++) out.push(P[I[i] * 3], P[I[i] * 3 + 1], P[I[i] * 3 + 2]);
+      }
+      return new Float32Array(out);
+    },
   };
 })();
