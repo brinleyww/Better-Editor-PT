@@ -418,12 +418,38 @@ self.TM = (() => {
   // entry too, so markOverlaps sees it covering another part's surface.
   function addCells(cells, p, x, y, z, M, tiles, span = null) {
     if (p.u == null && !p.r && !span) return;
-    const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r } : null, span };
+    const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r, byCell: new Map() } : null, span };
     tiles.forEach((tx, ty, tz) => {
       const k = cellKey(x + tx, y + ty, z + tz),
         l = cells.get(k);
       l ? l.push(entry) : cells.set(k, [entry]);
+      if (entry.r) entry.r.byCell.set(k, tileBoxes(p.r, M, tx, ty, tz));
     });
+  }
+  // A part's region boxes that reach into one of its tiles (tx, ty, tz: the tile's offset from the part, turned the way
+  // the part is placed), in their order, so cellAt tests a few boxes instead of every box of a long curved verge. Any box
+  // holding a point of the tile is in the list, so the surface found is the same. Shared by every copy of the part.
+  const tileBoxCache = new WeakMap();
+  function tileBoxes(boxes, M, tx, ty, tz) {
+    let byTile = tileBoxCache.get(boxes);
+    if (!byTile) tileBoxCache.set(boxes, (byTile = new Map()));
+    const key = M.join() + '|' + tx + ',' + ty + ',' + tz;
+    let list = byTile.get(key);
+    if (list) return list;
+    // the tile in the part's own frame: the world offsets [t * 5, t * 5 + 5] through M's transpose
+    const W = [[tx * 5, tx * 5 + 5], [ty * 5, ty * 5 + 5], [tz * 5, tz * 5 + 5]],
+      lo = [0, 0, 0],
+      hi = [0, 0, 0];
+    for (let i = 0; i < 3; i++)
+      for (let j = 0; j < 3; j++) {
+        const m = M[j * 3 + i];
+        lo[i] += m * (m >= 0 ? W[j][0] : W[j][1]);
+        hi[i] += m * (m >= 0 ? W[j][1] : W[j][0]);
+      }
+    const e = 1e-6;
+    list = boxes.filter(([a, b]) => a[0] <= hi[0] + e && b[0] >= lo[0] - e && a[1] <= hi[1] + e && b[1] >= lo[1] - e && a[2] <= hi[2] + e && b[2] >= lo[2] - e);
+    byTile.set(key, list);
+    return list;
   }
   // Overlapping parts: where a cell holds more than one part (ours, or ours and a stock part) and one of ours has a
   // surface of its own, a wheel takes the surface of the part whose collision face it rests on, which is the face drawn
@@ -1093,7 +1119,8 @@ self.TM = (() => {
   // part's own surface. (px, py, pz): the wheel's contact point, where parts overlap (markOverlaps): only the parts whose
   // faces it rests on count, and resting on none of ours where a stock part is too, it is on the stock part.
   const cellAt = (cells, x, y, z, px, py, pz) => {
-    let l = cells.get(cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5)));
+    const k = cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5));
+    let l = cells.get(k);
     if (!l) return null;
     if (l.over && px != null) {
       const gaps = l.map((e) => faceGap(l.over.get(e), px, py, pz)),
@@ -1111,7 +1138,7 @@ self.TM = (() => {
         lx = M[0] * dx + M[3] * dy + M[6] * dz,
         ly = M[1] * dx + M[4] * dy + M[7] * dz,
         lz = M[2] * dx + M[5] * dy + M[8] * dz;
-      for (const [a, b, u] of e.r.boxes) if (lx >= a[0] && lx <= b[0] && ly >= a[1] && ly <= b[1] && lz >= a[2] && lz <= b[2]) return u ?? 2;
+      for (const [a, b, u] of e.r.byCell?.get(k) ?? e.r.boxes) if (lx >= a[0] && lx <= b[0] && ly >= a[1] && ly <= b[1] && lz >= a[2] && lz <= b[2]) return u ?? 2;
     }
     for (const e of l) if (e.u != null) return e.u;
     return null;

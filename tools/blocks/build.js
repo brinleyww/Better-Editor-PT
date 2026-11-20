@@ -310,6 +310,96 @@ const mat3 = ([x, y, z, w]) =>
   });
 const ROTATIONS = Q.map((row) => row.map(mat3));
 
+// A region's faces, each cut in four (and again) while its box, on the face's own plane, reaches more than REGION_TOL
+// past every face of the region: on a curve's verge one slanted face's box covered metres of road beside it, which
+// then drove as penalty grass. Faces whose box stays over the region (every face of a straight verge) are kept whole.
+const REGION_TOL = 0.3;
+function regionPieces(faces) {
+  const CELL = 2,
+    grid = new Map(),
+    key = (x, y, z) => x + ',' + y + ',' + z;
+  faces.forEach((t, n) => {
+    const lo = [0, 1, 2].map((k) => Math.floor((Math.min(t[0][k], t[1][k], t[2][k]) - REGION_TOL) / CELL)),
+      hi = [0, 1, 2].map((k) => Math.floor((Math.max(t[0][k], t[1][k], t[2][k]) + REGION_TOL) / CELL));
+    for (let x = lo[0]; x <= hi[0]; x++)
+      for (let y = lo[1]; y <= hi[1]; y++)
+        for (let z = lo[2]; z <= hi[2]; z++) {
+          const g = grid.get(key(x, y, z));
+          g ? g.push(n) : grid.set(key(x, y, z), [n]);
+        }
+  });
+  const outside = (p) => {
+    for (const n of grid.get(key(Math.floor(p[0] / CELL), Math.floor(p[1] / CELL), Math.floor(p[2] / CELL))) ?? []) {
+      const q = closestOnTri(p, ...faces[n]);
+      if (Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) <= REGION_TOL) return false;
+    }
+    return true;
+  };
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+    out = [];
+  const cut = (a, b, c, depth) => {
+    const lo = [0, 1, 2].map((k) => Math.min(a[k], b[k], c[k])),
+      hi = [0, 1, 2].map((k) => Math.max(a[k], b[k], c[k])),
+      u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
+      v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
+      nr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]],
+      k = [0, 1, 2].reduce((m, q) => (Math.abs(nr[q]) > Math.abs(nr[m]) ? q : m), 0),
+      [i, j] = [0, 1, 2].filter((q) => q != k);
+    let spills = false;
+    // 5 x 5 points over the box, each lifted onto the face's plane
+    for (let s = 0; s <= 4 && !spills; s++)
+      for (let t = 0; t <= 4 && !spills; t++) {
+        const p = [0, 0, 0];
+        p[i] = lo[i] + ((hi[i] - lo[i]) * s) / 4;
+        p[j] = lo[j] + ((hi[j] - lo[j]) * t) / 4;
+        p[k] = nr[k] ? a[k] - (nr[i] * (p[i] - a[i]) + nr[j] * (p[j] - a[j])) / nr[k] : a[k];
+        p[k] = Math.max(lo[k], Math.min(hi[k], p[k]));
+        spills = outside(p);
+      }
+    if (!spills || depth >= 7) return out.push([a, b, c]);
+    const ab = mid(a, b),
+      bc = mid(b, c),
+      ca = mid(c, a);
+    cut(a, ab, ca, depth + 1);
+    cut(ab, b, bc, depth + 1);
+    cut(ca, bc, c, depth + 1);
+    cut(ab, bc, ca, depth + 1);
+  };
+  for (const [a, b, c] of faces) cut(a, b, c, 0);
+  return out;
+}
+// Closest point to p on the triangle abc.
+function closestOnTri(p, a, b, c) {
+  const sub = (x, y) => [x[0] - y[0], x[1] - y[1], x[2] - y[2]],
+    dot = (x, y) => x[0] * y[0] + x[1] * y[1] + x[2] * y[2],
+    ab = sub(b, a),
+    ac = sub(c, a),
+    ap = sub(p, a),
+    d1 = dot(ab, ap),
+    d2 = dot(ac, ap),
+    at = (s, t) => [a[0] + ab[0] * s + ac[0] * t, a[1] + ab[1] * s + ac[1] * t, a[2] + ab[2] * s + ac[2] * t];
+  if (d1 <= 0 && d2 <= 0) return a;
+  const bp = sub(p, b),
+    d3 = dot(ab, bp),
+    d4 = dot(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return b;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return at(d1 / (d1 - d3), 0);
+  const cp = sub(p, c),
+    d5 = dot(ab, cp),
+    d6 = dot(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return c;
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return at(0, d2 / (d2 - d6));
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / (d4 - d3 + (d5 - d6));
+    return [b[0] + (c[0] - b[0]) * w, b[1] + (c[1] - b[1]) * w, b[2] + (c[2] - b[2]) * w];
+  }
+  const den = 1 / (va + vb + vc);
+  return at(vb * den, vc * den);
+}
+
 // Joins boxes that are the same on two axes and meet or overlap on the third: the union is exactly one box, so the
 // covered space does not change. Keeps the region list short for parts with long verges.
 function mergeBoxes(list) {
@@ -472,16 +562,21 @@ function main(stock) {
     if (p.mg) e.mg = p.mg;
     // Another surface inside this part (grass or dirt verges): boxes around its faces, in the part's own frame.
     // [lo, hi] is penalty grass, as it always was; any other surface is [lo, hi, u].
-    const boxes = new Map();
+    // A face whose box would reach past the region (a slanted face on a curve's verge) is cut into pieces first.
+    const boxes = new Map(),
+      regionFaces = new Map();
     for (const [m, ru] of Object.entries(REGION_U)) {
       const l = p.mesh.byMat.get(m);
       if (!l || ru == u) continue;
-      for (let i = 0; i < l.length; i += 3) {
-        const lo = [0, 1, 2].map((k) => +(Math.min(l[i][k], l[i + 1][k], l[i + 2][k]) - 0.35).toFixed(2)),
-          hi = [0, 1, 2].map((k) => +(Math.max(l[i][k], l[i + 1][k], l[i + 2][k]) + 0.35).toFixed(2));
+      if (!regionFaces.has(ru)) regionFaces.set(ru, []);
+      for (let i = 0; i < l.length; i += 3) regionFaces.get(ru).push([l[i], l[i + 1], l[i + 2]]);
+    }
+    for (const [ru, faces] of regionFaces)
+      for (const [a, b, c] of regionPieces(faces)) {
+        const lo = [0, 1, 2].map((k) => +(Math.min(a[k], b[k], c[k]) - 0.35).toFixed(2)),
+          hi = [0, 1, 2].map((k) => +(Math.max(a[k], b[k], c[k]) + 0.35).toFixed(2));
         boxes.set(lo.join() + '|' + hi.join() + '|' + ru, ru == 2 ? [lo, hi] : [lo, hi, ru]);
       }
-    }
     // Newer parts get their boxes merged; legacy parts keep theirs box for box, so their physics cannot move.
     if (boxes.size) e.r = reg[p.name] <= LAST_LEGACY_ID ? [...boxes.values()] : mergeBoxes([...boxes.values()]);
     table.push(e);
