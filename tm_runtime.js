@@ -834,12 +834,11 @@ self.TM = (() => {
   // All by the share of wheels on the surface.
   const SURFACES = [
     // Plastic: almost no grip (30% more than the first 0.45 / 0.36), very strong acceleration at low speed, and it throws the
-    // car back when hit side-on or roof-first. The rear tyres grip a little more than the front (0.6 against 0.585, the
-    // front unchanged). A held full lock settles into a slide of about 20
+    // car back when hit side-on or roof-first. The rear lets go first, but a held full lock settles into a slide of about 20
     // degrees (cap) instead of spinning round (it spun at 100 to 250 km/h: 48 degrees after 1 s, 170 after 2), and off the
     // steering or countersteering the slide straightens like loose ground's (settle, align: the way the car goes swings
     // round to its nose keeping its speed), so a slide is easy to hold and to catch.
-    { gripFront: 0.585, gripRear: 0.6, launch: 34, launchUntil: 45, bounce: true, settle: 0.003, align: 2.5, cap: { from: 0.3, self: 5, max: 2.5, pull: 0.015 } },
+    { gripFront: 0.585, gripRear: 0.468, launch: 34, launchUntil: 45, bounce: true, settle: 0.003, align: 2.5, cap: { from: 0.3, self: 5, max: 2.5, pull: 0.015 } },
     // Wood: grips hard, like TM2020 dry wood: half as much again as before. The tyres' grip also limits braking, so while
     // the brake is down wood holds the car with brakeGrip instead, or it would stop dead.
     // Its extra push grows exponentially with speed (expo) up to `peak`, then fades to nothing by `end` (units per second),
