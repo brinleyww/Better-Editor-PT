@@ -50,6 +50,8 @@
 
     function currentTrack() {
         try {
+            // Watching another builder (nsws_watch.js): the player's own track, never the one on screen.
+            if (self.__beWatch?.active()) return self.__beWatch.own();
             return self.__beEditorCurrent ? self.__beEditorCurrent() : null;
         } catch {
             return null;
@@ -424,7 +426,7 @@
         if (msg.type === "hello") {
             if (msg.assets === 1) assetsParent = true;
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 7, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
+            post({ type: "ready", version: 8, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
         } else if (msg.type === "list") {
             reply({ tracks: listTracks(), loaded: !!self.__beTrackStore, store: storeId() });
@@ -469,6 +471,8 @@
             reply({ track: currentTrack() });
         } else if (msg.type === "pause") {
             setPaused(!!msg.paused);
+            // Put away while watching someone build: the player's own track comes back first.
+            if (msg.paused) self.__beWatch?.stop();
             // A Build Off's finish lock (nsws_cup.js) ends when the editor is put away.
             if (msg.paused) self.__beCup?.unlock();
             reply({ ok: true });
@@ -477,9 +481,22 @@
             let result;
             try {
                 const cup = self.__beCup;
-                result = cup && ["status", "lock", "unlock", "fill"].includes(msg.op) ? cup[msg.op](msg) : { ok: false, error: "closed" };
+                // The finish guard works on the player's own track, so a lock or fill ends watching first.
+                if (self.__beWatch?.active() && msg.op !== "status") self.__beWatch.stop();
+                result = self.__beWatch?.active() ? { ok: false, error: "watching" } : cup && ["status", "lock", "unlock", "fill"].includes(msg.op) ? cup[msg.op](msg) : { ok: false, error: "closed" };
             } catch (err) {
                 console.warn("NSWS cup:", err);
+                result = { ok: false, error: "failed" };
+            }
+            if (msg.reqId) reply(result);
+        } else if (msg.type === "watch") {
+            // Cuppa Build Off: watching another builder (nsws_watch.js): show, stop, cam, view, status.
+            let result;
+            try {
+                const w = self.__beWatch;
+                result = w && ["show", "stop", "cam", "view", "status"].includes(msg.op) ? w[msg.op](msg) : { ok: false, error: "closed" };
+            } catch (err) {
+                console.warn("NSWS watch:", err);
                 result = { ok: false, error: "failed" };
             }
             if (msg.reqId) reply(result);
@@ -495,7 +512,8 @@
         } else if (msg.type === "autosave") {
             let result = { saved: false, reason: "closed" };
             try {
-                if (self.__beAutosave) result = self.__beAutosave();
+                if (self.__beWatch?.active()) result = { saved: false, reason: "watching" };
+                else if (self.__beAutosave) result = self.__beAutosave();
             } catch (err) {
                 result = { saved: false, reason: "failed" };
             }

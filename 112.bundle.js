@@ -3607,6 +3607,23 @@
             N.appendChild(T),
             (self.__beCupEditor = {
               scene: () => (0, i.gn)(this, jt, "f"),
+              refresh: () => {
+                ((0, i.gn)(this, jt, "f").refreshMeshes(),
+                  (0, i.gn)(this, kn, "f")?.refresh((0, i.gn)(this, jt, "f")),
+                  (0, i.gn)(this, ve, "f").setFromExistingCheckpoints((0, i.gn)(this, jt, "f")),
+                  (0, i.GG)(this, Ln, null, "f"));
+              },
+              history: (h) => {
+                if (!h) return [(0, i.gn)(this, wn, "f").slice(), (0, i.gn)(this, bn, "f").slice()];
+                const u = (0, i.gn)(this, wn, "f"),
+                  r = (0, i.gn)(this, bn, "f");
+                ((u.length = 0),
+                  u.push(...h[0]),
+                  (r.length = 0),
+                  r.push(...h[1]),
+                  ((0, i.gn)(this, ge, "f").disabled = 0 == u.length),
+                  ((0, i.gn)(this, fe, "f").disabled = 0 == r.length));
+              },
               types: () => (0, i.gn)(this, Jt, "f"),
               choose: (id) => {
                 const g = (0, i.gn)(this, Gn, "f"),
@@ -3877,6 +3894,42 @@
         isEnabled() {
           return (0, i.gn)(this, ae, "f");
         }
+        beView(v) {
+          const c = (0, i.gn)(this, qe, "f"),
+            o = (0, i.gn)(this, De, "f");
+          return (
+            v && (c.position.set(v[0], v[1], v[2]), o.target.set(v[3], v[4], v[5]), o.update()),
+            [c.position.x, c.position.y, c.position.z, o.target.x, o.target.y, o.target.z]
+          );
+        }
+        // The part in this builder's hand: [id, x, y, z, rotation, axis, colour], or null (nothing held, eraser, off the grid).
+        // Given one (or null), the editor shows the watched builder's hand at their tile instead of its own cursor; false
+        // ends that and gives this player's own pick back.
+        beHand(h) {
+          if (void 0 === h) {
+            const t = (0, i.gn)(this, rn, "f"),
+              n = (0, i.gn)(this, xn, "f"),
+              e = null != n ? (0, i.gn)(this, Gn, "f")[n] : null;
+            return null != t && null != e && null != e.id && (0, i.gn)(this, Xe, "f").visible
+              ? [e.id, t.x, t.y, t.z, (0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f"), (0, i.gn)(this, Kt, "m", Zn).call(this)]
+              : null;
+          }
+          const pick = (t, cat, r, a, c) => {
+            ((0, i.GG)(this, yn, c, "f"), null != cat && (0, i.gn)(this, Kt, "m", Qn).call(this, cat), (0, i.gn)(this, Kt, "m", $n).call(this, t), (0, i.GG)(this, ln, r, "f"), ((0, i.gn)(this, Ge, "f").rotation = r), (0, i.GG)(this, cn, a, "f"), ((0, i.gn)(this, Ge, "f").rotationAxis = a));
+          };
+          if (!1 === h) {
+            if (void 0 === this.__beHand) return null;
+            const o = this.__beHandOwn;
+            return ((this.__beHand = void 0), (this.__beHandOwn = null), o && pick(o.t, o.cat, o.r, o.a, o.c), null);
+          }
+          void 0 === this.__beHand && (this.__beHandOwn = { t: (0, i.gn)(this, xn, "f"), cat: (0, i.gn)(this, Nn, "f"), r: (0, i.gn)(this, ln, "f"), a: (0, i.gn)(this, cn, "f"), c: (0, i.gn)(this, yn, "f") });
+          if (!Array.isArray(h)) return ((this.__beHand = null), null);
+          const g = (0, i.gn)(this, Gn, "f"),
+            n = g.findIndex((e) => e.id === h[0]);
+          if (n < 0) return ((this.__beHand = null), null);
+          (0, i.gn)(this, xn, "f") !== n || (0, i.gn)(this, yn, "f") !== h[6] ? pick(n, g[n].category, h[4], h[5], h[6]) : ((0, i.GG)(this, ln, h[4], "f"), ((0, i.gn)(this, Ge, "f").rotation = h[4]), (0, i.GG)(this, cn, h[5], "f"), ((0, i.gn)(this, Ge, "f").rotationAxis = h[5]));
+          return ((this.__beHand = { x: h[1], y: h[2], z: h[3] }), h);
+        }
         beLook(t, e, n) {
           const s = new w.Pq0(t, e, n),
             o = (0, i.gn)(this, qe, "f").position.clone().sub((0, i.gn)(this, De, "f").target);
@@ -3904,7 +3957,7 @@
               ((0, i.gn)(this, qe, "f").position.y < 0.499 &&
                 (((0, i.gn)(this, qe, "f").position.y = 0.5), (0, i.gn)(this, De, "f").update()),
               (0, i.gn)(this, Kt, "m", Tn).call(this),
-              (0, i.GG)(this, rn, (0, i.gn)(this, Kt, "m", oi).call(this), "f"),
+              (0, i.GG)(this, rn, void 0 !== this.__beHand ? this.__beHand : (0, i.gn)(this, Kt, "m", oi).call(this), "f"),
               null != (0, i.gn)(this, rn, "f"))
             ) {
               const t = P.hT((0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f")),
@@ -4211,6 +4264,8 @@
             (0, i.gn)(this, pi, "f").refreshMeshes(),
             h.setCamera((0, i.gn)(this, bi, "f").camera),
             self.TM.tools.open(h, w, () => (0, i.gn)(this, bi, "f")?.camera, (t, e, n) => (0, i.gn)(this, bi, "f")?.beLook(t, e, n)),
+            (self.__beCupView = (v) => (0, i.gn)(this, bi, "f")?.beView(v)),
+            (self.__beCupHand = (h) => (0, i.gn)(this, bi, "f")?.beHand(h)),
             (0, i.gn)(this, bi, "f").setTestCallback(() => {
               (0, i.gn)(this, bi, "f").disable();
               self.TM.tools.testStart((0, i.gn)(this, pi, "f"));

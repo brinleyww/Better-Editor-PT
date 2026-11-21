@@ -29,6 +29,8 @@ apply('index.html', [
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
   // Not So Weekly Shorts' Cuppa Build Off: the finish guard (only does anything when NSWS asks, through nsws_bridge.js).
   ['NSWS cup guard', '<script defer="defer" src="nsws_bridge.js"></script>', '<script defer="defer" src="nsws_bridge.js"></script><script defer="defer" src="nsws_cup.js"></script>'],
+  // Cuppa Build Off: watching another builder (nsws_watch.js, only does anything when NSWS asks).
+  ['NSWS cup watch', '<script defer="defer" src="nsws_cup.js"></script>', '<script defer="defer" src="nsws_cup.js"></script><script defer="defer" src="nsws_watch.js"></script>'],
 ]);
 
 apply('main.bundle.js', [
@@ -686,6 +688,28 @@ apply('112.bundle.js', [
                     (0, i.gn)(this, fn, "f").rotationAxis != (0, i.gn)(this, cn, "f"))
                 ) {`,
   ],
+  // nsws_watch.js (Cuppa Build Off, watching another builder): the scene redrawn after its parts change, without the
+  // undo history or the unsaved mark (what ii does after an edit, less those), and the undo lists copied and put back.
+  [
+    'cup watch: editor hooks',
+    "            (self.__beCupEditor = {\n              scene: () => (0, i.gn)(this, jt, \"f\"),\n",
+    "            (self.__beCupEditor = {\n              scene: () => (0, i.gn)(this, jt, \"f\"),\n              refresh: () => {\n                ((0, i.gn)(this, jt, \"f\").refreshMeshes(),\n                  (0, i.gn)(this, kn, \"f\")?.refresh((0, i.gn)(this, jt, \"f\")),\n                  (0, i.gn)(this, ve, \"f\").setFromExistingCheckpoints((0, i.gn)(this, jt, \"f\")),\n                  (0, i.GG)(this, Ln, null, \"f\"));\n              },\n              history: (h) => {\n                if (!h) return [(0, i.gn)(this, wn, \"f\").slice(), (0, i.gn)(this, bn, \"f\").slice()];\n                const u = (0, i.gn)(this, wn, \"f\"),\n                  r = (0, i.gn)(this, bn, \"f\");\n                ((u.length = 0),\n                  u.push(...h[0]),\n                  (r.length = 0),\n                  r.push(...h[1]),\n                  ((0, i.gn)(this, ge, \"f\").disabled = 0 == u.length),\n                  ((0, i.gn)(this, fe, \"f\").disabled = 0 == r.length));\n              },\n",
+  ],
+  // nsws_watch.js follows the other builder's camera: [position, look-at] read and set.
+  [
+    'cup watch: camera',
+    "        beLook(t, e, n) {\n",
+    "        beView(v) {\n          const c = (0, i.gn)(this, qe, \"f\"),\n            o = (0, i.gn)(this, De, \"f\");\n          return (\n            v && (c.position.set(v[0], v[1], v[2]), o.target.set(v[3], v[4], v[5]), o.update()),\n            [c.position.x, c.position.y, c.position.z, o.target.x, o.target.y, o.target.z]\n          );\n        }\n        beLook(t, e, n) {\n",
+  ],
+  [
+    'cup watch: camera hook',
+    "self.TM.tools.open(h, w, () => (0, i.gn)(this, bi, \"f\")?.camera, (t, e, n) => (0, i.gn)(this, bi, \"f\")?.beLook(t, e, n)),",
+    "self.TM.tools.open(h, w, () => (0, i.gn)(this, bi, \"f\")?.camera, (t, e, n) => (0, i.gn)(this, bi, \"f\")?.beLook(t, e, n)),\n            (self.__beCupView = (v) => (0, i.gn)(this, bi, \"f\")?.beView(v)),",
+  ],
+  // nsws_watch.js shows the watched builder's part in hand (the preview before it is placed) at their tile.
+  ['cup watch: hand', "        beLook(t, e, n) {\n", "        // The part in this builder's hand: [id, x, y, z, rotation, axis, colour], or null (nothing held, eraser, off the grid).\n        // Given one (or null), the editor shows the watched builder's hand at their tile instead of its own cursor; false\n        // ends that and gives this player's own pick back.\n        beHand(h) {\n          if (void 0 === h) {\n            const t = (0, i.gn)(this, rn, \"f\"),\n              n = (0, i.gn)(this, xn, \"f\"),\n              e = null != n ? (0, i.gn)(this, Gn, \"f\")[n] : null;\n            return null != t && null != e && null != e.id && (0, i.gn)(this, Xe, \"f\").visible\n              ? [e.id, t.x, t.y, t.z, (0, i.gn)(this, ln, \"f\"), (0, i.gn)(this, cn, \"f\"), (0, i.gn)(this, Kt, \"m\", Zn).call(this)]\n              : null;\n          }\n          const pick = (t, cat, r, a, c) => {\n            ((0, i.GG)(this, yn, c, \"f\"), null != cat && (0, i.gn)(this, Kt, \"m\", Qn).call(this, cat), (0, i.gn)(this, Kt, \"m\", $n).call(this, t), (0, i.GG)(this, ln, r, \"f\"), ((0, i.gn)(this, Ge, \"f\").rotation = r), (0, i.GG)(this, cn, a, \"f\"), ((0, i.gn)(this, Ge, \"f\").rotationAxis = a));\n          };\n          if (!1 === h) {\n            if (void 0 === this.__beHand) return null;\n            const o = this.__beHandOwn;\n            return ((this.__beHand = void 0), (this.__beHandOwn = null), o && pick(o.t, o.cat, o.r, o.a, o.c), null);\n          }\n          void 0 === this.__beHand && (this.__beHandOwn = { t: (0, i.gn)(this, xn, \"f\"), cat: (0, i.gn)(this, Nn, \"f\"), r: (0, i.gn)(this, ln, \"f\"), a: (0, i.gn)(this, cn, \"f\"), c: (0, i.gn)(this, yn, \"f\") });\n          if (!Array.isArray(h)) return ((this.__beHand = null), null);\n          const g = (0, i.gn)(this, Gn, \"f\"),\n            n = g.findIndex((e) => e.id === h[0]);\n          if (n < 0) return ((this.__beHand = null), null);\n          (0, i.gn)(this, xn, \"f\") !== n || (0, i.gn)(this, yn, \"f\") !== h[6] ? pick(n, g[n].category, h[4], h[5], h[6]) : ((0, i.GG)(this, ln, h[4], \"f\"), ((0, i.gn)(this, Ge, \"f\").rotation = h[4]), (0, i.GG)(this, cn, h[5], \"f\"), ((0, i.gn)(this, Ge, \"f\").rotationAxis = h[5]));\n          return ((this.__beHand = { x: h[1], y: h[2], z: h[3] }), h);\n        }\n        beLook(t, e, n) {\n"],
+  ['cup watch: hand at their tile', "(0, i.GG)(this, rn, (0, i.gn)(this, Kt, \"m\", oi).call(this), \"f\"),", "(0, i.GG)(this, rn, void 0 !== this.__beHand ? this.__beHand : (0, i.gn)(this, Kt, \"m\", oi).call(this), \"f\"),"],
+  ['cup watch: hand hook', "            (self.__beCupView = (v) => (0, i.gn)(this, bi, \"f\")?.beView(v)),", "            (self.__beCupView = (v) => (0, i.gn)(this, bi, \"f\")?.beView(v)),\n            (self.__beCupHand = (h) => (0, i.gn)(this, bi, \"f\")?.beHand(h)),"],
 ]);
 
 // The worker keeps its own copy of the part table and track reader, under different minified names.
