@@ -982,7 +982,7 @@ self.TM.vehicles = (() => {
   function surfaceAt(c, contact) {
     try {
       const { position: p, normal: n } = contact;
-      return TM.surfaceAt(c.surfaces, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1);
+      return TM.surfaceAt(c.surfaces, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z);
     } catch (e) {
       c.surfaces = null;
       return null;
@@ -1085,7 +1085,7 @@ self.TM.vehicles = (() => {
   const sprayState = ({ decks, deck }) => ({ f: -1, x: 0, y: 0, z: 0, q: [0, 0, 0, 1], decks, deck, acc: new Float32Array(4 * MOST), slide: [0, 0, 0, 0] });
   function deckAt(S, contact) {
     const { position: p, normal: n } = contact;
-    for (const d of S.decks) if (TM.surfaceAt(d.index, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1) === 0) return d.rgb;
+    for (const d of S.decks) if (TM.surfaceAt(d.index, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) === 0) return d.rgb;
     return S.deck;
   }
 

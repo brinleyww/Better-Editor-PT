@@ -635,18 +635,91 @@ self.TM = (() => {
           }
     return { forEach: (f) => out.forEach((q) => f(q[0], q[1], q[2])) };
   }
-  // For the page (tyre looks): the same surface cells the physics builds for a car, without loading any geometry.
-  // surfaceAt(index, x, y, z) is the surface index (part.u) at that world point, or null for stock road; ask a little
-  // way under a wheel's contact point (contact - 0.1 x normal), as the physics does.
+  // For the page (tyre looks, Wheel info): the same surface cells the physics builds for a car. surfaceAt(index, x, y,
+  // z, px, py, pz) is the surface index (part.u) at that world point, or null for stock road; ask a little way under a
+  // wheel's contact point (contact - 0.1 x normal) and pass the contact point itself, as the physics does. Where two of
+  // our parts share a tile (a grass curve's corner beside a road curve), the wheel takes the surface of the part whose
+  // face it rests on (markOverlaps), so every part is listed, a plain road too. Instead of gathering each shared tile's
+  // faces up front, a lookup there measures each part's own faces near the contact point (pageGap), the same nearest
+  // face markOverlaps' lists give within OVER.touch, so a big track costs nothing up front. The page has no stock parts' tiles, so a stock part under one of ours is not seen here (the physics takes the
+  // stock road when the wheel rests on none of our faces).
   function surfaceIndex(track) {
     const cells = new Map();
     track.forEachPart((x, y, z, id, rot, axis) => {
       const p = isTM(id) ? byId.get(id) : null;
-      if (p) addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis));
+      // here the span is the placed part itself, for its faces later
+      if (p) addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis), { p, id, M: D.rotations[axis][rot], x, y, z });
     });
+    for (const l of cells.values())
+      if (l.length > 1 && l.some((e) => e.u != null || e.r)) {
+        l.over = PAGE_OVER;
+        l.stock = false;
+      }
     return cells;
   }
-  const surfaceAt = (index, x, y, z) => cellAt(index, x, y, z);
+  // A part's collision triangles in its own frame (9 numbers each) and, by OWN_BIN-unit bin of that frame, the
+  // triangles that reach each bin: built once per part, the first time a wheel rests in a shared tile of one, or null
+  // while its blocks are not loaded.
+  const OWN_BIN = 2,
+    ownTris = new WeakMap(),
+    PAGE_OVER = new Map();
+  function partTris(p, id) {
+    const had = ownTris.get(p);
+    if (had || !hasBlocks([id])) return had ?? null;
+    const T = [],
+      bins = new Map();
+    for (const m of physicsMeshes(p)) {
+      const P = positions(m),
+        I = indices(m);
+      for (let i = 0; i < I.length; i++) T.push(P[I[i] * 3], P[I[i] * 3 + 1], P[I[i] * 3 + 2]);
+    }
+    for (let i = 0; i < T.length; i += 9) {
+      const lo = [0, 1, 2].map((k) => Math.floor(Math.min(T[i + k], T[i + 3 + k], T[i + 6 + k]) / OWN_BIN)),
+        hi = [0, 1, 2].map((k) => Math.floor(Math.max(T[i + k], T[i + 3 + k], T[i + 6 + k]) / OWN_BIN));
+      for (let bx = lo[0]; bx <= hi[0]; bx++)
+        for (let by = lo[1]; by <= hi[1]; by++)
+          for (let bz = lo[2]; bz <= hi[2]; bz++) {
+            const k = cellKey(bx, by, bz),
+              l = bins.get(k);
+            l ? l.push(i) : bins.set(k, [i]);
+          }
+    }
+    const g = { T: new Float64Array(T), bins };
+    ownTris.set(p, g);
+    return g;
+  }
+  // faceGap for a page lookup: how far the contact point is from the placed part's nearest face (q: the placed part),
+  // or Infinity past OVER.touch, measured in the part's own frame (its turn keeps distances).
+  const pageGap = (q, x, y, z) => {
+    const g = partTris(q.p, q.id);
+    if (!g) return Infinity;
+    const M = q.M,
+      dx = x - q.x * 5,
+      dy = y - q.y * 5,
+      dz = z - q.z * 5,
+      lx = M[0] * dx + M[3] * dy + M[6] * dz,
+      ly = M[1] * dx + M[4] * dy + M[7] * dz,
+      lz = M[2] * dx + M[5] * dy + M[8] * dz,
+      t = OVER.touch,
+      T = g.T;
+    let best = Infinity;
+    const seen = new Set();
+    for (let bx = Math.floor((lx - t) / OWN_BIN); bx <= Math.floor((lx + t) / OWN_BIN); bx++)
+      for (let by = Math.floor((ly - t) / OWN_BIN); by <= Math.floor((ly + t) / OWN_BIN); by++)
+        for (let bz = Math.floor((lz - t) / OWN_BIN); bz <= Math.floor((lz + t) / OWN_BIN); bz++)
+          for (const i of g.bins.get(cellKey(bx, by, bz)) ?? []) {
+            if (seen.has(i)) continue;
+            seen.add(i);
+            if (lx < Math.min(T[i], T[i + 3], T[i + 6]) - t || lx > Math.max(T[i], T[i + 3], T[i + 6]) + t) continue;
+            if (ly < Math.min(T[i + 1], T[i + 4], T[i + 7]) - t || ly > Math.max(T[i + 1], T[i + 4], T[i + 7]) + t) continue;
+            if (lz < Math.min(T[i + 2], T[i + 5], T[i + 8]) - t || lz > Math.max(T[i + 2], T[i + 5], T[i + 8]) + t) continue;
+            closestOnTri(lx, ly, lz, T, i, overPt);
+            const d = Math.hypot(lx - overPt[0], ly - overPt[1], lz - overPt[2]);
+            if (d < best) best = d;
+          }
+    return best <= t ? best : Infinity;
+  };
+  const surfaceAt = (index, x, y, z, px, py, pz) => cellAt(index, x, y, z, px, py, pz);
   // id written into the wasm's one-byte part record, or null when the part has no record there.
   const physicsId = (id) => (isTM(id) ? (byId.get(id).p ?? null) : id);
 
@@ -1173,7 +1246,7 @@ self.TM = (() => {
     let l = cells.get(k);
     if (!l) return null;
     if (l.over && px != null) {
-      const gaps = l.map((e) => faceGap(l.over.get(e), px, py, pz)),
+      const gaps = l.map((e) => (l.over === PAGE_OVER ? pageGap(e.span, px, py, pz) : faceGap(l.over.get(e), px, py, pz))),
         near = Math.min(...gaps);
       if (near < Infinity) l = l.filter((e, i) => gaps[i] <= near + OVER.tie);
       else if (l.stock) return null;

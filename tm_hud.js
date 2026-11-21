@@ -303,7 +303,7 @@ self.TM.hud = (() => {
         }
         const p = k.position,
           n = k.normal,
-          u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1) : null;
+          u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) : null;
         c.wheel[w] = u ?? -1;
         c.inWater[w] = water != null && p.y < level ? 1 : 0;
         TYRES.step(c.tyre[w], u, c.inWater[w] == 1, heat, c.vehicle, 0.001);
@@ -327,7 +327,7 @@ self.TM.hud = (() => {
       contacts++;
       const p = k.position,
         n = k.normal,
-        u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1) : null,
+        u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) : null,
         icy = u != null && ICING.surfaces.includes(u);
       c.wheel[w] = u ?? -1;
       c.inWater[w] = water != null && p.y < level ? 1 : 0;
