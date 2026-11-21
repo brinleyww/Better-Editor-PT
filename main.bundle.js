@@ -27084,12 +27084,9 @@
           getPartsWithin(e, t, n, i, r, a) {
             return (0, v.gn)(this, l, "f")
               .filter((s) =>
-                s.trackPartData.configuration.tiles.rotated(s.rotation, s.rotationAxis).some((o, l, c) => {
-                  const h = s.x + o,
-                    d = s.y + l,
-                    u = s.z + c;
-                  return h >= e && h <= i && d >= t && d <= r && u >= n && u <= a;
-                }),
+                s.trackPartData.configuration.tiles.rotated(s.rotation, s.rotationAxis).some((o, l, c) =>
+                  self.TM.tileInBox(s.x + o, s.y + l, s.z + c, e, t, n, i, r, a),
+                ),
               )
               .map((e) => ({
                 id: e.trackPartData.configuration.id,
@@ -27140,14 +27137,15 @@
               A = new b.kn4().compose(m, g, new b.Pq0(1, 1, 1)),
               y = new _(e, t, n, r, a, o, p, A, d, f);
             (0, v.gn)(this, l, "f").push(y);
+            const beKeys = new Set();
             p.configuration.tiles.rotated(r, a).forEach((i, r, a) => {
-              const s = (e + i).toString() + "|" + (t + r).toString() + "|" + (n + a).toString();
               if (t + r < 0) throw new Error("Track part below ground");
-              {
-                const e = (0, v.gn)(this, c, "f").get(s);
-                null == e ? (0, v.gn)(this, c, "f").set(s, [y]) : e.push(y);
-              }
+              for (const s of self.TM.tileKeys(e + i, t + r, n + a)) beKeys.add(s);
             });
+            for (const s of beKeys) {
+              const e = (0, v.gn)(this, c, "f").get(s);
+              null == e ? (0, v.gn)(this, c, "f").set(s, [y]) : e.push(y);
+            }
             const w = (0, v.gn)(this, h, "f").get(i);
             null == w ? (0, v.gn)(this, h, "f").set(i, [y]) : w.push(y);
             const S = (0, v.gn)(this, u, "f").get(i);
@@ -27179,12 +27177,9 @@
             const o = [];
             for (let c = 0; c < (0, v.gn)(this, l, "f").length; ++c) {
               const h = (0, v.gn)(this, l, "f")[c];
-              h.trackPartData.configuration.tiles.rotated(h.rotation, h.rotationAxis).some((i, o, l) => {
-                const c = h.x + i,
-                  d = h.y + o,
-                  u = h.z + l;
-                return c >= e && c <= r && d >= t && d <= a && u >= n && u <= s;
-              }) &&
+              h.trackPartData.configuration.tiles.rotated(h.rotation, h.rotationAxis).some((i, o, l) =>
+                self.TM.tileInBox(h.x + i, h.y + o, h.z + l, e, t, n, r, a, s),
+              ) &&
                 (o.push({
                   id: h.trackPartData.configuration.id,
                   x: h.x,
@@ -27428,16 +27423,19 @@
             this.__beEdits = (this.__beEdits ?? 0) + 1;
             const t = (0, v.gn)(this, l, "f")[e];
             (0, v.gn)(this, l, "f").splice(e, 1);
+            const beKeys = new Set();
             t.trackPartData.configuration.tiles.rotated(t.rotation, t.rotationAxis).forEach((e, n, i) => {
-              const r = (t.x + e).toString() + "|" + (t.y + n).toString() + "|" + (t.z + i).toString(),
-                a = (0, v.gn)(this, c, "f").get(r);
+              for (const r of self.TM.tileKeys(t.x + e, t.y + n, t.z + i)) beKeys.add(r);
+            });
+            for (const r of beKeys) {
+              const a = (0, v.gn)(this, c, "f").get(r);
               if (null == a) throw new Error("Track part section missing");
               {
                 const e = a.indexOf(t);
                 if (!(e >= 0)) throw new Error("Track part missing from parts by position map");
                 (a.splice(e, 1), 0 == a.length && (0, v.gn)(this, c, "f").delete(r));
               }
-            });
+            }
             const n = (0, v.gn)(this, h, "f").get(t.trackPartData.configuration.id);
             if (null == n) throw new Error("Track part type is missing from parts by type map");
             for (let e = 0; e < n.length; ++e) {
@@ -32852,14 +32850,15 @@
               r = -1 / 0,
               c = -1 / 0,
               h = -1 / 0;
+            const tmK = this.hasExtendedParts() && self.TM.halfSteps(this) ? 2 : 1;
             for (const [, e] of (0, d.gn)(this, l, "f"))
               for (const a of e)
-                ((t = Math.min(a.x, t)),
-                  (n = Math.min(a.y, n)),
-                  (i = Math.min(a.z, i)),
-                  (r = Math.max(a.x, r)),
-                  (c = Math.max(a.y, c)),
-                  (h = Math.max(a.z, h)));
+                ((t = Math.min(a.x * tmK, t)),
+                  (n = Math.min(a.y * tmK, n)),
+                  (i = Math.min(a.z * tmK, i)),
+                  (r = Math.max(a.x * tmK, r)),
+                  (c = Math.max(a.y * tmK, c)),
+                  (h = Math.max(a.z * tmK, h)));
             (Number.isFinite(t) &&
               Number.isFinite(n) &&
               Number.isFinite(i) &&
@@ -32886,7 +32885,7 @@
               (i >>> 8) & 255,
               (i >>> 16) & 255,
               (i >>> 24) & 255,
-              255 & (g | (m << 2) | (A << 4)),
+              255 & (g | (m << 2) | (A << 4) | (2 == tmK ? self.TM.HALF_STEPS : 0)),
             );
             const tmExt = this.hasExtendedParts();
             tmExt && e.push(255 & self.TM.version, (self.TM.version >>> 8) & 255);
@@ -32899,9 +32898,9 @@
                 ? e.push(255 & r, (r >>> 8) & 255, 255 & s, (s >>> 8) & 255, (s >>> 16) & 255, (s >>> 24) & 255)
                 : e.push(255 & r, 255 & s, (s >>> 8) & 255, (s >>> 16) & 255, (s >>> 24) & 255);
               for (const s of a) {
-                const a = s.x - t,
-                  o = s.y - n,
-                  l = s.z - i;
+                const a = s.x * tmK - t,
+                  o = s.y * tmK - n,
+                  l = s.z * tmK - i;
                 if (
                   (1 == g
                     ? e.push(255 & a)

@@ -570,6 +570,21 @@ self.TM = (() => {
   function addCells(cells, p, x, y, z, M, tiles, span = null) {
     if (p.u == null && !p.r && !span) return;
     const entry = { u: p.u ?? null, r: p.r ? { x: x * 5, y: y * 5, z: z * 5, M, boxes: p.r, byCell: new Map() } : null, span };
+    // On the fine grid (half steps) a tile straddles whole cells: the part goes in each cell it overlaps, once, and
+    // those cells test all its boxes (byCell lists are per whole tile of the part).
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
+      tiles.forEach((tx, ty, tz) => {
+        for (const cx of cellsOf(x + tx))
+          for (const cy of cellsOf(y + ty))
+            for (const cz of cellsOf(z + tz)) {
+              const k = cellKey(cx, cy, cz),
+                l = cells.get(k);
+              if (!l) cells.set(k, [entry]);
+              else if (!l.includes(entry)) l.push(entry);
+            }
+      });
+      return;
+    }
     tiles.forEach((tx, ty, tz) => {
       const k = cellKey(x + tx, y + ty, z + tz),
         l = cells.get(k);
@@ -886,6 +901,28 @@ self.TM = (() => {
   const surfaceAt = (index, x, y, z, px, py, pz) => cellAt(index, x, y, z, px, py, pz);
   // id written into the wasm's one-byte part record, or null when the part has no record there.
   const physicsId = (id) => (isTM(id) ? (byId.get(id).p ?? null) : id);
+  // The fine grid: a part the physics engine never sees (one of ours that is not a gate: its triangles join the mountain)
+  // may sit on half steps. Stock parts and gates go to the engine as whole numbers.
+  const fineOk = (id) => isTM(id) && byId.has(id) && physicsId(id) == null;
+  // The whole tile cells a coordinate's tile covers: its own, or the two a half step straddles.
+  const cellsOf = (v) => (Number.isInteger(v) ? [v] : [Math.floor(v), Math.floor(v) + 1]);
+  // The editor's part grid ("x|y|z" keys of whole cells): the cells a tile at (x, y, z) covers, as triples or keys, and
+  // whether any of them is inside a box of whole cells.
+  function tileCells(x, y, z) {
+    const out = [];
+    for (const a of cellsOf(x)) for (const b of cellsOf(y)) for (const c of cellsOf(z)) out.push([a, b, c]);
+    return out;
+  }
+  const tileKeys = (x, y, z) => tileCells(x, y, z).map(([a, b, c]) => a + '|' + b + '|' + c);
+  const tileInBox = (x, y, z, x0, y0, z0, x1, y1, z1) =>
+    cellsOf(x).some((a) => a >= x0 && a <= x1) && cellsOf(y).some((b) => b >= y0 && b <= y1) && cellsOf(z).some((c) => c >= z0 && c <= z1);
+  function halfSteps(track) {
+    let half = false;
+    track.forEachPart((x, y, z) => {
+      if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) half = true;
+    });
+    return half;
+  }
 
   function proxyConfigs() {
     // A tiny triangle far below the world: the wasm needs a shape, and only the trigger box matters.
@@ -3108,7 +3145,8 @@ self.TM = (() => {
   // ---- PolyTrackBE1 track code ------------------------------------------------------------------------------------
   // Same layering as PolyTrack2: zlib + base62 twice. See docs/TRACK_CODE_FORMAT.md.
   const SAVE_PREFIX = '~BE1',
-    EXPORT_PREFIX = 'PolyTrackBE1';
+    EXPORT_PREFIX = 'PolyTrackBE1',
+    HALF_STEPS = 64; // a flag in the byte widths' spare bits
 
   function decodeBody(t, start, ctx) {
     let n = start;
@@ -3129,7 +3167,9 @@ self.TM = (() => {
       sizes = t[n++],
       sx = sizes & 3,
       sy = (sizes >> 2) & 3,
-      sz = (sizes >> 4) & 3;
+      sz = (sizes >> 4) & 3,
+      // HALF_STEPS: every position is in half steps (a track with parts on the fine grid).
+      half = sizes & HALF_STEPS ? 2 : 1;
     if (sx < 1 || sy < 1 || sz < 1) return null;
     n += 2; // catalogue version: informational, unknown part ids are what actually reject a code
     const track = ctx.create(env, sun);
@@ -3147,9 +3187,9 @@ self.TM = (() => {
       const count = i32();
       for (let k = 0; k < count; k++) {
         if (t.length - n < sx + sy + sz + 2) return null;
-        const x = uint(sx) + minX,
-          y = uint(sy) + minY,
-          z = uint(sz) + minZ,
+        const x = (uint(sx) + minX) / half,
+          y = (uint(sy) + minY) / half,
+          z = (uint(sz) + minZ) / half,
           b = t[n++],
           rot = b & 3,
           axis = (b >> 2) & 7;
@@ -3270,6 +3310,13 @@ self.TM = (() => {
     fromExport,
     SAVE_PREFIX,
     EXPORT_PREFIX,
+    HALF_STEPS,
+    fineOk,
+    cellsOf,
+    halfSteps,
+    tileCells,
+    tileKeys,
+    tileInBox,
     extTrackIds,
     palette: (p) => D.palettes[p.f],
     ranges: (p) => p.c,

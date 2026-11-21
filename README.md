@@ -124,6 +124,10 @@ Trackmania 2020 keeps its car and surface tunings in encrypted packs, so every n
 
 **Pipes** (Pipes in Plastic, and road pipes with the stock road's grip in Stadium) are Trackmania's round tubes: the inside is one road wide with its floor at the road's deck, so the road, the open road and a platform curl up into a pipe through their entry pieces and join it edge to edge. There are straights (half, 1, 2 and 4 long), an end cap, curves of radius 30, 50 and 70, chicanes, gentle and medium climbs, open (half) pipes with curves and a piece that closes an open pipe into a full one, and start, checkpoint, finish and effect pipes whose triggers fill the whole tube, so a car on the wall or the ceiling crosses them too. Fast enough, the car rides up the wall and right round over the top. The platform kits (Plastic, Wood, Dirt, Grass, ice and the new snow platforms) also gained Trackmania's platform hills and jumps (crests, dips, kickers, a mound), obstacles (speed bump, block, posts) and diagonal edges; ice gained the bowl corners and curved walls the other kits have; Water has the water road (the stock road under a thin layer of water: wet tyres and spray); and Stadium has small and large grandstands and an arch over the road.
 
+### Fine grid
+
+The grid button (bottom left) now has three steps: large (a whole block), small (a quarter of a block, 5 units) and fine (half of the small step, 2.5 units). On the fine grid our blocks move in 2.5-unit steps, sideways and in height (the height buttons and keys go up and down by half a layer). Stock blocks and gates (start, checkpoints, finish, effect gates) keep to the small grid even then, because the physics engine only takes them at whole steps. A track with blocks on the fine grid exports as a normal `PolyTrackBE1…` code with a flag for half steps (see [docs/TRACK_CODE_FORMAT.md](docs/TRACK_CODE_FORMAT.md)).
+
 ### Between building and testing
 
 - **Driving line:** every Test run is recorded. Back in the editor, the line you drove is drawn on the track, coloured from blue (slow) to red (your top speed), with a pin where the run ended: green on a finish, red where the car stopped, fell or was reset. Hover the line to see the speed and race time at that point.
@@ -220,6 +224,8 @@ importScripts("tm_parts.js", "tm_runtime.js");
 | `fxControls(carId, controls)`, `fxSkip(carId, heap)`, `fxStep(carId, heap, stateBuffer)` | The per-frame hooks. |
 | `fromSave(str, ctx)`, `fromExport(str, ctx)` | Read BE1 codes. Return `null` for anything else, so the stock readers can run next. |
 | `SAVE_PREFIX`, `EXPORT_PREFIX`, `extTrackIds` | Format prefixes; ids of tracks that must not be uploaded. |
+| `HALF_STEPS`, `halfSteps(track)`, `fineOk(id)` | The fine grid: the byte widths flag for half-step positions, whether a track has any part off whole steps, and whether a part may be placed there (ours and not a gate). |
+| `cellsOf(v)`, `tileCells(x, y, z)`, `tileKeys(x, y, z)`, `tileInBox(...)` | The whole tile cells a (possibly half-step) tile covers, for the editor's part grid. |
 | `surfaces` | Grip, launch, bounce and drag per surface. Tune here. |
 | `zones(track)`, `surfaceIndex(track)`, `surfaceAt(index, x, y, z)` | A track's effect and gate zones, and the surface at a point. The page uses them for water and vehicles. |
 | `fxTouch(zone, x, y, z, qx, qy, qz, qw)` | Whether a car at that position and quaternion touches an effect zone (its hull with its wheels, `FX_BOX`): the first-touch test the physics fires effects on, shared with the page's banner and wheel looks. |

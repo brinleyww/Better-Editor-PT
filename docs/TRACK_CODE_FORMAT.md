@@ -23,7 +23,7 @@ The base62 packing and both zlib layers are the same as PolyTrack2.
 | 1 | environment: 0 Summer, 1 Winter, 2 Desert |
 | 1 | sun direction, 0-179 |
 | 12 | min x, y, z as i32 LE |
-| 1 | byte widths: x in bits 0-1, y in bits 2-3, z in bits 4-5 |
+| 1 | byte widths: x in bits 0-1, y in bits 2-3, z in bits 4-5; bit 6 (64): every position (and the minimum) is in half steps. **Bit 6 new in BE1** |
 | 2 | catalogue version, u16 LE. **New in BE1** |
 
 Then one group per part type, until the end of the data:
@@ -37,11 +37,13 @@ And for each part in the group:
 
 | Bytes | Meaning |
 |---|---|
-| x, y, z widths | position minus the minimum, unsigned LE |
+| x, y, z widths | position minus the minimum, unsigned LE (in half steps when bit 6 is set: divide by 2) |
 | 1 | rotation in bits 0-1, rotation axis in bits 2-4 |
 | 1 | colour |
 | 2 | checkpoint order, u16 LE. Only for checkpoint parts |
 | 4 | start order, u32 LE. Only for start parts |
+
+Half steps come from the editor's fine grid, which only places new blocks that are not gates there (`TM.fineOk`): stock parts and gates go to the physics engine as whole numbers. A track with every part on whole steps never sets bit 6, so it writes the same bytes as before.
 
 Part ids 0-189 are stock. New blocks start at 1000. Part ids are permanent: `tools/blocks/ids.json` only ever gets new entries.
 

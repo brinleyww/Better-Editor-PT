@@ -526,11 +526,12 @@
           const g = document.createElement("button"),
             f = document.createElement("img");
           ((f.src = "images/grid_large.svg"),
+            (self.__beGridFine = !1),
             g.appendChild(f),
             g.addEventListener("click", () => {
               (e.playUIClick(),
-                (d = !d),
-                (f.src = d ? "images/grid_large.svg" : "images/grid_small.svg"),
+                d ? ((d = !1), (self.__beGridFine = !1)) : self.__beGridFine ? ((d = !0), (self.__beGridFine = !1)) : (self.__beGridFine = !0),
+                (f.src = d ? "images/grid_large.svg" : self.__beGridFine ? "images/grid_fine.svg" : "images/grid_small.svg"),
                 o(d));
             }),
             (0, i.gn)(this, mt, "f").appendChild(g));
@@ -1548,22 +1549,21 @@
             (0, i.gn)(this, Wn, "f")
               .tiles.rotated((0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f"))
               .forEach((n, s, o) => {
-                const a = t.x + n,
-                  r = t.y + s,
-                  h = t.z + o,
-                  l = (0, i.gn)(this, jt, "f").deletePartsAt(a, r, h);
-                for (const t of l)
-                  e.push({
-                    id: t.id,
-                    x: t.x,
-                    y: t.y,
-                    z: t.z,
-                    rotation: t.rotation,
-                    rotationAxis: t.rotationAxis,
-                    color: t.color,
-                    checkpointOrder: t.checkpointOrder,
-                    startOrder: t.startOrder,
-                  });
+                for (const [a, r, h] of self.TM.tileCells(t.x + n, t.y + s, t.z + o)) {
+                  const l = (0, i.gn)(this, jt, "f").deletePartsAt(a, r, h);
+                  for (const t of l)
+                    e.push({
+                      id: t.id,
+                      x: t.x,
+                      y: t.y,
+                      z: t.z,
+                      rotation: t.rotation,
+                      rotationAxis: t.rotationAxis,
+                      color: t.color,
+                      checkpointOrder: t.checkpointOrder,
+                      startOrder: t.startOrder,
+                    });
+                }
               });
           }
           for (const s of (0, i.gn)(this, Wn, "f").parts) {
@@ -2116,7 +2116,7 @@
           ((0, i.gn)(this, Kt, "m", Jn).call(this), (0, i.gn)(this, Kt, "m", ni).call(this));
         }),
         (ti = function () {
-          return Math.floor((0, i.gn)(this, Ze, "f").position.y / 5);
+          return Math.round((0, i.gn)(this, Ze, "f").position.y / 2.5) / 2;
         }),
         (ei = function (t) {
           const e = (0, i.gn)(this, Kt, "a", ti);
@@ -2188,6 +2188,12 @@
         }),
         (oi = function () {
           let t;
+          const beF =
+            !!self.__beGridFine &&
+            !(0, i.gn)(this, Mn, "f") &&
+            !(0, i.gn)(this, An, "f") &&
+            null == (0, i.gn)(this, Wn, "f") &&
+            self.TM.fineOk((0, i.gn)(this, Gn, "f")[(0, i.gn)(this, xn, "f")]?.id);
           if ((0, i.gn)(this, ie, "f").touchEnabled)
             t = new w.Pq0(
               (0, i.gn)(this, De, "f").target.x / W.A.partSize,
@@ -2210,24 +2216,32 @@
                 s = 500 + 2 * (0, i.gn)(this, De, "f").getDistance();
               t =
                 n.point.distanceToSquared((0, i.gn)(this, De, "f").target) <= s ** 2
-                  ? new w.Pq0(
-                      Math.round(n.point.x / W.A.partSize),
-                      Math.floor((0, i.gn)(this, Ze, "f").position.y / W.A.partSize),
-                      Math.round(n.point.z / W.A.partSize),
-                    )
+                  ? beF
+                    ? new w.Pq0(
+                        n.point.x / W.A.partSize,
+                        (0, i.gn)(this, Ze, "f").position.y / W.A.partSize,
+                        n.point.z / W.A.partSize,
+                      )
+                    : new w.Pq0(
+                        Math.round(n.point.x / W.A.partSize),
+                        Math.floor((0, i.gn)(this, Ze, "f").position.y / W.A.partSize),
+                        Math.round(n.point.z / W.A.partSize),
+                      )
                   : null;
             } else t = null;
           }
           if (null != t) {
             let e, n;
-            ((e = (0, i.gn)(this, dn, "f") ? 4 : 1),
+            ((e = (0, i.gn)(this, dn, "f") ? 4 : beF ? 0.5 : 1),
               (n =
                 (0, i.gn)(this, Mn, "f") ||
                 (0, i.gn)(this, An, "f") ||
                 ((0, i.gn)(this, cn, "f") != ht.A.XPositive && (0, i.gn)(this, cn, "f") != ht.A.XNegative)
                   ? Math.round(t.x / e) * e
-                  : Math.round(t.x)));
-            const s = Math.round(t.y) + (0, i.gn)(this, hn, "f");
+                  : beF
+                    ? Math.round(2 * t.x) / 2
+                    : Math.round(t.x)));
+            const s = (beF ? Math.round(2 * t.y) / 2 : Math.round(t.y)) + (0, i.gn)(this, hn, "f");
             let o;
             return (
               (o =
@@ -2235,7 +2249,9 @@
                 (0, i.gn)(this, An, "f") ||
                 ((0, i.gn)(this, cn, "f") != ht.A.ZPositive && (0, i.gn)(this, cn, "f") != ht.A.ZNegative)
                   ? Math.round(t.z / e) * e
-                  : Math.round(t.z)),
+                  : beF
+                    ? Math.round(2 * t.z) / 2
+                    : Math.round(t.z)),
               new w.Pq0(n, s, o)
             );
           }
@@ -2245,22 +2261,18 @@
           const n = [];
           return (
             e.rotated((0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f")).forEach((e, s, o) => {
-              const a = t.x + e,
-                r = t.y + s,
-                h = t.z + o,
-                l = (0, i.gn)(this, jt, "f").getPartsAt(a, r, h);
-              l.length > 0 && n.push({ x: a, y: r, z: h, parts: l });
+              for (const [a, r, h] of self.TM.tileCells(t.x + e, t.y + s, t.z + o)) {
+                const l = (0, i.gn)(this, jt, "f").getPartsAt(a, r, h);
+                l.length > 0 && n.push({ x: a, y: r, z: h, parts: l });
+              }
             }),
             n
           );
         }),
         (ri = function (t, e) {
-          return e.rotated((0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f")).some((e, n, s) => {
-            const o = t.x + e,
-              a = t.y + n,
-              r = t.z + s;
-            return (0, i.gn)(this, jt, "f").getPartsAt(o, a, r).length > 0;
-          });
+          return e.rotated((0, i.gn)(this, ln, "f"), (0, i.gn)(this, cn, "f")).some((e, n, s) =>
+            self.TM.tileCells(t.x + e, t.y + n, t.z + s).some(([o, a, r]) => (0, i.gn)(this, jt, "f").getPartsAt(o, a, r).length > 0),
+          );
         }),
         (hi = function (t, e) {
           let n = !1;
@@ -2694,10 +2706,10 @@
                         f.checkKeyBinding(t, st.A.EditorRotateViewRight) &&
                           ((0, i.GG)(this, Fe, !0, "f"), t.preventDefault()),
                         f.checkKeyBinding(t, st.A.EditorMoveDown) &&
-                          ((0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - 1), "a", ei),
+                          ((0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - (self.__beGridFine ? 0.5 : 1)), "a", ei),
                           t.preventDefault()),
                         f.checkKeyBinding(t, st.A.EditorMoveUp) &&
-                          ((0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + 1, "a", ei),
+                          ((0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + (self.__beGridFine ? 0.5 : 1), "a", ei),
                           t.preventDefault()),
                         f.checkKeyBinding(t, st.A.EditorTest) &&
                           ((0, i.gn)(this, Kt, "m", Hn).call(this), t.preventDefault()),
@@ -2739,9 +2751,9 @@
                   (0, i.gn)(this, Oe, "f") &&
                     (0, i.gn)(this, ae, "f") &&
                     (t.deltaY > 0
-                      ? (0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + 1, "a", ei)
+                      ? (0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + (self.__beGridFine ? 0.5 : 1), "a", ei)
                       : t.deltaY < 0 &&
-                        (0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - 1), "a", ei));
+                        (0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - (self.__beGridFine ? 0.5 : 1)), "a", ei));
                 },
                 "f",
               ),
@@ -3242,7 +3254,8 @@
                   ((0, i.GG)(this, dn, t, "f"),
                     (0, i.GG)(this, An, !1, "f"),
                     (0, i.GG)(this, Mn, !1, "f"),
-                    (0, i.GG)(this, En, null, "f"));
+                    (0, i.GG)(this, En, null, "f"),
+                    self.__beGridFine || (0, i.GG)(this, Kt, Math.floor((0, i.gn)(this, Kt, "a", ti)), "a", ei));
                 },
                 (t) => {
                   ((0, i.GG)(this, cn, t, "f"),
@@ -3769,11 +3782,11 @@
                 (0, i.gn)(this, ie, "f"),
                 () => {
                   ((0, i.gn)(this, Ft, "f").playUIClick(),
-                    (0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + 1, "a", ei));
+                    (0, i.GG)(this, Kt, (0, i.gn)(this, Kt, "a", ti) + (self.__beGridFine ? 0.5 : 1), "a", ei));
                 },
                 () => {
                   ((0, i.gn)(this, Ft, "f").playUIClick(),
-                    (0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - 1), "a", ei));
+                    (0, i.GG)(this, Kt, Math.max(0, (0, i.gn)(this, Kt, "a", ti) - (self.__beGridFine ? 0.5 : 1)), "a", ei));
                 },
               ),
               "f",
