@@ -648,24 +648,42 @@ self.TM = (() => {
   }
   // For the page (tyre looks, Wheel info): the same surface cells the physics builds for a car. surfaceAt(index, x, y,
   // z, px, py, pz) is the surface index (part.u) at that world point, or null for stock road; ask a little way under a
-  // wheel's contact point (contact - 0.1 x normal) and pass the contact point itself, as the physics does. Where two of
-  // our parts share a tile (a grass curve's corner beside a road curve), the wheel takes the surface of the part whose
-  // face it rests on (markOverlaps), so every part is listed, a plain road too. Instead of gathering each shared tile's
-  // faces up front, a lookup there measures each part's own faces near the contact point (pageGap), the same nearest
-  // face markOverlaps' lists give within OVER.touch, so a big track costs nothing up front. The page has no stock parts' tiles, so a stock part under one of ours is not seen here (the physics takes the
-  // stock road when the wheel rests on none of our faces).
+  // wheel's contact point (contact - 0.1 x normal) and pass the contact point itself, as the physics does. Where our
+  // parts share a tile with each other or with a stock part (a grass curve's corner beside a road curve, a grass mound
+  // over a stock turn), the wheel takes the surface of the part whose face it rests on (markOverlaps), so every part is
+  // listed, a plain road too, and stock parts' tiles come from TM_DATA.stockTiles. Instead of gathering each shared
+  // tile's faces up front, a lookup there measures each part's own faces near the contact point (pageGap), the same
+  // nearest face markOverlaps' lists give within OVER.touch, so a big track costs nothing up front.
+  // A race on older physics (Not So Weekly Shorts pins a week's tracks to a Better Editor commit) gets that physics'
+  // rule: before version OVERLAP_PHYSICS the first part with a surface in the tile won, whatever the wheel rested on.
+  const OVERLAP_PHYSICS = 26;
+  let stockNames = null;
   function surfaceIndex(track) {
-    const cells = new Map();
+    let physics = null;
+    try {
+      physics = self.__nswsWeekBE?.(track.getId())?.physics ?? null;
+    } catch (e) {}
+    const cells = new Map(),
+      old = physics != null && physics < OVERLAP_PHYSICS,
+      stock = new Set();
+    if (!old && !stockNames && stockIds.size) stockNames = new Map([...stockIds].map(([n, i]) => [i, n]));
     track.forEachPart((x, y, z, id, rot, axis) => {
       const p = isTM(id) ? byId.get(id) : null;
-      // here the span is the placed part itself, for its faces later
-      if (p) addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis), { p, id, M: D.rotations[axis][rot], x, y, z });
-    });
-    for (const l of cells.values())
-      if (l.length > 1 && l.some((e) => e.u != null || e.r)) {
-        l.over = PAGE_OVER;
-        l.stock = false;
+      if (!p) {
+        const c = !old && D.stockTiles?.[stockNames?.get(id)];
+        if (c) tilesOf({ c }, rot, axis).forEach((tx, ty, tz) => stock.add(cellKey(x + tx, y + ty, z + tz)));
+        return;
       }
+      // here the span is the placed part itself, for its faces later
+      if (old) addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis));
+      else addCells(cells, p, x, y, z, D.rotations[axis][rot], tilesOf(p, rot, axis), { p, id, M: D.rotations[axis][rot], x, y, z });
+    });
+    if (!old)
+      for (const [k, l] of cells)
+        if (l.length + (stock.has(k) ? 1 : 0) >= 2 && l.some((e) => e.u != null || e.r)) {
+          l.over = PAGE_OVER;
+          l.stock = stock.has(k);
+        }
     return cells;
   }
   // A part's collision triangles in its own frame (9 numbers each) and, by OWN_BIN-unit bin of that frame, the

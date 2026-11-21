@@ -610,6 +610,9 @@ function main(stock) {
     noPhysics: NO_PHYSICS.map((m) => matIndex.get(m)),
     rotations: ROTATIONS,
     proxies: [...proxies.values()],
+    // Every stock part's tiles by name, as the game's part list claims them (the same ranges as a part's c): the page
+    // has no other way to see where a stock part sits, and its surface lookup needs it where one of ours overlaps it.
+    stockTiles: Object.fromEntries(stock.map((s) => [s.name, s.tiles])),
     // Tabs in menu order; any tab a block uses that is not listed goes at the end, in the order blocks use it.
     // Ice's own tabs come before the vehicle gates, so its browser still opens on the bobsleigh.
     tabs: [...new Set(['Road', 'Dirt road', 'Railed road', 'Wide road', 'Open road', 'Narrow road', 'Platform', 'Blocks', 'Wall track', 'Penalty grass', 'Walls and loops', 'Half-pipe', 'Pipes', 'Magnet', 'Gates', 'Box gates', 'Effects', 'Special gates', 'Bobsleigh', 'Bobsleigh gates', 'Bobsleigh effects', 'Ice platform', 'Ice walls and loops', 'Ice blocks', 'Ice wall track', 'Ice gates', 'Ice effects', 'Snow platform', 'Snow blocks', 'Snow wall track', 'Vehicle gates', 'Bump road', 'Connectors', 'Track walls', 'Structures', 'Stage and screens', 'Deco', 'Pools', 'Shallow water', 'Water road', ...table.map((p) => p.t)])],
