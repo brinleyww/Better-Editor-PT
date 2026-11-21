@@ -870,7 +870,8 @@ if (section == 'verify') {
   const recs = {};
   tracks.bobWall = L(['IceStartBob', ...Array(40).fill('IceBobStraight')]);
   tracks.bobWall[30] = { ...tracks.bobWall[30], n: 'IceFinishBob' };
-  recs.bobWall = { up: [0], left: [2000, 2400], right: [2700, 2950] };
+  // up the left wall at 200 km/h, riding it halfway up along the straight and back down (a longer steer goes over the lip)
+  recs.bobWall = { up: [0], left: [2000, 2300], right: [2600, 2850] };
   recs.reactorAir = { up: [0, 3700, 8000], down: [3900, 4600] };
   // Magnet road: stock road onto magnet road, the quarter pipe up, the loop's top and two ceiling pieces, upside down
   // on the magnet, to a half finish box hanging just past the ceiling's end, which the car crosses still upside down.

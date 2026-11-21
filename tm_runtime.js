@@ -1014,9 +1014,16 @@ self.TM = (() => {
     // wall at 200 km/h, steered up mid-curve: 221 to 150 km/h, over the top only by toppling); now it clears the top by
     // about 9 at 218. Driven along the channel the nose stays under 30 degrees up the wall (a car that enters a curve of
     // radius 50 or more without steering, up to 320 km/h: at most 28), so the walls carry it round exactly as before.
+    // And the hold lets go as the car's highest wheel rises over the top of the wall, by lip[1] units over it: past the
+    // lip there is no wall left. It used to pin a car pressing up with its middle at the top edge, the upper wheels
+    // hanging over it and the lower ones still pushing, so the car rolled over the edge like a log (300 to 500 deg/s)
+    // and its body caught on the wall top, from 258 to 10 km/h in one frame at worst; now it goes over with its climb
+    // (a plain radius 70 curve steered up at 190 to 320 km/h: clears the top by 20 to 36, keeps its speed, no catch).
+    // A car carried round a high wall keeps its upper wheels under the top (curves of radius 50, 70 and 90 entered at
+    // 130 to 320 km/h without steering), so those runs are unchanged.
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
-    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5, followMax: 120, followCurve: 150, aim: [30, 40], aimSteer: 10 } },
+    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5, followMax: 120, followCurve: 150, aim: [30, 40], aimSteer: 10, lip: [0, 0.4] } },
     // The four below are this project's estimates of TM2020's surfaces relative to its Tech road (= PolyTrack's stock road);
     // TM2020's own tunings sit in encrypted packs and were not read. Targets: grip as the share of stock cornering
     // grip, times as multiples of the stock car's 0-100 / 0-200 / 120-0 braking distance (tools/test/tmphys.mjs).
@@ -2305,7 +2312,11 @@ self.TM = (() => {
             // Aimed over the top (ice.aim): how far the nose points up the wall (degrees), aimSteer more while the
             // steering turns it further up (the side of the car that faces up the wall is the side it steers to).
             const aim = (Math.asin(Math.max(-1, Math.min(1, fx * wx + fy * wy + fz * wz))) * 180) / Math.PI + (ice.aim && steer * (lx * wx + ly * wy + lz * wz) > 0.5 ? ice.aimSteer : 0),
-              letGo = ice.aim ? smooth((aim - ice.aim[0]) / (ice.aim[1] - ice.aim[0])) : 0,
+              aimGo = ice.aim ? smooth((aim - ice.aim[0]) / (ice.aim[1] - ice.aim[0])) : 0,
+              // over the lip (ice.lip): the highest wheel hub (+36: its world height) over the top of the wall
+              hubTop = Math.max(F[(wheels >> 2) + 36], F[((wheels + 284) >> 2) + 36], F[((wheels + 568) >> 2) + 36], F[((wheels + 852) >> 2) + 36]),
+              lipGo = ice.lip && top != null ? smooth((hubTop - top - ice.lip[0]) / (ice.lip[1] - ice.lip[0])) : 0,
+              letGo = 1 - (1 - aimGo) * (1 - lipGo),
               before = Math.hypot(F[v], F[v + 1], F[v + 2]),
               cap = (ice.followMax ?? 1e9) + (ice.followCurve ?? 0) * Math.hypot(F[v], F[v + 2]) * c.wallRate,
               d = near > 0 ? Math.min(up * Math.min(1, ice.follow * 0.001 * near * near), cap * 0.001 * near * near) * (1 - letGo) : 0;
