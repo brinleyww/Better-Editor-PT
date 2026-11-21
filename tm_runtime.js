@@ -284,6 +284,20 @@ self.TM = (() => {
   function rotate(M, x, y, z) {
     return [M[0] * x + M[1] * y + M[2] * z, M[3] * x + M[4] * y + M[5] * z, M[6] * x + M[7] * y + M[8] * z];
   }
+  // Triangle t (index into I) of a part's mesh P, turned by M and moved to (wx, wy, wz), into T (9 numbers): the same
+  // sums as rotate, without the small arrays (bobsleigh pieces have tens of thousands of triangles).
+  const TRI = new Array(9).fill(0);
+  function worldTri(M, P, I, t, wx, wy, wz, T) {
+    for (let j = 0; j < 3; j++) {
+      const q = I[t + j] * 3,
+        x = P[q],
+        y = P[q + 1],
+        z = P[q + 2];
+      T[3 * j] = M[0] * x + M[1] * y + M[2] * z + wx;
+      T[3 * j + 1] = M[3] * x + M[4] * y + M[5] * z + wy;
+      T[3 * j + 2] = M[6] * x + M[7] * y + M[8] * z + wz;
+    }
+  }
 
   function prepareCar(carId, mountain, off, track, rotatedTiles) {
     let extra = 0,
@@ -349,21 +363,18 @@ self.TM = (() => {
           const P = positions(m),
             I = indices(m);
           for (let t = 0; t < I.length; t += 3) {
-            const k = grid.tris.length / 9,
-              T = [];
-            for (let j = 0; j < 3; j++) {
-              const q = I[t + j] * 3;
-              T.push(...rotate(M, P[q], P[q + 1], P[q + 2]));
-              T[3 * j] += wx;
-              T[3 * j + 1] += wy;
-              T[3 * j + 2] += wz;
-            }
-            grid.tris.push(...T);
-            const lo = [0, 1, 2].map((a) => Math.floor(Math.min(T[a], T[a + 3], T[a + 6]) / 5)),
-              hi = [0, 1, 2].map((a) => Math.floor(Math.max(T[a], T[a + 3], T[a + 6]) / 5));
-            for (let cx = lo[0]; cx <= hi[0]; cx++)
-              for (let cy = lo[1]; cy <= hi[1]; cy++)
-                for (let cz = lo[2]; cz <= hi[2]; cz++) {
+            const k = grid.tris.length / 9;
+            worldTri(M, P, I, t, wx, wy, wz, TRI);
+            const T = TRI;
+            grid.tris.push(T[0], T[1], T[2], T[3], T[4], T[5], T[6], T[7], T[8]);
+            const x1 = Math.floor(Math.max(T[0], T[3], T[6]) / 5),
+              y0 = Math.floor(Math.min(T[1], T[4], T[7]) / 5),
+              y1 = Math.floor(Math.max(T[1], T[4], T[7]) / 5),
+              z0 = Math.floor(Math.min(T[2], T[5], T[8]) / 5),
+              z1 = Math.floor(Math.max(T[2], T[5], T[8]) / 5);
+            for (let cx = Math.floor(Math.min(T[0], T[3], T[6]) / 5); cx <= x1; cx++)
+              for (let cy = y0; cy <= y1; cy++)
+                for (let cz = z0; cz <= z1; cz++) {
                   const key = cellKey(cx, cy, cz),
                     l = grid.cells.get(key);
                   l ? l.push(k) : grid.cells.set(key, [k]);
@@ -375,14 +386,8 @@ self.TM = (() => {
           const P = positions(m),
             I = indices(m);
           for (let t = 0; t < I.length; t += 3) {
-            const T = [];
-            for (let j = 0; j < 3; j++) {
-              const q = I[t + j] * 3;
-              T.push(...rotate(M, P[q], P[q + 1], P[q + 2]));
-              T[3 * j] += wx;
-              T[3 * j + 1] += wy;
-              T[3 * j + 2] += wz;
-            }
+            worldTri(M, P, I, t, wx, wy, wz, TRI);
+            const T = TRI;
             // Faces within 46 degrees of level, either winding (a steep slope's wall tops too).
             const ex = T[3] - T[0],
               ey = T[4] - T[1],
@@ -393,7 +398,7 @@ self.TM = (() => {
               ny = ez * fx - ex * fz;
             if (Math.abs(ny) < 0.69 * Math.hypot(ey * fz - ez * fy, ny, ex * fy - ey * fx)) continue;
             const k = tops.tris.length / 9;
-            tops.tris.push(...T);
+            tops.tris.push(T[0], T[1], T[2], T[3], T[4], T[5], T[6], T[7], T[8]);
             for (let cx = Math.floor(Math.min(T[0], T[3], T[6]) / 5); cx <= Math.floor(Math.max(T[0], T[3], T[6]) / 5); cx++)
               for (let cz = Math.floor(Math.min(T[2], T[5], T[8]) / 5); cz <= Math.floor(Math.max(T[2], T[5], T[8]) / 5); cz++) {
                 const key = cellKey(cx, 0, cz),
@@ -467,17 +472,28 @@ self.TM = (() => {
       for (const e of l) if (e.span) entries.add(e);
     }
     const R = OVER.reach;
+    // Plain numbers instead of small arrays per triangle: the same sums in the same order, so the same lists.
     for (const e of entries)
       for (let i = e.span[0]; i < e.span[1]; i += 9) {
-        const T = [];
-        for (let j = 0; j < 9; j += 3) T.push(out[i + j] + off.x, out[i + j + 1] + off.y, out[i + j + 2] + off.z);
-        const lo = [0, 1, 2].map((a) => Math.floor((Math.min(T[a], T[a + 3], T[a + 6]) - R) / 5)),
-          hi = [0, 1, 2].map((a) => Math.floor((Math.max(T[a], T[a + 3], T[a + 6]) + R) / 5));
-        for (let cx = lo[0]; cx <= hi[0]; cx++)
-          for (let cy = lo[1]; cy <= hi[1]; cy++)
-            for (let cz = lo[2]; cz <= hi[2]; cz++) {
+        const ax = out[i] + off.x,
+          ay = out[i + 1] + off.y,
+          az = out[i + 2] + off.z,
+          bx = out[i + 3] + off.x,
+          by = out[i + 4] + off.y,
+          bz = out[i + 5] + off.z,
+          gx = out[i + 6] + off.x,
+          gy = out[i + 7] + off.y,
+          gz = out[i + 8] + off.z,
+          x1 = Math.floor((Math.max(ax, bx, gx) + R) / 5),
+          y1 = Math.floor((Math.max(ay, by, gy) + R) / 5),
+          z1 = Math.floor((Math.max(az, bz, gz) + R) / 5),
+          y0 = Math.floor((Math.min(ay, by, gy) - R) / 5),
+          z0 = Math.floor((Math.min(az, bz, gz) - R) / 5);
+        for (let cx = Math.floor((Math.min(ax, bx, gx) - R) / 5); cx <= x1; cx++)
+          for (let cy = y0; cy <= y1; cy++)
+            for (let cz = z0; cz <= z1; cz++) {
               const L = cells.get(cellKey(cx, cy, cz))?.over?.get(e);
-              if (L) L.push(...T);
+              if (L) L.push(ax, ay, az, bx, by, bz, gx, gy, gz);
             }
       }
     for (const l of cells.values()) if (l.over) for (const [e, L] of l.over) l.over.set(e, new Float64Array(L));
@@ -524,6 +540,40 @@ self.TM = (() => {
   // hundredths of a unit early, never late. Water keeps its own test (the car's middle, see fxStep). The page uses the
   // same function, so its banner and wheel looks fire on the same frame.
   const FX_BOX = { c: [0, 0.4, -0.153], h: [0.85, 0.6, 1.843] };
+  // The zones fxStep has to look at: the ones the car can reach from where it is, and the ones it is still inside, in
+  // track order. A zone only fires once FX_BOX (never more than 2.55 from the car's position) reaches its box, and water
+  // takes the car's middle up to 3 over its surface, so a zone more than ZONE_PAD from the position on an axis is never
+  // hit. Tracks drawn with thousands of effect plates spent most of a frame testing every one of them.
+  const ZONE_PAD = 4,
+    ZONE_CELL = 20,
+    zoneGrids = new WeakMap();
+  function zoneList(zones, inside, x, y, z) {
+    let G = zoneGrids.get(zones);
+    if (!G) {
+      G = { all: zones.map((q, i) => i), always: [], cells: new Map() };
+      if (zones.length >= 32)
+        zones.forEach((q, i) => {
+          const lo = [0, 1, 2].map((a) => Math.floor((q.min[a] - ZONE_PAD) / ZONE_CELL)),
+            hi = [0, 1, 2].map((a) => Math.floor((Math.max(q.max[a], a == 1 && q.surface != null ? q.surface : -Infinity) + ZONE_PAD) / ZONE_CELL));
+          if (!lo.concat(hi).every(Number.isFinite) || (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1) > 4096) return void G.always.push(i);
+          for (let cx = lo[0]; cx <= hi[0]; cx++)
+            for (let cy = lo[1]; cy <= hi[1]; cy++)
+              for (let cz = lo[2]; cz <= hi[2]; cz++) {
+                const k = cx + ',' + cy + ',' + cz,
+                  l = G.cells.get(k);
+                l ? l.push(i) : G.cells.set(k, [i]);
+              }
+        });
+      zoneGrids.set(zones, G);
+    }
+    if (zones.length < 32 || !(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z))) return G.all;
+    const cell = G.cells.get(Math.floor(x / ZONE_CELL) + ',' + Math.floor(y / ZONE_CELL) + ',' + Math.floor(z / ZONE_CELL)) || [];
+    if (!G.always.length && !inside.size) return cell;
+    const set = new Set(cell);
+    for (const i of G.always) set.add(i);
+    for (const i of inside) set.add(i);
+    return set.size == cell.length ? cell : [...set].sort((a, b) => a - b);
+  }
   function fxTouch(q, x, y, z, qx, qy, qz, qw) {
     const X0 = 1 - 2 * (qy * qy + qz * qz),
       X1 = 2 * (qx * qy + qw * qz),
@@ -1696,8 +1746,10 @@ self.TM = (() => {
       sqy = s.getFloat32(pos + 16, true),
       sqz = s.getFloat32(pos + 20, true),
       sqw = s.getFloat32(pos + 24, true);
-    for (let i = 0; i < c.zones.length; i++) {
-      const q = c.zones[i],
+    const near = zoneList(c.zones, inside, x, y, z);
+    for (let k = 0; k < near.length; k++) {
+      const i = near[k],
+        q = c.zones[i],
         wet = q.type == 'Water' || q.type == 'Shallow',
         // water by the car's middle; every effect from the first touch of the car's hull or wheels (fxTouch)
         hit = wet ? x >= q.min[0] && x <= q.max[0] && y >= q.min[1] && y <= q.max[1] && z >= q.min[2] && z <= q.max[2] : fxTouch(q, x, y, z, sqx, sqy, sqz, sqw);
