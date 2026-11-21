@@ -9,7 +9,7 @@
 // node tools/test/tmphys.mjs quick [label] [names,...]     0-100, 0-200, braking, R60 per vehicle (TMVEH) and surface
 // node tools/test/tmphys.mjs bounce [label] [cases]        plastic bounces at 150-600 km/h (TMKMH): side hits on walls, roof landings
 // node tools/test/tmphys.mjs rair [label] [boosts]          reactor boosts in the air: level, steering, course, speed gain (TMKMH)
-// node tools/test/tmphys.mjs bobexit [label]               leaving a bobsleigh over its wall top at speed (TMKMH, TMDEG)
+// node tools/test/tmphys.mjs bobexit [label]               leaving a bobsleigh over its wall top at speed (TMKMH, TMDEG, TMSKMH)
 // node tools/test/tmphys.mjs magnet [label]                magnet road: driving a wall ride and a ceiling (TMKMH, TMMAG)
 // node tools/test/tmphys.mjs reactor [label] [parts,...]   reactor boosts: hover, seams, ramp flights, down, which way, ends, loop
 // Prints a table and writes the JSON to $TMRE/tmphys_<label>.json (TMRE: the scratch folder, see OUT below).
@@ -778,6 +778,25 @@ if (section == 'bobexit') {
       const row = { kmhIn: i0 != null ? r1(l[i0].v) : null, maxVy: seg.length > 12 ? r1(Math.max(...seg.slice(6, -6).map((q) => vAt(l, l.indexOf(q))[1]))) : null, maxH: seg.length ? r1(Math.max(...seg.map((q) => q.y)) - y0) : null, kmhOut: seg.length ? r1(seg[seg.length - 1].v) : null, airMsInCurve: seg.filter((q) => q.w == 0).length };
       (results.bobexit[curve] ??= {})[kmh || 'rest'] = row;
       console.log(curve, kmh || 'from rest', JSON.stringify(row));
+    }
+  // Steering up a high outer wall mid-curve (ice.aim): three straights, the curve and high-walled straights out of it,
+  // the car set to TMSKMH 15 units before the curve, gas held, steering left (up the outer wall) from 0.6 s into the
+  // curve for 1.5 s. maxH: the car's highest point over its start height (the wall top is 9.6 up); over: it went 1.5
+  // over the top; kmhOver: its speed then; kmh0_6: its speed when the steering starts.
+  for (const [curve, R] of [['IceBobCurveWall3', 50], ['IceBobCurveWall4', 70], ['IceBobCurveWall5', 90]])
+    for (const kmh of (process.env.TMSKMH || '190,260').split(',').map(Number)) {
+      const zin = -44 * 5 + 10, cp = [{ n: 'IceStartBob', x: 0, y: 0, z: -28 }];
+      for (let j = 1; j <= 3; j++) cp.push({ n: 'IceBobStraight', x: 0, y: 0, z: -28 - 4 * j });
+      cp.push({ n: curve, x: 0, y: 0, z: -44 });
+      for (let k = 0; k < 6; k++) cp.push({ n: 'IceBobStraightWalls', x: (R + 10) / 5 + 4 * k, y: 0, z: (zin - R) / 5, r: 1 });
+      const p0 = (await run(cp, { launch: { at: 300, v: kmh / 3.6 } }, [{ id: 1, rec: { up: [0] }, frames: 6300 }]))[1], e0 = first(p0, (q) => q.z < zin + 15, 300);
+      const test = { launch: [{ at: 300, v: kmh / 3.6 }, { at: p0[e0].f, v: kmh / 3.6 }] };
+      const p1 = (await run(cp, test, [{ id: 1, rec: { up: [0] }, frames: 6300 }]))[1], s0 = p1[first(p1, (q) => q.z < zin)].f + 600;
+      const l = (await run(cp, test, [{ id: 1, rec: { up: [0], left: [s0, s0 + 1500] }, frames: 6300 }]))[1], y0 = l[300].y;
+      const over = first(l, (q) => q.y - y0 > 9.6 + 1.5, 300), i0 = first(l, (q) => q.f >= s0);
+      const row = { maxH: r1(Math.max(...l.slice(300).map((q) => q.y)) - y0), over: over != null, kmhOver: over != null ? r1(l[over].v) : null, kmh0_6: i0 != null ? r1(l[i0].v) : null };
+      (results.bobexit[curve + 'Steered'] ??= {})[kmh] = row;
+      console.log(curve, 'steered up', kmh, JSON.stringify(row));
     }
 }
 

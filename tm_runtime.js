@@ -996,10 +996,16 @@ self.TM = (() => {
     // near^2), plus followCurve x what the channel's bend asks of the car (its speed over the ground x how fast the wall's
     // facing turns under the wheels, see fxStep): round a curve the walls carry the car as before, but where the channel
     // runs straight a hard climb up the wall goes on over the lip, so the car can fly out over the top (steering into a
-    // straight's wall at 25 degrees and 300 km/h it was held 0.1 under the lip; now it flies 43 units up).
+    // straight's wall at 25 degrees and 300 km/h it was held 0.1 under the lip; now it flies 43 units up). A car aimed
+    // over the top is let go anywhere, curves too: as its nose turns from aim[0] to aim[1] degrees up the wall (aimSteer
+    // fewer while the steering turns it further up), the hold fades to nothing, so it flies out with the speed it has.
+    // Before, round a curve it was held 1.5 under the top of the wall, nose up, and slid along losing speed (a high outer
+    // wall at 200 km/h, steered up mid-curve: 221 to 150 km/h, over the top only by toppling); now it clears the top by
+    // about 9 at 218. Driven along the channel the nose stays under 30 degrees up the wall (a car that enters a curve of
+    // radius 50 or more without steering, up to 320 km/h: at most 28), so the walls carry it round exactly as before.
     { gripFront: 0.16, gripRear: 0.11, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.3, pull: 0.005, spin: 0.0015, align: 2.2, loss: 0.25, stick: 0, follow: 0 } },
     // Bobsleigh ice: as slippery to brake and accelerate on, but the car turns less and follows the channel more.
-    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5, followMax: 120, followCurve: 150 } },
+    { gripFront: 0.22, gripRear: 0.17, launch: 16, launchUntil: 75, bounce: false, studBrake: 0.25, ice: { yaw: 1.0, pull: 0.004, spin: 0.002, align: 3, loss: 0.2, stick: 14, follow: 300, from: 0.5, followMax: 120, followCurve: 150, aim: [30, 40], aimSteer: 10 } },
     // The four below are this project's estimates of TM2020's surfaces relative to its Tech road (= PolyTrack's stock road);
     // TM2020's own tunings sit in encrypted packs and were not read. Targets: grip as the share of stock cornering
     // grip, times as multiples of the stock car's 0-100 / 0-200 / 120-0 braking distance (tools/test/tmphys.mjs).
@@ -2285,9 +2291,13 @@ self.TM = (() => {
             // A little way into the wall, behind the contact, the top is the first level face above.
             const top = ol > 0.05 ? iceTop(c.tops, points[h] + (ox / ol) * ICE_TOP.reach, points[h + 1] - ICE_TOP.below, points[h + 2] + (oz / ol) * ICE_TOP.reach, ox / ol, oz / ol) : null;
             if (top != null) near = Math.min(near, 1 - (top - points[h + 1] - ICE_TOP.hold) / ICE_TOP.band);
-            const before = Math.hypot(F[v], F[v + 1], F[v + 2]),
+            // Aimed over the top (ice.aim): how far the nose points up the wall (degrees), aimSteer more while the
+            // steering turns it further up (the side of the car that faces up the wall is the side it steers to).
+            const aim = (Math.asin(Math.max(-1, Math.min(1, fx * wx + fy * wy + fz * wz))) * 180) / Math.PI + (ice.aim && steer * (lx * wx + ly * wy + lz * wz) > 0.5 ? ice.aimSteer : 0),
+              letGo = ice.aim ? smooth((aim - ice.aim[0]) / (ice.aim[1] - ice.aim[0])) : 0,
+              before = Math.hypot(F[v], F[v + 1], F[v + 2]),
               cap = (ice.followMax ?? 1e9) + (ice.followCurve ?? 0) * Math.hypot(F[v], F[v + 2]) * c.wallRate,
-              d = near > 0 ? Math.min(up * Math.min(1, ice.follow * 0.001 * near * near), cap * 0.001 * near * near) : 0;
+              d = near > 0 ? Math.min(up * Math.min(1, ice.follow * 0.001 * near * near), cap * 0.001 * near * near) * (1 - letGo) : 0;
             F[v] -= wx * d;
             F[v + 1] -= wy * d;
             F[v + 2] -= wz * d;
