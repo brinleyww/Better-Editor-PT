@@ -51,6 +51,11 @@
         localStorage.setItem("be_low_performance", low ? "1" : "0");
     } catch {}
     if (low) merge(P + "settings", [["ScreenPixelDensity", "false"]]);
+    // NSWS's Penalty grass sprites (tm_runtime.js reads it); settings saved before that setting: off on Low performance mode.
+    const tufts = pairs(prefs.settings).find((p) => p[0] === "GrassTufts");
+    try {
+        localStorage.setItem("be_grass_tufts", (tufts ? tufts[1] === "true" : !low) ? "1" : "0");
+    } catch {}
     merge(P + "key_bindings", prefs.keys);
 
     if (prefs.unlocked && typeof prefs.unlocked === "object") {

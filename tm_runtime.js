@@ -125,18 +125,29 @@ self.TM = (() => {
   // stored in the blocks file, and the physics never sees them. One clump per `per` square units of grass facing up, at
   // most `max` a part (a big part spreads them thinner); a blade is one triangle seen from both sides, `height` tall,
   // leaning out up to `lean`, in one of `tones` (times the colour of the grass under it). They ride in the part's own
-  // mesh, so they cost no draw of their own and are culled with it. Not in Low performance mode.
+  // mesh, so they cost no draw of their own and are culled with it. Not So Weekly Shorts has a setting for them
+  // (Penalty grass sprites, off on Low performance mode); its embedded editor takes that setting as the frame loads.
   const TUFT = { per: 4, max: 200, height: [0.2, 0.42], width: 0.14, lean: 0.18, tones: [1.35, 0.65, 1.12] };
   const TUFT_ON = new Set(['Grass', 'GrassB']);
   const tuftCache = new Map();
+  let tuftsFrame = null;
   const tuftsWanted = () => {
     try {
+      if (typeof self.__nswsGrassTufts == 'function') return self.__nswsGrassTufts() !== false;
       if (typeof self.__nswsSettingBoolean == 'function') return self.__nswsSettingBoolean('LowPerformanceMode') !== true;
+      if (self.parent !== self) {
+        // nsws_prefs.js writes it from NSWS's settings when the frame loads; the frame keeps that for its whole visit, so
+        // no block is drawn with tufts beside one built without.
+        tuftsFrame ??= localStorage.getItem('be_grass_tufts');
+        if (tuftsFrame == '1' || tuftsFrame == '0') return tuftsFrame == '1';
+      }
       return !(self.TM.cull && self.TM.cull.low);
     } catch {
       return true;
     }
   };
+  // Whether a part has penalty grass (so its mesh changes with the setting); NSWS rebuilds only those.
+  const hasTufts = (id) => !!byId.get(id)?.m?.some((m) => TUFT_ON.has(D.materialNames[m[0]]));
   function tuftsOf(p) {
     if (tuftCache.has(p.i)) return tuftCache.get(p.i);
     // Grass triangles facing up: [material, ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, area].
@@ -3057,6 +3068,7 @@ self.TM = (() => {
     blocksUrl,
     shareBlocks,
     renderArrays,
+    hasTufts,
     prepareCar,
     physicsId,
     proxyConfigs,
