@@ -35,7 +35,7 @@ apply('index.html', [
 
 apply('main.bundle.js', [
   // tm_cull.js: each part type in spatial chunks the camera can skip, and Low performance mode (from NSWS).
-  ["track meshes in chunks", "              const l = new b.ZLX(n.geometry, n.material, o.length);\n              ((l.matrixAutoUpdate = !1),\n                (l.matrixWorldAutoUpdate = !1),\n                (l.frustumCulled = !1),\n                (l.castShadow = i),\n                (l.receiveShadow = !0));\n              for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);\n              if (\n                ((0, v.gn)(this, r, \"f\").scene.add(l),\n                (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: l }),\n                null != a)\n              ) {\n                const n = new M.t(l, a);\n                (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),\n                  (0, v.gn)(this, r, \"f\").scene.add(n),\n                  (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: n }));\n              }\n", "              // tm_cull.js: the parts in chunks the camera can skip; Low performance mode drops their flat shadows.\n              const all = o;\n              for (const o of self.TM.cull.split(all, n.geometry)) {\n                const l = new b.ZLX(n.geometry, n.material, o.length);\n                ((l.matrixAutoUpdate = !1),\n                  (l.matrixWorldAutoUpdate = !1),\n                  (l.frustumCulled = !0),\n                  (l.castShadow = i),\n                  (l.receiveShadow = !0));\n                for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);\n                if (\n                  ((0, v.gn)(this, r, \"f\").scene.add(l),\n                  self.TM.cull.add((0, v.gn)(this, r, \"f\").scene, l),\n                  (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: l }),\n                  null != a && !self.TM.cull.low)\n                ) {\n                  const n = new M.t(l, a);\n                  (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),\n                    self.TM.cull.flat(n, l),\n                    (0, v.gn)(this, r, \"f\").scene.add(n),\n                    (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: n }));\n                }\n              }\n"],
+  ["track meshes in chunks", "              const l = new b.ZLX(n.geometry, n.material, o.length);\n              ((l.matrixAutoUpdate = !1),\n                (l.matrixWorldAutoUpdate = !1),\n                (l.frustumCulled = !1),\n                (l.castShadow = i),\n                (l.receiveShadow = !0));\n              for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);\n              if (\n                ((0, v.gn)(this, r, \"f\").scene.add(l),\n                (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: l }),\n                null != a)\n              ) {\n                const n = new M.t(l, a);\n                (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),\n                  (0, v.gn)(this, r, \"f\").scene.add(n),\n                  (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: n }));\n              }\n", "              // tm_cull.js: the parts in chunks the camera can skip; Low performance mode drops their flat shadows.\n              const all = o;\n              for (const o of self.TM.cull.split(all, n.geometry)) {\n                const l = new b.ZLX(n.geometry, n.material, o.length);\n                ((l.matrixAutoUpdate = !1),\n                  (l.matrixWorldAutoUpdate = !1),\n                  (l.frustumCulled = !0),\n                  (l.castShadow = i),\n                  (l.receiveShadow = !0));\n                for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);\n                // Penalty grass tufts (TM.tufts): their own meshes, children of this one.\n                if (n.userData.tufts)\n                  self.TM.tufts.beside({ InstancedMesh: b.ZLX, Matrix4: b.kn4 }, (0, v.gn)(this, r, \"f\").scene, l, n.userData.tufts.geometry, n.userData.tufts.material);\n                if (\n                  ((0, v.gn)(this, r, \"f\").scene.add(l),\n                  self.TM.cull.add((0, v.gn)(this, r, \"f\").scene, l),\n                  (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: l }),\n                  null != a && !self.TM.cull.low)\n                ) {\n                  const n = new M.t(l, a);\n                  (n.update(new b.Zcv(new b.Pq0(0, 1, 0), 0), s),\n                    self.TM.cull.flat(n, l),\n                    (0, v.gn)(this, r, \"f\").scene.add(n),\n                    (0, v.gn)(this, p, \"f\").push({ trackPartId: e.configuration.id, color: t, mesh: n }));\n                }\n              }\n"],
   // A No engine plate: the throttle doesn't rev the engine or spin the wheels in the air (tm_hud.js knows the effects).
   ["no engine: no air wheel spin", "const { up: t, down: n } = this.getControls(),\n                    r = 2 == i || 3 == i;", "const noEngine = !!self.TM.hud?.of(this)?.noEngine,\n                    { up: t0, down: n0 } = this.getControls(),\n                    t = t0 && !noEngine,\n                    n = n0 && !(noEngine && !(0, l.gn)(this, te, \"f\").brakeLightEnabled),\n                    r = 2 == i || 3 == i;"],
   ["no engine: no engine sound", "{ up: i, down: r } = this.getControls(),\n                a =\n                  this.hasStarted() &&", "{ up: i, down: r } = this.getControls(),\n                a =\n                  !self.TM.hud?.of(this)?.noEngine &&\n                  this.hasStarted() &&"],
@@ -159,26 +159,34 @@ apply('main.bundle.js', [
     '      class ou {\n        constructor() {\n          (Yd.add(this), Zd.set(this, new Map()), $d.set(this, new Map()));',
     `      // New blocks build their mesh the first time a colour is asked for, so 886 blocks do not cost 886 x 12 meshes at startup.
       class TMColors extends Map {
-        constructor(cfg, material) {
+        constructor(cfg, material, tuftMaterial) {
           super();
           this.cfg = cfg;
           this.material = material;
+          this.tuftMaterial = tuftMaterial;
           for (const { id: e } of cfg.colors) super.set(e, null);
         }
         get(id) {
           const have = super.get(id);
           if (null != have || !super.has(id)) return have;
           const slot = this.cfg.colors.find((e) => e.id == id),
-            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
+            rgb = (e) => {
               const t = new M.Q1f(e);
               return [t.r, t.g, t.b];
-            }),
+            },
+            // Penalty grass tufts are drawn apart from the part (tm_runtime.js TM.tufts), beside each of the track's meshes.
+            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, rgb, null != this.tuftMaterial),
             n = new M.LoY();
           (n.setAttribute("position", new M.THS(e, 3)), n.setAttribute("color", new M.THS(t, 3)), n.computeVertexNormals());
           // Water gets its own see-through material (tm_water.js); merging keeps the vertex order, so the ranges still hold.
           const q = nu.ec(n);
           if (g) for (const [s, c, k] of g) q.addGroup(s, c, k);
           const i = new M.eaF(q, g ? [this.material, self.TM.water.material(M)] : this.material);
+          if (null != this.tuftMaterial)
+            i.userData.tufts = {
+              geometry: self.TM.tufts.geometry({ BufferGeometry: M.LoY, BufferAttribute: M.THS }, this.cfg.id, slot.colors, rgb),
+              material: this.tuftMaterial,
+            };
           return (super.set(id, i), i);
         }
       }
@@ -186,7 +194,13 @@ apply('main.bundle.js', [
         constructor() {
           (Yd.add(this), Zd.set(this, new Map()), $d.set(this, new Map()));`,
   ],
-  ['use lazy meshes', 'colors: new Map(e.colors.map(({ id: e }) => [e, null])),', 'colors: e.tm ? new TMColors(e, a) : new Map(e.colors.map(({ id: e }) => [e, null])),'],
+  // The penalty grass tufts' own material (tm_runtime.js TM.tufts), registered like the parts' for the track's shadows.
+  [
+    'grass tuft material',
+    'const a = new M.G_z({ vertexColors: !0 });\n          e.addMaterial(a);',
+    'const a = new M.G_z({ vertexColors: !0 });\n          e.addMaterial(a);\n          const tuftMaterial = self.TM.tufts ? self.TM.tufts.material(new M.G_z({ vertexColors: !0 })) : null;\n          null != tuftMaterial && e.addMaterial(tuftMaterial);',
+  ],
+  ['use lazy meshes', 'colors: new Map(e.colors.map(({ id: e }) => [e, null])),', 'colors: e.tm ? new TMColors(e, a, tuftMaterial) : new Map(e.colors.map(({ id: e }) => [e, null])),'],
   [
     'skip glb lookup for new parts',
     `(0, R.gn)(this, Zd, "f").set(e.id, t);

@@ -27485,6 +27485,9 @@
                   (l.castShadow = i),
                   (l.receiveShadow = !0));
                 for (let e = 0; e < o.length; ++e) l.setMatrixAt(e, o[e].matrix);
+                // Penalty grass tufts (TM.tufts): their own meshes, children of this one.
+                if (n.userData.tufts)
+                  self.TM.tufts.beside({ InstancedMesh: b.ZLX, Matrix4: b.kn4 }, (0, v.gn)(this, r, "f").scene, l, n.userData.tufts.geometry, n.userData.tufts.material);
                 if (
                   ((0, v.gn)(this, r, "f").scene.add(l),
                   self.TM.cull.add((0, v.gn)(this, r, "f").scene, l),
@@ -59699,26 +59702,34 @@
         su = i(7781);
       // New blocks build their mesh the first time a colour is asked for, so 886 blocks do not cost 886 x 12 meshes at startup.
       class TMColors extends Map {
-        constructor(cfg, material) {
+        constructor(cfg, material, tuftMaterial) {
           super();
           this.cfg = cfg;
           this.material = material;
+          this.tuftMaterial = tuftMaterial;
           for (const { id: e } of cfg.colors) super.set(e, null);
         }
         get(id) {
           const have = super.get(id);
           if (null != have || !super.has(id)) return have;
           const slot = this.cfg.colors.find((e) => e.id == id),
-            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, (e) => {
+            rgb = (e) => {
               const t = new M.Q1f(e);
               return [t.r, t.g, t.b];
-            }),
+            },
+            // Penalty grass tufts are drawn apart from the part (tm_runtime.js TM.tufts), beside each of the track's meshes.
+            { pos: e, col: t, groups: g } = self.TM.renderArrays(this.cfg.id, slot.colors, rgb, null != this.tuftMaterial),
             n = new M.LoY();
           (n.setAttribute("position", new M.THS(e, 3)), n.setAttribute("color", new M.THS(t, 3)), n.computeVertexNormals());
           // Water gets its own see-through material (tm_water.js); merging keeps the vertex order, so the ranges still hold.
           const q = nu.ec(n);
           if (g) for (const [s, c, k] of g) q.addGroup(s, c, k);
           const i = new M.eaF(q, g ? [this.material, self.TM.water.material(M)] : this.material);
+          if (null != this.tuftMaterial)
+            i.userData.tufts = {
+              geometry: self.TM.tufts.geometry({ BufferGeometry: M.LoY, BufferAttribute: M.THS }, this.cfg.id, slot.colors, rgb),
+              material: this.tuftMaterial,
+            };
           return (super.set(id, i), i);
         }
       }
@@ -59749,12 +59760,14 @@
           var r;
           const a = new M.G_z({ vertexColors: !0 });
           e.addMaterial(a);
+          const tuftMaterial = self.TM.tufts ? self.TM.tufts.material(new M.G_z({ vertexColors: !0 })) : null;
+          null != tuftMaterial && e.addMaterial(tuftMaterial);
           const s = async (e) => {
               if ((n.addResource(), (0, R.gn)(this, Zd, "f").has(e.id)))
                 throw new Error("Track part types have same Id");
               const t = {
                 configuration: e,
-                colors: e.tm ? new TMColors(e, a) : new Map(e.colors.map(({ id: e }) => [e, null])),
+                colors: e.tm ? new TMColors(e, a, tuftMaterial) : new Map(e.colors.map(({ id: e }) => [e, null])),
                 physicsShapeVertices: null,
               };
               (0, R.gn)(this, Zd, "f").set(e.id, t);

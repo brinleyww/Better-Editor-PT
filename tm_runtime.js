@@ -225,6 +225,140 @@ self.TM = (() => {
     return made;
   }
 
+  // The clumps drawn apart (TM.tufts), for a page that asks renderArrays for a part without them (noTufts): their own
+  // instanced mesh beside the part's, far cheaper than riding in it. One triangle a blade on a two-sided material (in
+  // the part's mesh each blade is two, one a side), lit and shadowed as before but casting no shadow (the shadow map
+  // and the flat ground shadow drew every blade twice more, for shadows too small to see), and only near the camera:
+  // blades shrink into the grass between fade[0] and fade[1] units away (by then a blade is a pixel or two), and groups
+  // `cell` units across are skipped once wholly past fade[1]. A field of 576 StadiumGrass drew about 360 000 tuft
+  // triangles a frame in the part's mesh, 41 000 this way. A page that does not know TM.tufts still gets them in the
+  // part's mesh, as before.
+  const TUFT_DRAW = { fade: [90, 180], cell: 40 };
+  // three: { BufferGeometry, BufferAttribute }. The part's clumps in a colour slot as a geometry (null: none, or off):
+  // position, normal, color, and tuftLift, how far each corner moves as the blade shrinks (its tip: down to its foot).
+  function tuftGeometry(three, id, slotColors, toRgb) {
+    const p = byId.get(id),
+      t = p && tuftsWanted() ? tuftsOf(p) : null;
+    if (!t) return null;
+    // tuftsOf gives each blade as two triangles, front and back: the first of each pair.
+    const n = t.mat.length >> 1,
+      pos = new Float32Array(n * 9),
+      nor = new Float32Array(n * 9),
+      col = new Float32Array(n * 9),
+      lift = new Float32Array(n * 9),
+      base = new Map();
+    for (let b = 0; b < n; b++) {
+      const s = b * 18,
+        o = b * 9,
+        mi = t.mat[b * 2];
+      for (let j = 0; j < 9; j++) pos[o + j] = t.pos[s + j];
+      const ux = pos[o + 3] - pos[o], uy = pos[o + 4] - pos[o + 1], uz = pos[o + 5] - pos[o + 2],
+        vx = pos[o + 6] - pos[o], vy = pos[o + 7] - pos[o + 1], vz = pos[o + 8] - pos[o + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nx /= l; ny /= l; nz /= l;
+      let rgb = base.get(mi);
+      if (!rgb) base.set(mi, (rgb = toRgb(slotColors[D.materialNames[mi]] ?? D.materials[mi])));
+      const k = TUFT.tones[t.tone[b * 2]];
+      for (let v = 0; v < 3; v++) {
+        nor[o + v * 3] = nx;
+        nor[o + v * 3 + 1] = ny;
+        nor[o + v * 3 + 2] = nz;
+        col[o + v * 3] = Math.min(1, rgb[0] * k);
+        col[o + v * 3 + 1] = Math.min(1, rgb[1] * k);
+        col[o + v * 3 + 2] = Math.min(1, rgb[2] * k);
+      }
+      for (let j = 0; j < 3; j++) lift[o + 6 + j] = pos[o + 6 + j] - (pos[o + j] + pos[o + 3 + j]) / 2;
+    }
+    const g = new three.BufferGeometry();
+    g.setAttribute('position', new three.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new three.BufferAttribute(nor, 3));
+    g.setAttribute('color', new three.BufferAttribute(col, 3));
+    g.setAttribute('tuftLift', new three.BufferAttribute(lift, 3));
+    g.computeBoundingSphere();
+    return g;
+  }
+  // Makes a vertex-coloured material (the page's own kind, so it can register it for its shadows like its others) the
+  // clumps' one: two-sided, blades shrinking with distance. Returns it.
+  function tuftMaterial(m) {
+    const [near, far] = TUFT_DRAW.fade.map((v) => v.toFixed(1));
+    m.side = 2; // THREE.DoubleSide
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('void main() {', 'attribute vec3 tuftLift;\nvoid main() {')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vec4 tuftAt = modelMatrix * instanceMatrix * vec4(position, 1.0);
+          #else
+            vec4 tuftAt = modelMatrix * vec4(position, 1.0);
+          #endif
+          transformed -= tuftLift * smoothstep(${near}, ${far}, distance(tuftAt.xyz, cameraPosition));`,
+        );
+    };
+    m.customProgramCacheKey = () => 'tmTufts';
+    return m;
+  }
+  // three: { InstancedMesh, Matrix4 }. Puts the clumps of the parts an InstancedMesh draws (its instance matrices place
+  // them in world space, as the track's do) beside it: children, so they leave, hide and are disposed with it, in groups
+  // by CELL for the distance skip; they take no picks. Returns them.
+  const tuftScenes = new WeakMap();
+  function tuftsBeside(three, scene, parent, geometry, material) {
+    if (!geometry || !material || !parent?.count) return [];
+    const cells = new Map(),
+      M = new three.Matrix4(),
+      c = TUFT_DRAW.cell;
+    for (let i = 0; i < parent.count; i++) {
+      parent.getMatrixAt(i, M);
+      const e = M.elements,
+        k = Math.floor(e[12] / c) + ',' + Math.floor(e[13] / c) + ',' + Math.floor(e[14] / c);
+      let l = cells.get(k);
+      if (!l) cells.set(k, (l = []));
+      l.push(M.clone());
+    }
+    const kids = [];
+    for (const l of cells.values()) {
+      const m = new three.InstancedMesh(geometry, material, l.length);
+      for (let i = 0; i < l.length; i++) m.setMatrixAt(i, l[i]);
+      m.matrixAutoUpdate = false;
+      m.matrixWorldAutoUpdate = false;
+      m.castShadow = false;
+      m.receiveShadow = true;
+      m.frustumCulled = true;
+      m.raycast = () => {};
+      m.computeBoundingSphere();
+      parent.add(m);
+      kids.push(m);
+    }
+    const dispose = parent.dispose;
+    parent.dispose = function () {
+      for (const m of kids) m.dispose();
+      return dispose.apply(this, arguments);
+    };
+    let set = tuftScenes.get(scene);
+    if (!set) {
+      tuftScenes.set(scene, (set = new Set()));
+      const before = scene.onBeforeRender,
+        far = TUFT_DRAW.fade[1];
+      scene.onBeforeRender = function (renderer, s, camera) {
+        const e = camera.matrixWorld.elements;
+        for (const m of set) {
+          if (m.parent?.parent !== scene) {
+            set.delete(m);
+            continue;
+          }
+          const b = m.boundingSphere;
+          m.visible = Math.hypot(b.center.x - e[12], b.center.y - e[13], b.center.z - e[14]) - b.radius < far;
+        }
+        return before.apply(this, arguments);
+      };
+    }
+    for (const m of kids) set.add(m);
+    return kids;
+  }
+  const tuftDraw = { geometry: tuftGeometry, material: tuftMaterial, beside: tuftsBeside, fade: TUFT_DRAW.fade };
+
   // Render geometry for one colour slot: non-indexed positions and a matching colour array.
   // `toRgb(hex)` must return linear [r,g,b] (the page passes THREE.Color so it matches stock vertex colours).
   // Water is drawn last, surface before sides, and `groups` ([first vertex, count, material 1]) marks it for the
@@ -232,10 +366,11 @@ self.TM = (() => {
   // their own see-through material: renderArrays.seeThrough says which one the last call's group is ('water' or
   // 'finish'), and tm_water.js's material() reads it, since every caller asks for that material straight after.
   const WATER_ORDER = { Water: 1, WaterSide: 2, FinishBox: 3 };
-  function renderArrays(id, slotColors, toRgb) {
+  // noTufts: the page draws the grass tufts itself (TM.tufts), so they stay out of this mesh.
+  function renderArrays(id, slotColors, toRgb, noTufts = false) {
     if (!hasBlocks([id])) console.warn('Better Editor part ' + id + ' is drawn before its blocks loaded');
     const p = byId.get(id),
-      tufts = tuftsWanted() ? tuftsOf(p) : null;
+      tufts = !noTufts && tuftsWanted() ? tuftsOf(p) : null;
     let tris = tufts ? tufts.pos.length / 3 : 0;
     for (const m of p.m) tris += m[4];
     const pos = new Float32Array(tris * 3),
@@ -3103,6 +3238,8 @@ self.TM = (() => {
     proxyConfigs,
     zones,
     fxZones: zones,
+    // Grass tufts drawn apart from the parts' meshes (renderArrays' noTufts).
+    tufts: tuftDraw,
     surfaceIndex,
     surfaceAt,
     fxControls,
