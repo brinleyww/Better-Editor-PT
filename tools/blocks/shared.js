@@ -326,9 +326,12 @@ function buildShared() {
   // ---- structures: steel trusses and supports -----------------------------------------------------------------------------
   {
     const T = 'Structures';
-    const truss = (m, a, b, w = 0.9) => {
+    // full: the chords run the whole way from a to b, so a truss standing on one of the same kind meets it (the
+    // pillars stack); only the bracing is pulled in.
+    const truss = (m, a, b, w = 0.9, full = false) => {
       // Four chords and zig-zag bracing between two points.
-      const t = norm(G.sub(b, a));
+      const t = norm(G.sub(b, a)),
+        [fa, fb] = [a, b];
       // Pull the ends in a little so beam thickness never pokes through the part's floor.
       a = add(a, mul(t, 0.15));
       b = add(b, mul(t, -0.15));
@@ -337,7 +340,7 @@ function buildShared() {
         L = G.len(G.sub(b, a)),
         n = Math.max(1, Math.round(L / 2.5)),
         corner = (p, sr, su) => add(add(p, mul(r, sr * w)), mul(u, su * w));
-      for (const [sr, su] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) m.beam('Truss', corner(a, sr, su), corner(b, sr, su), 0.12);
+      for (const [sr, su] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) m.beam('Truss', corner(full ? fa : a, sr, su), corner(full ? fb : b, sr, su), 0.12);
       for (let i = 0; i < n; i++) {
         const p0 = add(a, mul(t, (L * i) / n)),
           p1 = add(a, mul(t, (L * (i + 1)) / n));
@@ -354,10 +357,10 @@ function buildShared() {
     };
     one('Base', 'Structure base', (m) => {
       m.box('ConcreteDark', [-2.4, 0, -2.4], [2.4, 0.6, 2.4], 'Concrete');
-      truss(m, [0, 0.6, 0], [0, 5, 0], 1.1);
+      truss(m, [0, 0.6, 0], [0, 5, 0], 1.1, true);
     });
-    one('Pillar', 'Structure pillar, 1 layer', (m) => truss(m, [0, 0, 0], [0, 5, 0], 1.1));
-    one('PillarTall', 'Structure pillar, 4 layers', (m) => truss(m, [0, 0, 0], [0, 20, 0], 1.1));
+    one('Pillar', 'Structure pillar, 1 layer', (m) => truss(m, [0, 0, 0], [0, 5, 0], 1.1, true));
+    one('PillarTall', 'Structure pillar, 4 layers', (m) => truss(m, [0, 0, 0], [0, 20, 0], 1.1, true));
     one('Straight', 'Structure beam', (m) => truss(m, [0, 3.9, 10], [0, 3.9, -10]));
     one('Cross', 'Structure crossing', (m) => {
       truss(m, [0, 3.9, 10], [0, 3.9, -10]);

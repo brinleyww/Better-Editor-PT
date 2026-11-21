@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 3,651 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 3,733 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -114,7 +114,7 @@ States in between count in proportion, and states together multiply, but never b
 
 Every effect block fires the moment the car first touches it, with its hull or a wheel, anywhere on the plate from edge to edge (special gates and vehicle gates: as the car's nose reaches the arch). They used to fire when the car's middle reached the middle 12 units of the plate, about 5.7 units late: 165 ms at 120 km/h, 64 ms at 320. Plates side by side or back to back each fire as the car reaches them, and two bumpers touched on the same frame kick once.
 
-The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. The round finish hoops are hidden the same way. All of these are among the 3,787 parts in the table (136 of them hidden).
+The turbo roulette and the old reactor down and oriented plates are no longer offered in the menu, but tracks that have them still load and drive: the roulette picks turbo, super or ultra by the exact frame you cross it as before, an old down plate works as a reactor plate with its arrow turned round (crossing it forwards gives the down boost), and an old oriented plate works as a reactor plate. The round finish hoops are hidden the same way. All of these are among the 3,869 parts in the table (136 of them hidden).
 
 Trackmania 2020 keeps its car and surface tunings in encrypted packs, so every number here is this project's own estimate, set relative to how Trackmania's Stadium car drives on its road (PolyTrack's stock car on the stock road) and measured with `tools/test/tmphys.mjs`. A Trackmania install was read only for its catalogue: the surface materials, the gameplay effect ids, the per-wheel states the car keeps (wetness, icing) and the editor's block styles and categories.
 

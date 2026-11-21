@@ -78,9 +78,11 @@ self.TM.water = (() => {
   const intact = (o) => o.geometry?.attributes?.position != null && (!o.isInstancedMesh || o.instanceMatrix != null);
   const seamKey = (o) => o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + o.matrixWorld.elements.join(',');
 
-  // World boxes of everything drawn, two texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0).
+  // World boxes of everything drawn, two texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0); a second row
+  // holds each box's block origin (x, y, z, 0) at the box's first texel, so a fragment can tell which block it is from.
   function buildSeams(s) {
     const data = [],
+      org = [],
       W = new Float32Array(16);
     for (const o of s.drawn) {
       const local = boxesOf(o.geometry, o.material);
@@ -101,6 +103,7 @@ self.TM.water = (() => {
             bx = W[0] * x1 + W[8] * z1 + W[12],
             bz = W[2] * x1 + W[10] * z1 + W[14];
           data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, 0);
+          org.push(W[12], W[13], W[14], 0, 0, 0, 0, 0);
         }
       }
     }
@@ -108,13 +111,13 @@ self.TM.water = (() => {
     s.n = Math.min(data.length / 8, SEAM_MAX);
     s.tex = null;
     if (!s.n) return;
-    s.tex = floatTexture(data.slice(0, s.n * 8), s.n * 2);
+    s.tex = floatTexture(data.slice(0, s.n * 8).concat(org.slice(0, s.n * 8)), s.n * 2, 2);
   }
 
-  // A one-row RGBA float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
-  function floatTexture(data, width) {
+  // A small RGBA float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
+  function floatTexture(data, width, height = 1) {
     const t = new three3.gPd();
-    t.image = { data: new Float32Array(data), width, height: 1 };
+    t.image = { data: new Float32Array(data), width, height };
     t.isDataTexture = true;
     t.format = 1023; // RGBAFormat
     t.type = 1015; // FloatType
@@ -149,8 +152,8 @@ self.TM.water = (() => {
 
   // A side (a face that stands upright) is a seam when points 0.3 either side of it are both in water of the same level.
   const SEAM = `
+    vec3 beFace = normalize(cross(dFdx(vBeWorld), dFdy(vBeWorld)));
     {
-      vec3 beFace = normalize(cross(dFdx(vBeWorld), dFdy(vBeWorld)));
       if (beSeamCount > 0 && abs(beFace.y) < 0.3) {
         vec2 beOut = normalize(beFace.xz) * 0.3;
         vec2 beA = vBeWorld.xz + beOut, beB = vBeWorld.xz - beOut;
@@ -164,26 +167,58 @@ self.TM.water = (() => {
         if (abs(beLa - beLb) < 0.01) discard;
       }
     }
+    // Overlapping blocks: where two blocks' water has a face in the same plane (a surface at the same level, a side or a
+    // bottom flush with another's), only the block listed first draws it, so overlapping water is no darker than one.
+    // The fragment's own box is the first one of its block (same origin) that holds it.
+    {
+      const float t = 0.02;
+      int beOwn = -1;
+      for (int i = 0; i < beSeamCount; i++) {
+        vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
+        vec3 o = texelFetch(beSeams, ivec2(2 * i, 1), 0).xyz;
+        if (beOwn < 0 && distance(o, vBeOrigin) < 0.01 && vBeWorld.y > h.x - t && vBeWorld.y < h.y + t &&
+            all(greaterThan(vBeWorld.xz, r.xy - t)) && all(lessThan(vBeWorld.xz, r.zw + t))) beOwn = i;
+      }
+      vec3 beAx = abs(beFace);
+      for (int i = 0; i < beSeamCount; i++) {
+        if (i >= beOwn) break;
+        vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
+        vec3 o = texelFetch(beSeams, ivec2(2 * i, 1), 0).xyz;
+        if (distance(o, vBeOrigin) < 0.01) continue;
+        // The margin is only across the face: along it the other block must cover the point (a hair inside its edge), or a
+        // sliver the other block never draws would be dropped there.
+        vec3 m = beAx.y >= beAx.x && beAx.y >= beAx.z ? vec3(-0.002, t, -0.002) : beAx.x >= beAx.z ? vec3(t, -0.002, -0.002) : vec3(-0.002, -0.002, t);
+        if (vBeWorld.y < h.x - m.y || vBeWorld.y > h.y + m.y || any(lessThan(vBeWorld.xz, r.xy - m.xz)) || any(greaterThan(vBeWorld.xz, r.zw + m.xz))) continue;
+        bool on = m.y > 0.01 ? min(abs(vBeWorld.y - h.x), abs(vBeWorld.y - h.y)) < t
+          : m.x > 0.01 ? min(abs(vBeWorld.x - r.x), abs(vBeWorld.x - r.z)) < t
+          : min(abs(vBeWorld.z - r.y), abs(vBeWorld.z - r.w)) < t;
+        if (on) discard;
+      }
+    }
   `;
 
   function makeMaterial(three) {
-    const m = new three._4j({ vertexColors: true, transparent: true, opacity: 0.58, roughness: 0.06, metalness: 0.1, side: 2 });
+    // Pushed back a little, like the finish boxes: a water side flush with a solid block beside it (or a pool's own
+    // walls) loses to the block instead of fighting it.
+    const m = new three._4j({ vertexColors: true, transparent: true, opacity: 0.58, roughness: 0.06, metalness: 0.1, side: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
     three3 = three;
     m.onBeforeRender = seams;
     m.onBeforeCompile = (sh) => {
       sh.uniforms.beTime = time;
       sh.uniforms.beSeams = seamTex;
       sh.uniforms.beSeamCount = seamCount;
-      sh.vertexShader = 'varying vec3 vBeWorld;\n' + sh.vertexShader.replace(
+      sh.vertexShader = 'varying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
-        vec4 beW = vec4(transformed, 1.0);
+        vec4 beW = vec4(transformed, 1.0), beO = vec4(0.0, 0.0, 0.0, 1.0);
         #ifdef USE_INSTANCING
           beW = instanceMatrix * beW;
+          beO = instanceMatrix * beO;
         #endif
-        vBeWorld = (modelMatrix * beW).xyz;`,
+        vBeWorld = (modelMatrix * beW).xyz;
+        vBeOrigin = (modelMatrix * beO).xyz;`,
       );
-      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nvarying vec3 vBeWorld;\n' + WAVES + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nvarying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + WAVES + sh.fragmentShader.replace(
         '#include <normal_fragment_begin>',
         `${SEAM}
         #include <normal_fragment_begin>
@@ -238,9 +273,11 @@ self.TM.water = (() => {
     return out;
   }
 
-  // World boxes of everything drawn, two texels each: (minX, minY, minZ, 0), (maxX, maxY, maxZ, 0).
+  // World boxes of everything drawn, two texels each: (minX, minY, minZ, 0), (maxX, maxY, maxZ, 0); a second row holds
+  // each box's block origin (x, y, z, 0) at the box's first texel.
   function buildFinish(s) {
     const data = [],
+      org = [],
       W = new Float32Array(16);
     for (const o of s.drawn) {
       const local = Array.isArray(o.material) ? finBoxOf(o.geometry, o.material) : null;
@@ -263,11 +300,12 @@ self.TM.water = (() => {
           hi.push(mid + half);
         }
         data.push(lo[0], lo[1], lo[2], 0, hi[0], hi[1], hi[2], 0);
+        org.push(W[12], W[13], W[14], 0, 0, 0, 0, 0);
       }
     }
     if (s.tex) s.tex.dispose();
     s.n = data.length / 8;
-    s.tex = s.n ? floatTexture(data, s.n * 2) : null;
+    s.tex = s.n ? floatTexture(data.concat(org), s.n * 2, 2) : null;
     buildFrame(s, data);
   }
 
@@ -371,6 +409,36 @@ self.TM.water = (() => {
       ${OWN_FACE}
       // Another box right outside this face: the face is inside the joined shape.
       if (beBest < 0.75 && beFinInside(beP + beN * 0.3)) discard;
+      // Overlapping boxes: a face in the same plane as another box's face (two boxes overlapping, their fronts flush) is
+      // drawn once, by the box listed first, so the overlap is no darker than one box. The fragment's own box is its
+      // block's (same origin), the one whose surface it is nearest.
+      {
+        const float t = 0.02;
+        int beOwn = -1;
+        float beOwnD = 1e9;
+        for (int i = 0; i < beFinCount; i++) {
+          vec3 o = texelFetch(beFin, ivec2(2 * i, 1), 0).xyz;
+          if (distance(o, vBeOrigin) >= 0.01) continue;
+          vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+          vec3 q = max(max(lo - vBeWorld, vBeWorld - hi), 0.0), d = min(vBeWorld - lo, hi - vBeWorld);
+          float s = max(q.x, max(q.y, q.z)) > 0.0 ? length(q) : min(d.x, min(d.y, d.z));
+          if (s < beOwnD) {
+            beOwnD = s;
+            beOwn = i;
+          }
+        }
+        for (int i = 0; i < beFinCount; i++) {
+          if (i >= beOwn) break;
+          vec3 o = texelFetch(beFin, ivec2(2 * i, 1), 0).xyz;
+          if (distance(o, vBeOrigin) < 0.01) continue;
+          vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
+          // The margin is only across the face; along it the other box must cover the point, a hair inside its edge.
+          vec3 m = abs(beN) * (t + 0.002) - 0.002;
+          if (any(lessThan(vBeWorld, lo - m)) || any(greaterThan(vBeWorld, hi + m))) continue;
+          float pa = dot(beP, abs(beN)), la = dot(lo, abs(beN)), ha = dot(hi, abs(beN));
+          if (min(abs(pa - la), abs(pa - ha)) < t) discard;
+        }
+      }
       diffuseColor.a = 0.2;
     }
   `;
@@ -427,6 +495,7 @@ self.TM.water = (() => {
   const FIN_HEAD = `uniform highp sampler2D beFin;
         uniform int beFinCount;
         centroid varying vec3 vBeWorld;
+        flat varying vec3 vBeOrigin;
         bool beFinInside(vec3 q) {
           for (int i = 0; i < beFinCount; i++) {
             vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
@@ -460,15 +529,17 @@ self.TM.water = (() => {
         }
         `;
   const WORLD_VERTEX = (sh) =>
-    'centroid varying vec3 vBeWorld;\n' +
+    'centroid varying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' +
     sh.vertexShader.replace(
       '#include <project_vertex>',
       `#include <project_vertex>
-        vec4 beW = vec4(transformed, 1.0);
+        vec4 beW = vec4(transformed, 1.0), beO = vec4(0.0, 0.0, 0.0, 1.0);
         #ifdef USE_INSTANCING
           beW = instanceMatrix * beW;
+          beO = instanceMatrix * beO;
         #endif
-        vBeWorld = (modelMatrix * beW).xyz;`,
+        vBeWorld = (modelMatrix * beW).xyz;
+        vBeOrigin = (modelMatrix * beO).xyz;`,
     );
 
   // Unlit, so it reads the same from every side; no depth writes, so faces behind it and other boxes show through and

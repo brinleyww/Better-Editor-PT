@@ -34,6 +34,9 @@ const KITS = [
   { key: 'Grass', surface: 'Grass', stripes: true, look: swap({ PlasticDeck: 'GrassDeck', PlasticDeckB: 'GrassDeckB', PlasticSeam: 'GrassSeam', PlasticLine: 'GrassLine', PlasticRail: 'GrassKerb', PlasticKerb: 'GrassKerbB', PlasticUnder: 'GrassSoil' }), road: 'all', tabs: { Road: 'Railed road', Turns: 'Railed road', 'Wide road': 'Wide road', Planes: 'Platform', Blocks: 'Blocks', 'Wall track': 'Wall track' } },
   { key: 'Ice', surface: 'Ice', u: 3, look: swap({ PlasticDeck: 'Ice', PlasticDeckB: 'IceB', PlasticSeam: 'IceLine', PlasticLine: 'IceLine', PlasticRail: 'IceRim', PlasticKerb: 'IceWall', PlasticUnder: 'IceUnder' }), road: false, say: (l) => 'Ice ' + l[0].toLowerCase() + l.slice(1), tabs: { Planes: 'Ice platform', Blocks: 'Ice blocks', 'Wall track': 'Ice wall track' } },
   { key: 'IceSnow', surface: 'Ice', u: 7, look: swap({ PlasticDeck: 'Snow', PlasticDeckB: 'SnowB', PlasticSeam: 'SnowLine', PlasticLine: 'SnowLine', PlasticRail: 'SnowRim', PlasticKerb: 'SnowSide', PlasticUnder: 'SnowUnder' }), road: false, say: (l) => 'Snow ' + l[0].toLowerCase() + l.slice(1), tabs: { Planes: 'Snow platform', Blocks: 'Snow blocks', 'Wall track': 'Snow wall track' } },
+  // Penalty grass blocks: the stock block shapes in the stadium grass (2-unit checker, soil sides), driving as
+  // penalty grass. They go in the Stadium kit's Penalty grass tab, under headings of their own.
+  { key: 'StadiumGrass', surface: 'Stadium', u: 2, checker: 2, look: { deck: 'Grass', deckB: 'GrassB', seam: 'Grass', line: 'Grass', rail: 'GrassUnder', side: 'GrassUnder', under: 'GrassUnder', solid: 'GrassUnder', wall: 'GrassUnder', trim: 'GrassUnder' }, road: false, skip: ['Bridges'], say: (l) => 'Grass ' + l[0].toLowerCase() + l.slice(1), head: (h) => (h == 'Blocks' ? 'Grass blocks' : 'Grass blocks, ' + h.toLowerCase()), tabs: { Blocks: 'Penalty grass' } },
 ];
 
 const normal = (a, b, c) => {
@@ -152,6 +155,17 @@ function pattern(m, kit, tri, n) {
     }
     return;
   }
+  if (kit.checker) {
+    // A plain checker, kit.checker wide, the way the stadium grass is drawn.
+    const k = kit.checker;
+    let polys = [tri];
+    for (const a of ax) polys = slice(polys, a, every(k, [0]));
+    for (const p of polys) {
+      const c = centre(p);
+      emit((Math.floor(c[ax[0]] / k) + Math.floor(c[ax[1]] / k)) % 2 ? kit.look.deckB : kit.look.deck, p);
+    }
+    return;
+  }
   // Panels 5 x 5 in two shades, a seam 0.1 wide along every joint.
   if (kit.stripes) {
     // Mown stripes: cut only where the stripes change.
@@ -200,6 +214,80 @@ function restyle(part, kit) {
   return m;
 }
 
+// ---- solid blocks of our own ------------------------------------------------------------------------------------
+// Drawn like the stock blocks (one tile = 20 x 20, one layer = 5, solid down to the layer's floor, pieces longer than a
+// tile reaching towards -z and climbing towards -z like the stock long slopes) in the stock block material, so restyle
+// gives each kit its look and driving face.
+// h(x, z): the top's height over the floor. xs, zs: the grid lines the top is drawn on (the sides follow the same).
+function solidTris(h, xs, zs) {
+  const tris = [],
+    tri = (a, b, c, want) => {
+      const n = cross(sub(b, a), sub(c, a));
+      if (len(n) < 1e-9) return;
+      tris.push(dot(n, want) < 0 ? ['BlockSurface', a, c, b] : ['BlockSurface', a, b, c]);
+    },
+    quad = (a, b, c, d, want) => {
+      tri(a, b, c, want);
+      tri(a, c, d, want);
+    },
+    P = (x, z) => [x, h(x, z), z];
+  const UP = [0, 1, 0];
+  for (let i = 0; i + 1 < xs.length; i++)
+    for (let j = 0; j + 1 < zs.length; j++) {
+      const [x0, x1, z0, z1] = [xs[i], xs[i + 1], zs[j], zs[j + 1]],
+        a = P(x0, z0),
+        b = P(x1, z0),
+        c = P(x1, z1),
+        d = P(x0, z1),
+        mid = h((x0 + x1) / 2, (z0 + z1) / 2);
+      // Split along the diagonal that follows the surface (the crease of a corner piece runs along one).
+      if (Math.abs((a[1] + c[1]) / 2 - mid) <= Math.abs((b[1] + d[1]) / 2 - mid)) quad(a, b, c, d, UP);
+      else quad(b, c, d, a, UP);
+    }
+  const X0 = xs[0],
+    X1 = xs[xs.length - 1],
+    Z0 = zs[0],
+    Z1 = zs[zs.length - 1];
+  const wall = (pts, want) => {
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const [p, q] = [pts[k], pts[k + 1]];
+      quad([p[0], 0, p[1]], [q[0], 0, q[1]], P(q[0], q[1]), P(p[0], p[1]), want);
+    }
+  };
+  wall(zs.map((z) => [X0, z]), [-1, 0, 0]);
+  wall(zs.map((z) => [X1, z]), [1, 0, 0]);
+  wall(xs.map((x) => [x, Z0]), [0, 0, -1]);
+  wall(xs.map((x) => [x, Z1]), [0, 0, 1]);
+  quad([X0, 0, Z0], [X1, 0, Z0], [X1, 0, Z1], [X0, 0, Z1], [0, -1, 0]);
+  return tris;
+}
+const steps = (a, b, n) => Array.from({ length: n + 1 }, (_, k) => a + ((b - a) * k) / n);
+
+// Gentle slopes: a quarter grade, one layer per tile, the grade of the platform kits' gentle slopes. The start and
+// end ease the grade in over two tiles; the corners join two slopes at right angles.
+const SOLIDS = (() => {
+  const out = [],
+    g = 0.25,
+    L = 40,
+    rise = g * 20,
+    S = 'Gentle slopes',
+    put = (name, label, heading, h, xs, zs) => out.push({ name, label, heading, tris: solidTris(h, xs, zs) });
+  const one = steps(-10, 10, 8),
+    fine = steps(-10, 10, 16);
+  put('BlockGentleStart', 'Gentle slope, start', S, (x, z) => (g * (10 - z) ** 2) / (2 * L), [-10, 10], steps(-30, 10, 16));
+  put('BlockGentle', 'Gentle slope', S, (x, z) => g * (10 - z), [-10, 10], [-10, 10]);
+  put('BlockGentleEnd', 'Gentle slope, end', S, (x, z) => g * (10 - z) - (g * (10 - z) ** 2) / (2 * L), [-10, 10], steps(-30, 10, 16));
+  const a = (x) => ((10 - x) / 20) * rise,
+    b = (z) => ((10 - z) / 20) * rise;
+  put('BlockGentleOuter', 'Gentle slope, outer corner', S, (x, z) => Math.min(a(x), b(z)), one, one);
+  put('BlockGentleInner', 'Gentle slope, inner corner', S, (x, z) => Math.max(a(x), b(z)), one, one);
+  put('BlockGentleCone', 'Gentle slope, rounded outer', S, (x, z) => Math.max(0, 1 - Math.hypot(x + 10, z + 10) / 20) * rise, fine, fine);
+  put('BlockGentleBowl', 'Gentle slope, rounded inner', S, (x, z) => Math.min(1, Math.hypot(x - 10, z - 10) / 20) * rise, fine, fine);
+  // One big block: 3 tiles across, 4 long, one layer tall.
+  put('Block3x4', 'Block, 3 x 4', 'Big blocks', () => 5, [-30, 30], [-70, 10]);
+  return out;
+})();
+
 // stock: loadStockParts()'s list. Returns the catalogue entries, kit by kit in the stock browser's order.
 function buildStockBlocks(stock) {
   const byName = new Map(stock.map((p) => [p.name, p])),
@@ -210,13 +298,20 @@ function buildStockBlocks(stock) {
       const T = kit.tabs[tab];
       if (!T) continue;
       if ((tab == 'Road' || tab == 'Turns') && !kit.road) continue;
+      if (kit.skip?.includes(heading)) continue;
+      const say = (l) => (kit.say ? kit.say(l) : l),
+        head = (h) => (kit.head ? kit.head(h) : h),
+        u = kit.u != null ? { u: kit.u } : {};
       for (const [name, label] of list) {
         const p = byName.get(name);
         // Pieces "on a pillar" are the pillars themselves; planes are every kit's own platform.
         if (!p || p.gate || name.includes('Pillar') || name == 'Plane') continue;
         if (kit.road === true && SAME_AS_KIT.includes(name)) continue;
-        parts.push({ name: kit.key + 'Stock' + name, label: kit.say ? kit.say(label) : label, tab: T, sub: heading, surface: kit.surface, mesh: restyle(p, kit), tiles: p.tiles, ...(kit.u != null ? { u: kit.u } : {}) });
+        parts.push({ name: kit.key + 'Stock' + name, label: say(label), tab: T, sub: head(heading), surface: kit.surface, mesh: restyle(p, kit), tiles: p.tiles, ...u });
       }
+      // The kit's own solid blocks the stock game has no shape for, right after the stock blocks they join.
+      if (tab == 'Blocks' && heading == 'Steep slopes')
+        for (const s of SOLIDS) parts.push({ name: kit.key + s.name, label: say(s.label), tab: T, sub: head(s.heading), surface: kit.surface, mesh: restyle({ name: s.name, tris: s.tris }, kit), ...u });
     }
   return parts;
 }
