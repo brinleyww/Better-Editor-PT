@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Refreshing Better Editor</title>
+<script>
+// Not So Weekly Shorts opens this in a hidden frame when an update is installed. It re-fetches the editor's files from
+// inside the frame, where the editor's copy of the browser cache is, then tells the page it's done.
+(async () => {
+  const post = (done) => parent.postMessage({ nsws: 'be-refresh', done }, '*');
+  post(false);
+  const files = new Set(['index.html', './', 'physics.json', 'simulation_worker.bundle.js', 'models/tm_blocks.bin']);
+  // Loaded by main.bundle.js, so index.html doesn't name them.
+  for (const n of [112, 168, 186, 321, 535, 546, 57, 604, 615, 657, 789]) files.add(n + '.bundle.js');
+  try {
+    const html = await (await fetch('index.html', { cache: 'reload' })).text();
+    for (const m of html.matchAll(/<script[^>]* src="([^"]+)"/g)) files.add(m[1]);
+  } catch {}
+  await Promise.allSettled([...files].map(async (file) => {
+    const res = await fetch(file, { cache: 'reload' });
+    // Starting the request is enough to drop the cached copy, and the blocks file is about 80 MB.
+    if (file.endsWith('.bin')) await res.body?.cancel();
+    else await res.arrayBuffer();
+  }));
+  post(true);
+})();
+</script>

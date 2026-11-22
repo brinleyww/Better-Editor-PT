@@ -671,7 +671,7 @@
         if (msg.type === "hello") {
             if (msg.assets === 1) assetsParent = true;
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 9, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
+            post({ type: "ready", version: 10, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
         } else if (msg.type === "library") {
             let need = [];
@@ -771,6 +771,15 @@
         } else if (msg.type === "mode") {
             mode = ["rocket", "royale"].includes(msg.mode) ? msg.mode : "normal";
             reply({ ok: true });
+        } else if (msg.type === "dirty") {
+            // Asked before NSWS reloads for an update. Watching someone build holds the player's own track aside.
+            let dirty = true;
+            try {
+                dirty = !!self.__beWatch?.active() || !!self.__beEditorDirty?.();
+            } catch (err) {
+                console.warn("NSWS dirty:", err);
+            }
+            reply({ dirty });
         } else if (msg.type === "autosave") {
             let result = { saved: false, reason: "closed" };
             try {
