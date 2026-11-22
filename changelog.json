@@ -1,5 +1,12 @@
 [
     {
+        "id": 8,
+        "commit": "d3f4dae",
+        "changes": [
+            "Fine grid: the blue cells on the block you are placing are half size too, so they match where it snaps"
+        ]
+    },
+    {
         "id": 7,
         "commit": "fc91c1d",
         "changes": [
