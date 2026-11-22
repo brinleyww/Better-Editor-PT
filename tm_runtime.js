@@ -1261,6 +1261,9 @@ self.TM = (() => {
   //   about where the Stadium car rides: out of that curve at 235, bobsleigh curves and chicanes at the Stadium car's
   //   speed and shake. Nothing on the road reaches it but the deepest landings (a 6-tile drop sinks 0.21, was 0.26,
   //   still one bounce, 227 km/h 1 s on); 0-100, 0-200, braking and the R60 circle are unchanged on every surface.
+  //   The Rally car sank the same way (-0.21 in a high-walled curve, out at 100 km/h where the Stadium car leaves at
+  //   140, a chicane at 200 left at 13); its stop at -0.05 brings it to the Stadium car's speeds (that curve 138, the
+  //   chicane 137) and nothing on the road reaches it (ride, landings, ripples and the quick table are unchanged).
   // air: in the air, steering yaws the car this much harder than nothing (1: no help). Every car is at 1 now: the Snow
   //   (1.2) and Desert (1.8) cars turned at 21 and 48 deg/s on the steering in the air, which felt like Rocket League's
   //   air control and tipped them over in a jump (the Desert car 45 degrees over 1 s into a jump with the steering held,
@@ -1276,7 +1279,7 @@ self.TM = (() => {
     // Snow: x3.5 on ice still slid like plastic and spun when let go (tmphys.mjs), so its studded tyres hold more,
     // the rear most (rearGrip: the rear tyres' own multipliers where given).
     Snow: { grip: [0.85, 0.85, 0.95, 1, 4.5, 3.5, 1.1, 1.1, 2.4], rearGrip: [0.85, 0.85, 0.95, 1, 5.5, 4.2, 1.1, 1.1, 2.4], iceAssist: 0.3, accel: [[1e9, 0.9]], topSpeed: 230 / 3.6, topDrag: 0.012, susp: { stiff: 0.7, damp: 1, roll: 1, rest: 0.08 }, air: 1, flight: true, ices: [], look: { tint: '#e9eef4' } },
-    Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], loose: 1.05, topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, dampIn: 0.3, roll: 1.5, rest: 0.03 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#c94a2a' } },
+    Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], loose: 1.05, topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, dampIn: 0.3, roll: 1.5, rest: 0.03, stop: -0.05, bump: 2.5, bumpDamp: 1 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#c94a2a' } },
     Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.02, dampIn: 0.1, roll: 1.2, rest: 0.1, stop: -0.07, bump: 2.5, bumpDamp: 1 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#d6a24a' } },
   };
   // Test rigs only: {veh: {name: {setting: value}}} tries other settings for a vehicle.
