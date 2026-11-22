@@ -1,5 +1,14 @@
 [
     {
+        "id": 14,
+        "version": "35.0",
+        "changes": [
+            "Bumpers only kick when you touch them, flying over one does nothing",
+            "One hit on a patch of bumpers doesn't keep kicking you around in the air",
+            "The Bumper label just flashes now instead of counting down"
+        ]
+    },
+    {
         "id": 13,
         "version": "34.6",
         "changes": [

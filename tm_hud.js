@@ -27,8 +27,10 @@ self.TM.hud = (() => {
   const TYRES = TM.TYRES && typeof TM.TYRES.step == 'function' && typeof TM.TYRES.grip == 'function' ? TM.TYRES : null;
   const ROULETTE = ['Turbo', 'Super', 'Ultra']; // the runtime's pick by the frame the car crosses it: frames % 3
   const RESPAWN = 5; // the runtime's respawn test: the car moved more than this in one frame (units, Manhattan)
-  // Bumpers, the reset plate and a new car have nothing that lasts, so their chip stays this long (race frames, 1.5 s).
+  // The reset plate and a new car have nothing that lasts, so their chip stays this long (race frames, 1.5 s).
   const ONE_SHOT = 1500;
+  // A bumper is over the moment it kicks: its chip only flashes (0.35 s), with a full bar that does not run down.
+  const BUMP_FLASH = 350;
 
   // ---- what the banner says -----------------------------------------------------------------------------------------
   // One chip per kind of effect, in this order. good: a boost (green bar), bad: a handicap (red), info: white.
@@ -49,6 +51,15 @@ self.TM.hud = (() => {
   const NOGRIP = TM.NOGRIP ?? { frames: 5000, fade: 400, grip: 0.12 };
   // The runtime's first-touch test for effect boxes (fxTouch); an older runtime counts the car's origin.
   const touch = typeof TM.fxTouch == 'function' ? (q, p, Q) => TM.fxTouch(q, p.x, p.y, p.z, Q.x, Q.y, Q.z, Q.w) : (q, p) => p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2];
+  // A bumper plate only counts once touched (the runtime's bumperTouch), by the state's own wheel contacts.
+  function onBumper(q, s) {
+    if (typeof TM.bumperTouch != 'function') return true;
+    const points = [],
+      p = s.position,
+      Q = s.quaternion;
+    for (const k of s.wheelContact) if (k) points.push(k.position.x, k.position.y, k.position.z);
+    return TM.bumperTouch(q, points, p.x, p.y, p.z, Q.x, Q.y, Q.z, Q.w);
+  }
   // An older runtime has no list of the zones near a point: every zone, then.
   const zoneList = typeof TM.zoneList == 'function' ? TM.zoneList : (zones) => zones.keys();
   const LABEL = {
@@ -144,7 +155,7 @@ self.TM.hud = (() => {
   // A one-shot chip (CAR, BUMP or RESET) from this race frame on.
   function shot(c, k, label, frames) {
     c.shotLabel[k - CAR] = label;
-    c.shotUntil[k - CAR] = frames + ONE_SHOT;
+    c.shotUntil[k - CAR] = frames + (k == BUMP ? BUMP_FLASH : ONE_SHOT);
   }
 
   // One physics frame, in the runtime's order: controls (fxControls), then respawn, checkpoint, zones, tyres, timers (fxStep).
@@ -202,6 +213,7 @@ self.TM.hud = (() => {
         continue;
       }
       if (c.inside.has(i)) continue;
+      if (q.deck && !onBumper(q, s)) continue;
       c.inside.add(i);
       switch (q.type) {
         case 'Turbo':
@@ -509,7 +521,7 @@ self.TM.hud = (() => {
     setChip(NO_GRIP, on && c.noGripLeft > 0 ? FIXED[NO_GRIP] : null, on ? c.noGripLeft / NOGRIP.frames : 0);
     for (let i = 0; i < 3; i++) {
       const left = on ? c.shotUntil[i] - c.f : 0;
-      setChip(CAR + i, left > 0 ? c.shotLabel[i] : null, left / ONE_SHOT);
+      setChip(CAR + i, left > 0 ? c.shotLabel[i] : null, CAR + i == BUMP ? -1 : left / ONE_SHOT);
     }
   }
   // Each wheel's steering, spin and slip, from the car states (state below). Openplanet turns the wheel by its steer angle

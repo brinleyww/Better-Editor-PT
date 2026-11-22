@@ -679,7 +679,16 @@ self.TM = (() => {
   function zoneOf(p, wx, wy, wz, M) {
     const c = rotate(M, p.x.center[0], p.x.center[1], p.x.center[2]),
       s = rotate(M, p.x.size[0] / 2, p.x.size[1] / 2, p.x.size[2] / 2);
+    // a bumper plate (the gates are driven through): how high the part stands, and the box that high (bumperTouch)
+    let deck = null;
+    if ((p.x.type == 'Bumper' || p.x.type == 'Bumper2') && !p.n.includes('Gate')) {
+      const height = p.b[1][1],
+        dc = rotate(M, p.x.center[0], height / 2, p.x.center[2]),
+        ds = rotate(M, p.x.size[0] / 2, height / 2, p.x.size[2] / 2);
+      deck = { height, base: [wx + dc[0], wy + dc[1], wz + dc[2]], min: [0, 1, 2].map((i) => [wx, wy, wz][i] + dc[i] - Math.abs(ds[i])), max: [0, 1, 2].map((i) => [wx, wy, wz][i] + dc[i] + Math.abs(ds[i])) };
+    }
     return {
+      deck,
       type: p.x.type,
       // a turbo plate, which pushes only while the car is on it (TURBO); the turbo gates keep their timed boost
       hold: (p.x.type in TURBO || p.x.type == 'Roulette') && !p.n.includes('Gate'),
@@ -764,6 +773,39 @@ self.TM = (() => {
     if (Math.abs(d0 * Y0 + d1 * Y1 + d2 * Y2) > b0 * Math.abs(Y0) + b1 * Math.abs(Y1) + b2 * Math.abs(Y2) + h[1]) return false;
     if (Math.abs(d0 * Z0 + d1 * Z1 + d2 * Z2) > b0 * Math.abs(Z0) + b1 * Math.abs(Z1) + b2 * Math.abs(Z2) + h[2]) return false;
     return true;
+  }
+  // A bumper plate kicks only a car that touches it. Its effect box is 5 units high and the kick's own hop stays inside
+  // that, so by the box alone the next plates kicked a car flying over them, again and again (tmphys: 11 kicks from one
+  // touch on a field of them). In the box (fxTouch) and: a wheel stands on something at the plate's height, so a car on
+  // the ground is kicked as its nose reaches the plate, or the car is on its side or roof and its hull is down in the
+  // deck. The box still decides when the car has left, so a hop that lands back on the same plate is no second kick.
+  // points: the contact points of the wheels on the ground, 3 numbers each.
+  const DECK_REACH = 0.5;
+  function bumperTouch(q, points, x, y, z, qx, qy, qz, qw) {
+    const D = q.deck,
+      P = q.up;
+    if (!D) return true;
+    for (let i = 0; i < points.length; i += 3) {
+      const h = (points[i] - D.base[0]) * P[0] + (points[i + 1] - D.base[1]) * P[1] + (points[i + 2] - D.base[2]) * P[2];
+      if (Math.abs(h) <= D.height / 2 + DECK_REACH) return true;
+    }
+    const upright = 2 * (qx * qy - qw * qz) * P[0] + (1 - 2 * (qx * qx + qz * qz)) * P[1] + 2 * (qy * qz + qw * qx) * P[2];
+    return upright < 0.5 && fxTouch(D, x, y, z, qx, qy, qz, qw);
+  }
+  // The contact points of the car's wheels that are on the ground (bumperTouch).
+  function groundPoints(carId, heap) {
+    const U = new Uint32Array(heap.buffer),
+      F = new Float32Array(heap.buffer),
+      car = carPointer(U, carId),
+      out = [];
+    if (!car) return out;
+    const wheels = U[(U[(car + 32) >> 2] + 144) >> 2];
+    for (let w = 0; w < 4; w++) {
+      const a = wheels + w * 284,
+        g = a >> 2;
+      if (heap[a + 84]) out.push(F[g + 4], F[g + 5], F[g + 6]);
+    }
+    return out;
   }
   // Every effect box on a track, for the page (water splashes, vehicle gates, bumpers).
   function zones(track) {
@@ -1314,7 +1356,7 @@ self.TM = (() => {
   // spin towards none (roll per frame). Nothing about their shape or hitbox changes, and the Stadium car is left exactly
   // as it is.
   const FLIGHT = { pitchMax: 0.62, pull: 0.02, roll: 0.01 };
-  // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per entry, square to the way the car is going in the
+  // Bumpers (TM2020's Bumper and Super bumper): one sideways kick per touch (bumperTouch), square to the way the car is going in the
   // plate's plane, away from the line through the plate's centre along that way (inside `centre` units of it: to the
   // right), plus a hop (units/s). Platforms are driven every way, so the plate's own axes would brake a car crossing a
   // turned one. TM2020's bumpers fling the car hard: x2.5 the first kicks (14 and 24 units/s sideways, 2.5 and 4 up)
@@ -2062,6 +2104,7 @@ self.TM = (() => {
 
     const inside = c.inside;
     let kick = null, // a bumper's kick, applied below once the car's velocity is at hand
+      ground = null, // where the wheels stand, read once a bumper plate needs it
       plate = null; // the strongest turbo plate the car is on (TURBO push)
     const sqx = s.getFloat32(pos + 12, true),
       sqy = s.getFloat32(pos + 16, true),
@@ -2085,6 +2128,7 @@ self.TM = (() => {
         if (b && (!plate || b.push > plate.push)) plate = b;
         continue;
       }
+      if (q.deck && !bumperTouch(q, (ground ??= groundPoints(carId, heap)), x, y, z, sqx, sqy, sqz, sqw)) continue; // over it, not on it
       inside.add(i);
       if (TEST && TEST.trace) postMessage({ tmProbe: { fr: s.getUint8(4) | (s.getUint8(5) << 8) | (s.getUint8(6) << 16), carId, enter: q.type } });
       switch (q.type) {
@@ -3338,6 +3382,7 @@ self.TM = (() => {
     NOGRIP,
     FX_BOX,
     fxTouch,
+    bumperTouch,
     WATER,
     ICING,
     TYRES,
