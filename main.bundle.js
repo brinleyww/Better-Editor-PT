@@ -28740,7 +28740,7 @@
                                     n();
                                   },
                                   () => {
-                                    (s.saveCustomTrack(e, a)
+                                    (s.saveCustomTrack(e, a, "import")
                                       ? i.push({
                                           trackMetadata: e,
                                           trackData: a,
@@ -28751,7 +28751,7 @@
                                       n());
                                   },
                                 )
-                              : (s.saveCustomTrack(e, a)
+                              : (s.saveCustomTrack(e, a, "import")
                                   ? i.push({ trackMetadata: e, trackData: a, trackId: c, trackThumbnail: d })
                                   : h(t),
                                 n());
@@ -32282,7 +32282,7 @@
                   r,
                   () => {
                     (0, i.gn)(this, W, "f")
-                      ? (0, i.gn)(this, S, "f").deleteCustomTrack(t.name)
+                      ? (0, i.gn)(this, S, "f").deleteCustomTrack(t.name, t)
                       : (this.hide(),
                         (0, i.gn)(this, T, "f").showConfirm(
                           (0, i.gn)(this, y, "f").get('Are you sure you want to delete "{0}"?', [t.name]),
@@ -32292,7 +32292,7 @@
                             this.show();
                           },
                           () => {
-                            ((0, i.gn)(this, S, "f").deleteCustomTrack(t.name), this.show());
+                            ((0, i.gn)(this, S, "f").deleteCustomTrack(t.name, t), this.show());
                           },
                         ));
                   },
@@ -55151,7 +55151,7 @@
                       (0, R.gn)(this, ol, "f").className = "track-info-ui";
                     },
                     () => {
-                      (p.deleteCustomTrack(l.name), g());
+                      (p.deleteCustomTrack(l.name, l), g());
                     },
                   ));
               }),
@@ -58724,6 +58724,7 @@
             (Bd.add(this),
             (self.__beTrackStore = this),
             (self.__beTrackData = Ml.A),
+            (self.__beTracksChanged = () => (0, R.gn)(this, Bd, "m", Jd).call(this)),
             Gd.set(this, []),
             Fd.set(this, []),
             Od.set(this, []),

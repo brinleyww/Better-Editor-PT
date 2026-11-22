@@ -181,9 +181,15 @@
         }
     }
 
+    // The store's own list (this site's storage), also while library mode stands in for it.
+    function ownTracks(cb) {
+        const store = self.__beTrackStore;
+        if (store) Object.getPrototypeOf(store).forEachCustomTrack.call(store, cb);
+    }
+
     function listTracks() {
         const ids = new Map();
-        self.__beTrackStore?.forEachCustomTrack((id, meta) => ids.set(meta.name, id));
+        ownTracks((id, meta) => ids.set(meta.name, id));
         const out = [];
         for (const key of trackKeys()) {
             try {
@@ -194,7 +200,7 @@
         }
         if (!out.length && self.__beTrackStore) {
             // Builds whose storage isn't localStorage still have the editor's in-memory list.
-            self.__beTrackStore.forEachCustomTrack((id, meta, data) => {
+            ownTracks((id, meta, data) => {
                 try {
                     out.push({ name: meta.name, code: data.toExportString(meta), saveTime: 0, id });
                 } catch {}
@@ -216,6 +222,7 @@
 
     function checkChanged() {
         hookStore();
+        hookLibrary();
         if (!parentOrigin) return;
         const sig = signature();
         if (lastSig !== null && sig !== lastSig) post({ type: "changed" });
@@ -340,6 +347,228 @@
         return { ok };
     }
 
+    // Library mode (NSWS sends "library"): the editor's custom tracks are NSWS's My Tracks, in the order My Tracks shows them.
+    // Nothing goes in this site's storage. Save and delete go to NSWS by My Tracks id, so two tracks may share a name.
+    // self.__beOpenKey is the id of the entry open in the editor: null for a new track, "tmp:n" while NSWS adds a new one.
+    let library = null;
+    const raw = new Map();
+    const parsed = new Map();
+    const keyOf = new WeakMap();
+    const unsent = new Map();
+    // Saves on their way, per id: until NSWS answers, its list can still carry the code from before.
+    const busy = new Map();
+    const dropAfterSave = new Set();
+    let tmpSeq = 0;
+    let parseTimer = null;
+
+    const tracksChanged = () => {
+        if (self.__beTrackStore?.__nswsLibrary) self.__beTracksChanged?.();
+    };
+
+    function current(key) {
+        const hit = parsed.get(key);
+        return hit && (hit.hash === raw.get(key)?.hash || busy.get(key)) ? hit : null;
+    }
+
+    function makeEntry(key, meta, data, saveTime, code) {
+        let thumbnail = null;
+        try {
+            thumbnail = data.createThumbnail();
+        } catch {}
+        keyOf.set(meta, key);
+        return { key, id: data.getId(), trackMetadata: meta, trackData: data, thumbnail: thumbnail || "images/summer.svg", saveTime: saveTime || 0, code: code || null };
+    }
+
+    // A code that can't be read is remembered as unreadable (entry null), so it isn't tried on every refresh.
+    function entryOf(key) {
+        if (unsent.has(key)) return unsent.get(key);
+        const hit = current(key);
+        if (hit) return hit.entry;
+        const r = raw.get(key);
+        if (!r) return null;
+        let p = null;
+        try {
+            p = typeof r.code === "string" ? self.__beTrackData?.fromExportString(r.code) : null;
+        } catch {}
+        if (!p && !self.__beTrackData) return null;
+        const entry = p ? makeEntry(key, p.trackMetadata, p.trackData, r.saveTime) : null;
+        parsed.set(key, { hash: r.hash, entry });
+        return entry;
+    }
+
+    // Tracks read so far, in order. The rest are read a few at a time (parseSoon), and the lists refresh when they are.
+    function entries() {
+        if (!library) return [];
+        const out = [...unsent.values()];
+        let waiting = false;
+        for (const key of library) {
+            const hit = current(key);
+            if (hit) hit.entry && out.push(hit.entry);
+            else waiting = true;
+        }
+        if (waiting) parseSoon();
+        return out;
+    }
+
+    function parseSoon() {
+        if (parseTimer || !self.__beTrackData) return;
+        parseTimer = setTimeout(function step() {
+            const end = Date.now() + 40;
+            for (const key of library || []) {
+                if (current(key)) continue;
+                if (Date.now() > end) {
+                    parseTimer = setTimeout(step, 0);
+                    return;
+                }
+                entryOf(key);
+            }
+            parseTimer = null;
+            tracksChanged();
+        }, 0);
+    }
+
+    // items: [{key, hash, saveTime, code?}] in order; code is left out when this frame was sent that version already.
+    // Returns the ids whose code is missing here.
+    function setLibrary(items) {
+        const keys = [];
+        const need = [];
+        for (const it of Array.isArray(items) ? items : []) {
+            if (!it || typeof it.key !== "string" || !it.key || typeof it.hash !== "string") continue;
+            const have = raw.get(it.key);
+            if (typeof it.code === "string") raw.set(it.key, { hash: it.hash, code: it.code, saveTime: Number(it.saveTime) || 0 });
+            else if (have?.hash !== it.hash) {
+                need.push(it.key);
+                if (!have) continue;
+            }
+            keys.push(it.key);
+        }
+        const keep = new Set(keys);
+        for (const key of [...raw.keys()]) {
+            if (keep.has(key)) continue;
+            if (busy.get(key)) keys.push(key);
+            else {
+                raw.delete(key);
+                parsed.delete(key);
+            }
+        }
+        const first = !library;
+        library = keys;
+        hookLibrary();
+        tracksChanged();
+        if (first || keys.some((k) => !current(k))) parseSoon();
+        return need;
+    }
+
+    function hookLibrary() {
+        const store = self.__beTrackStore;
+        if (!library || !store || store.__nswsLibrary) return;
+        store.__nswsLibrary = true;
+        const own = Object.getPrototypeOf(store);
+        store.forEachCustomTrack = function (cb) {
+            if (!library) return own.forEachCustomTrack.call(this, cb);
+            for (const e of entries()) cb(e.id, e.trackMetadata, e.trackData, e.thumbnail);
+        };
+        store.isCustomTracksEmpty = function () {
+            return library ? !library.length && !unsent.size : own.isCustomTracksEmpty.call(this);
+        };
+        store.checkCustomTrackNameExists = function (name) {
+            return library ? false : own.checkCustomTrackNameExists.call(this, name);
+        };
+        store.saveCustomTrack = function (meta, data, how) {
+            return library ? librarySave(meta, data, how) : own.saveCustomTrack.call(this, meta, data);
+        };
+        store.deleteCustomTrack = function (name, meta) {
+            return library ? libraryDelete(name, meta) : own.deleteCustomTrack.call(this, name);
+        };
+        tracksChanged();
+    }
+
+    self.__beOpened = (meta) => {
+        if (library) self.__beOpenKey = (meta && keyOf.get(meta)) || null;
+    };
+
+    // The editor's Save (and autosave) write to the entry that is open; an import is always a new entry.
+    function librarySave(meta, data, how) {
+        let code;
+        try {
+            code = data.toExportString(meta);
+        } catch {
+            return false;
+        }
+        const imported = how === "import";
+        let key = imported ? null : self.__beOpenKey ?? null;
+        // Deleted from My Tracks while it was open: the save makes it a new entry again.
+        if (key && !key.startsWith("tmp:") && !raw.has(key)) key = null;
+        if (key?.startsWith("tmp:") && !unsent.has(key)) key = null;
+        const tmp = key?.startsWith("tmp:") ? key : key ? null : "tmp:" + ++tmpSeq;
+        const local = key || tmp;
+        const entry = makeEntry(local, meta, data, Date.now(), code);
+        if (tmp) unsent.set(tmp, entry);
+        else {
+            parsed.set(local, { hash: null, entry });
+            busy.set(local, (busy.get(local) || 0) + 1);
+        }
+        if (!imported) self.__beOpenKey = local;
+        post({ type: "save", key: tmp ? null : local, tmp, code, name: String(meta.name ?? ""), imported });
+        tracksChanged();
+        return true;
+    }
+
+    // NSWS's answer to a save: {tmp, key, id, hash, ok}.
+    function onSaved(m) {
+        if (m.key) {
+            const n = (busy.get(m.key) || 1) - 1;
+            n > 0 ? busy.set(m.key, n) : busy.delete(m.key);
+        }
+        const entry = m.tmp ? unsent.get(m.tmp) : parsed.get(m.key)?.entry;
+        if (m.tmp) unsent.delete(m.tmp);
+        if (!m.ok || typeof m.id !== "string" || !m.id) {
+            if (m.tmp && self.__beOpenKey === m.tmp) self.__beOpenKey = null;
+            tracksChanged();
+            return;
+        }
+        if (m.tmp && dropAfterSave.delete(m.tmp)) {
+            post({ type: "delete", key: m.id });
+            return;
+        }
+        // A key that became another id: the entry was gone from My Tracks, so the save made a new one.
+        if (m.key && m.key !== m.id) {
+            busy.delete(m.key);
+            raw.delete(m.key);
+            parsed.delete(m.key);
+            if (library) library = library.filter((k) => k !== m.key);
+        }
+        if (entry && (!m.key || !busy.get(m.key))) {
+            entry.key = m.id;
+            keyOf.set(entry.trackMetadata, m.id);
+            raw.set(m.id, { hash: String(m.hash || ""), code: entry.code, saveTime: entry.saveTime });
+            parsed.set(m.id, { hash: String(m.hash || ""), entry });
+        }
+        if (self.__beOpenKey === (m.tmp || m.key)) self.__beOpenKey = m.id;
+        if (library && !library.includes(m.id)) library.unshift(m.id);
+        tracksChanged();
+    }
+
+    // The track lists' delete button: the very track picked (meta), by name only when no other track has that name.
+    function libraryDelete(name, meta) {
+        let key = (meta && keyOf.get(meta)) || null;
+        if (!key) {
+            const hits = entries().filter((e) => e.trackMetadata.name === name);
+            if (hits.length === 1) key = hits[0].key;
+        }
+        if (!key) return false;
+        if (key.startsWith("tmp:")) {
+            unsent.delete(key);
+            dropAfterSave.add(key);
+        } else post({ type: "delete", key });
+        if (library) library = library.filter((k) => k !== key);
+        raw.delete(key);
+        parsed.delete(key);
+        if (self.__beOpenKey === key) self.__beOpenKey = null;
+        tracksChanged();
+        return true;
+    }
+
     const wait = (test, ms) => new Promise((resolve) => {
         const end = Date.now() + ms;
         (function check() {
@@ -357,13 +586,29 @@
         return found;
     }
 
-    // Opens the editor (without the menu) on a saved track, or on an empty one when name is null.
+    // Opens the editor (without the menu) on a saved track, or on an empty one when name is null. In library mode: on the My
+    // Tracks entry `key`, or on `code` as a new track (Save adds it to My Tracks).
     // force: false answers {dirty: true} instead of dropping unsaved changes.
-    async function editTrack(name, force, fresh) {
+    async function editTrack(name, force, fresh, key, code) {
         if (!self.__beStartEditor || !self.__beTrackStore) return { ok: false, error: "The editor is still loading. Try again in a moment." };
         if (!force && self.__beEditorDirty?.()) return { ok: false, dirty: true };
-        const track = name != null ? savedTrack(name) : null;
-        if (name != null && !track) return { ok: false, error: "The editor has no saved track called \"" + name + "\"." };
+        let track = null;
+        if (key != null) {
+            hookLibrary();
+            const e = library?.includes(key) || unsent.has(key) ? entryOf(key) : null;
+            if (!e) return { ok: false, gone: true, error: "That track isn't in My Tracks any more." };
+            track = { meta: e.trackMetadata, data: e.trackData };
+        } else if (code != null) {
+            let p = null;
+            try {
+                p = self.__beTrackData?.fromExportString(code);
+            } catch {}
+            if (!p) return { ok: false, error: "The editor can't read that track code." };
+            track = { meta: p.trackMetadata, data: p.trackData };
+        } else if (name != null) {
+            track = savedTrack(name);
+            if (!track) return { ok: false, error: "The editor has no saved track called \"" + name + "\"." };
+        }
         if (!self.__beEditorOpen || (fresh && !track)) {
             // Starting the editor while the game is still loading gets undone when loading finishes.
             await wait(() => !document.querySelector(".loading-screen"), 60000);
@@ -426,8 +671,24 @@
         if (msg.type === "hello") {
             if (msg.assets === 1) assetsParent = true;
             if (lastSig === null) lastSig = signature();
-            post({ type: "ready", version: 8, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
+            post({ type: "ready", version: 9, reqId: msg.reqId, loaded: !!self.__beTrackStore && !!self.__beStartEditor, editing: !!self.__beEditorOpen, store: storeId() });
             sendBlocks(true);
+        } else if (msg.type === "library") {
+            let need = [];
+            try {
+                need = setLibrary(msg.tracks);
+            } catch (err) {
+                console.warn("NSWS library:", err);
+            }
+            reply({ ok: true, need });
+        } else if (msg.type === "saved") {
+            try {
+                onSaved(msg);
+            } catch (err) {
+                console.warn("NSWS library:", err);
+            }
+        } else if (library && ["put", "delete", "import", "copy"].includes(msg.type)) {
+            reply({ ok: false, error: "The editor's tracks are My Tracks now." });
         } else if (msg.type === "list") {
             reply({ tracks: listTracks(), loaded: !!self.__beTrackStore, store: storeId() });
         } else if (msg.type === "ids") {
@@ -466,9 +727,10 @@
             }
             reply(result);
         } else if (msg.type === "edit") {
-            editTrack(typeof msg.name === "string" ? msg.name : null, !!msg.force, !!msg.fresh).then(reply, () => reply({ ok: false, error: "The editor couldn't open that track." }));
+            const str = (v) => (typeof v === "string" ? v : null);
+            editTrack(str(msg.name), !!msg.force, !!msg.fresh, str(msg.key), str(msg.code)).then(reply, () => reply({ ok: false, error: "The editor couldn't open that track." }));
         } else if (msg.type === "current") {
-            reply({ track: currentTrack() });
+            reply({ track: currentTrack(), key: library ? self.__beOpenKey ?? null : undefined });
         } else if (msg.type === "pause") {
             setPaused(!!msg.paused);
             // Put away while watching someone build: the player's own track comes back first.

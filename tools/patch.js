@@ -104,6 +104,15 @@ apply('main.bundle.js', [
   // nsws_bridge.js imports tracks through the saved-track store and the track codec.
   ['settings hook', "          const t = e.loadSettings();\n          null != t && this.updateSettings(t);\n", "          const t = e.loadSettings();\n          null != t && this.updateSettings(t);\n          self.__beSettings = { manager: this, names: P.A };\n"],
   ['track store hook', '(Bd.add(this),', '(Bd.add(this),\n            (self.__beTrackStore = this),\n            (self.__beTrackData = Ml.A),'],
+  // Embedded in Not So Weekly Shorts, the custom track list is NSWS's My Tracks (nsws_bridge.js library mode): it tells
+  // the track lists when that list changed, deletes the very track picked (names needn't be unique there) and saves an
+  // imported code as a new track, never over the one open in the editor.
+  ['track store: changed', '(self.__beTrackData = Ml.A),', '(self.__beTrackData = Ml.A),\n            (self.__beTracksChanged = () => (0, R.gn)(this, Bd, "m", Jd).call(this)),'],
+  ['track list: delete this track', '? (0, i.gn)(this, S, "f").deleteCustomTrack(t.name)\n', '? (0, i.gn)(this, S, "f").deleteCustomTrack(t.name, t)\n'],
+  ['track list: delete this track after asking', '((0, i.gn)(this, S, "f").deleteCustomTrack(t.name), this.show());', '((0, i.gn)(this, S, "f").deleteCustomTrack(t.name, t), this.show());'],
+  ['track info: delete this track', '(p.deleteCustomTrack(l.name), g());', '(p.deleteCustomTrack(l.name, l), g());'],
+  ['import saves a new track (overwrite)', '(s.saveCustomTrack(e, a)\n                                      ? i.push({', '(s.saveCustomTrack(e, a, "import")\n                                      ? i.push({'],
+  ['import saves a new track', ': (s.saveCustomTrack(e, a)\n                                  ? i.push({ trackMetadata', ': (s.saveCustomTrack(e, a, "import")\n                                  ? i.push({ trackMetadata'],
   ['categories', '(e[(e.Sign = 8)] = "Sign"));', `(e[(e.Sign = 8)] = "Sign"),\n              ${FAMILIES}.forEach((n, f) => (e[(e[n] = 9 + f)] = n)));`],
   [
     'part class',
@@ -598,6 +607,9 @@ apply('112.bundle.js', [
   ['own name only for the same track', '                          (self.__beOwnName = t?.name ?? null),', '                          (self.__beOwnName = (() => {\n                            try {\n                              const c = null != t?.name ? (0, i.gn)(this, $t, "f").loadCustomTrack(t.name) : null;\n                              return null != c && c.trackData.getId() === e.getId() ? t.name : null;\n                            } catch {\n                              return null;\n                            }\n                          })()),'],
   // Save without a name goes through Track settings: ask there too before overwriting another saved track.
   ['unnamed save asks before overwriting', '                          (0, i.GG)(this, ye, null, "f"),\n                          t(e),\n                          ((0, i.gn)(this, re, "f").className = "editor-ui"));', '                          (0, i.GG)(this, ye, null, "f"),\n                          ((0, i.gn)(this, re, "f").className = "editor-ui"),\n                          (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(e) && self.__beOwnName !== e\n                            ? (((0, i.gn)(this, re, "f").inert = !0),\n                              (0, i.gn)(this, ne, "f").showConfirm(\n                                (0, i.gn)(this, Vt, "f").get(\'Are you sure you want to overwrite "{0}"?\', [e]),\n                                (0, i.gn)(this, Vt, "f").get("Cancel"),\n                                (0, i.gn)(this, Vt, "f").get("Confirm"),\n                                () => {\n                                  (0, i.gn)(this, re, "f").inert = !1;\n                                },\n                                () => {\n                                  (t(e), ((0, i.gn)(this, re, "f").inert = !1));\n                                },\n                              ))\n                            : t(e));'],
+  // NSWS library mode (nsws_bridge.js): which My Tracks entry is open, so Save writes to that entry. Set once the track has
+  // loaded (a failed load keeps the track that was open); dispose clears it ("open track forgotten").
+  ['open track known', '                          (self.__beOwnName = (() => {\n                            try {', '                          self.__beOpened?.(t),\n                          (self.__beOwnName = (() => {\n                            try {'],
   // Clear all's save-first prompt: compare with the track that is open, not the name field (renamed into another track).
   ['clear all asks for another track', '                      name !== before && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)', '                      name !== self.__beOwnName && (0, i.gn)(this, $t, "f").checkCustomTrackNameExists(name)'],
   // tm_assets.js (public assets): the copy tool's box selection picks an asset's blocks, an asset from the library goes
@@ -685,6 +697,7 @@ apply('112.bundle.js', [
             (self.__beAssetEditor = {`,
   ],
   ['cup guard: hooks cleared', '((self.__beAutosave = self.__beEditorOpen = ', '((self.__beCupEditor = self.__beAutosave = self.__beEditorOpen = '],
+  ['open track forgotten', '((self.__beCupEditor = self.__beAutosave = ', '((self.__beOpenKey = self.__beCupEditor = self.__beAutosave = '],
   ['cup guard: part pick', '        ($n = function (t) {\n', '        ($n = function (t) {\n          self.__beCupLock && (t = self.__beCupLock.pick(t, (0, i.gn)(this, Gn, "f")));\n'],
   ['cup guard: category pick', '        (Qn = function (t) {\n', '        (Qn = function (t) {\n          self.__beCupLock && (t = self.__beCupLock.category(t, (0, i.gn)(this, Gn, "f")));\n'],
   ['cup guard: no paste', '        (Dn = function () {\n          null != (0, i.gn)(this, Cn, "f") &&', '        (Dn = function () {\n          !self.__beCupLock?.active() &&\n          null != (0, i.gn)(this, Cn, "f") &&'],

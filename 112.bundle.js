@@ -3202,6 +3202,7 @@
                           ((0, i.gn)(this, ge, "f").disabled = !0),
                           ((0, i.gn)(this, fe, "f").disabled = !0),
                           (0, i.gn)(this, Kt, "m", In).call(this, t),
+                          self.__beOpened?.(t),
                           (self.__beOwnName = (() => {
                             try {
                               const c = null != t?.name ? (0, i.gn)(this, $t, "f").loadCustomTrack(t.name) : null;
@@ -3794,7 +3795,7 @@
             (0, i.gn)(this, me, "f").refresh((0, i.gn)(this, Kt, "a", ti)));
         }
         dispose() {
-          ((self.__beCupEditor = self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = self.__beOwnName = null),
+          ((self.__beOpenKey = self.__beCupEditor = self.__beAutosave = self.__beEditorOpen = self.__beEditorDirty = self.__beEditorCurrent = self.__beOwnName = null),
             (0, i.GG)(this, ae, !1, "f"),
             (0, i.gn)(this, kn, "f")?.dispose(),
             (0, i.gn)(this, me, "f").dispose(),
