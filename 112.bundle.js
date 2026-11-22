@@ -1946,6 +1946,7 @@
           self.TM.ui.refresh();
         }),
         (Jn = function () {
+          this.__beFineGhost = !1;
           for (const t of (0, i.gn)(this, Je, "f"))
             if (((0, i.gn)(this, Xe, "f").remove(t), t.geometry.dispose(), Array.isArray(t.material)))
               for (const e of t.material) e.dispose();
@@ -2030,10 +2031,19 @@
             ((e.material = t.trackPartData?.configuration.tm ? self.TM.ui.ghostMaterial(w, (0, i.gn)(this, je, "f")) : (0, i.gn)(this, je, "f")),
               (0, i.gn)(this, Xe, "f").add(e),
               (0, i.gn)(this, Je, "f").push(e));
-            const n = new w.ZLX((0, i.gn)(this, $e, "f"), (0, i.gn)(this, Qe, "f"), t.tiles.length);
+            const beF = (this.__beFineGhost = !!self.__beGridFine && self.TM.fineOk(t.id)),
+              n = new w.ZLX((0, i.gn)(this, $e, "f"), (0, i.gn)(this, Qe, "f"), t.tiles.length * (beF ? 8 : 1));
             (t.tiles.forEach((t, e, i, s) => {
-              const o = new w.kn4().makeTranslation(t * W.A.partSize, e * W.A.partSize, i * W.A.partSize);
-              n.setMatrixAt(s, o);
+              if (!beF) {
+                const o = new w.kn4().makeTranslation(t * W.A.partSize, e * W.A.partSize, i * W.A.partSize);
+                n.setMatrixAt(s, o);
+              } else
+                for (let q = 0; q < 8; q++) {
+                  const o = new w.kn4()
+                    .makeScale(0.5, 0.5, 0.5)
+                    .setPosition((t + (1 & q) / 2) * W.A.partSize, (e + ((q >> 1) & 1) / 2) * W.A.partSize, (i + (q >> 2) / 2) * W.A.partSize);
+                  n.setMatrixAt(8 * s + q, o);
+                }
             }),
               (0, i.gn)(this, Xe, "f").add(n),
               (0, i.GG)(this, tn, n, "f"));
@@ -3971,6 +3981,8 @@
               ((0, i.gn)(this, qe, "f").position.y < 0.499 &&
                 (((0, i.gn)(this, qe, "f").position.y = 0.5), (0, i.gn)(this, De, "f").update()),
               (0, i.gn)(this, Kt, "m", Tn).call(this),
+              !!this.__beFineGhost != (!!self.__beGridFine && null == (0, i.gn)(this, Wn, "f") && self.TM.fineOk((0, i.gn)(this, Gn, "f")[(0, i.gn)(this, xn, "f")]?.id)) &&
+                (0, i.gn)(this, Kt, "m", Jn).call(this),
               (0, i.GG)(this, rn, void 0 !== this.__beHand ? this.__beHand : (0, i.gn)(this, Kt, "m", oi).call(this), "f"),
               null != (0, i.gn)(this, rn, "f"))
             ) {
