@@ -25,7 +25,7 @@ const G = '(0, R.gn)'; // the bundle's private-field getter in the app scope
 const FAMILIES = '(self.TM.data.families ?? ["Plastic", "Wood", "Stadium", "Ice", "Water"])';
 
 apply('index.html', [
-  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_cull.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="tm_assets.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
+  ['load the block table first', '<script defer="defer" src="error_screen.bundle.js"></script>', '<script defer="defer" src="nsws_prefs.js"></script><script defer="defer" src="tm_parts.js"></script><script defer="defer" src="tm_runtime.js"></script><script defer="defer" src="tm_cull.js"></script><script defer="defer" src="tm_menu.js"></script><script defer="defer" src="tm_water.js"></script><script defer="defer" src="tm_vehicles.js"></script><script defer="defer" src="tm_hud.js"></script><script defer="defer" src="tm_tools.js"></script><script defer="defer" src="tm_assets.js"></script><script defer="defer" src="tm_autodeco_data.js"></script><script defer="defer" src="tm_autodeco.js"></script><script defer="defer" src="error_screen.bundle.js"></script>'],
   ['NSWS bridge', '<script defer="defer" src="main.bundle.js"></script>', '<script defer="defer" src="main.bundle.js"></script><script defer="defer" src="nsws_bridge.js"></script>'],
   // Not So Weekly Shorts' Cuppa Build Off: the finish guard (only does anything when NSWS asks, through nsws_bridge.js).
   ['NSWS cup guard', '<script defer="defer" src="nsws_bridge.js"></script>', '<script defer="defer" src="nsws_bridge.js"></script><script defer="defer" src="nsws_cup.js"></script>'],
@@ -264,7 +264,10 @@ apply('main.bundle.js', [
               n = this.getPart(iu.A.DirtRoadCurve2 ?? iu.A.DirtOpenCurve2 ?? iu.A.DirtPlatBase ?? iu.A.PlasticRoadCurve2);
               break;
             case ru.A.Grass:
-              n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);`,
+              n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);
+              break;
+            case ru.A.Scenery:
+              n = this.getPart(iu.A.SceneryTree ?? iu.A.SceneryTreeBig ?? iu.A.StadiumGrassMound);`,
   ],
   [
     'codec context',

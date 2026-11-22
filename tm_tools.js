@@ -437,5 +437,13 @@ self.TM.tools = (() => {
       drawLine();
       refresh();
     },
+    // The line of the best finished run since the editor opened (else the longest run), for Auto deco
+    // (tm_autodeco.js): [{x, y, z, v}] in world units, or null when nothing was driven. keep(run): which runs count.
+    bestLine(keep = () => true) {
+      const mine = runs.filter(keep),
+        done = mine.filter((r) => r.finish != null);
+      const r = done.length ? done.reduce((a, b) => (b.finish < a.finish ? b : a)) : mine.reduce((a, b) => (!a || b.pts.length > a.pts.length ? b : a), null);
+      return r && r.pts.length > 10 ? { pts: r.pts.map((p) => ({ x: p.x, y: p.y, z: p.z, v: p.v })), finished: r.finish != null } : null;
+    },
   };
 })();

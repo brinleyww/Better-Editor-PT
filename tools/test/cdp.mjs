@@ -5,7 +5,8 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 export async function launch({ port = 9333, width = 1280, height = 800, url = 'about:blank' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bept-'));
   const proc = spawn(CHROME, ['--headless=new', '--remote-debugging-port=' + port, '--user-data-dir=' + dir,
-    '--window-size=' + width + ',' + height, '--no-first-run', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--autoplay-policy=no-user-gesture-required', url], { stdio: 'ignore' });
+    // GPU=1 draws on the graphics card, as the game really looks (screenshots); otherwise the software renderer.
+    '--window-size=' + width + ',' + height, '--no-first-run', ...(process.env.GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--autoplay-policy=no-user-gesture-required', url], { stdio: 'ignore' });
   let target;
   for (let i = 0; i < 100; i++) {
     try { const l = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); target = l.find(t => t.type === 'page'); if (target) break; } catch {}

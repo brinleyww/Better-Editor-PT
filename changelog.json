@@ -1,5 +1,17 @@
 [
     {
+        "id": 9,
+        "changes": [
+            "New Auto deco tab in the editor: pick a theme and it decorates your track with ground, hills and scenery",
+            "Auto deco is a nerfed version of a private autodecorator, with the same idea but a different execution",
+            "Auto deco asks for a test run first so it knows where you drive",
+            "New Scenery category under Grass with 39 rocks, trees, plants, buildings and roadside blocks",
+            "Scenery is solid, except tall grass which you drive through",
+            "Scenery can be recolored with the same colors as normal blocks",
+            "Decorate before you set times, ghosts from the bare track can break on the decorated one"
+        ]
+    },
+    {
         "id": 8,
         "commit": "d3f4dae",
         "changes": [

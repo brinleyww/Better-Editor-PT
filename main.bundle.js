@@ -60557,6 +60557,9 @@
               break;
             case ru.A.Grass:
               n = this.getPart(iu.A.GrassPlatBase ?? iu.A.GrassPlatRound ?? iu.A.GrassRoadCurve2 ?? iu.A.StadiumGrassMound);
+              break;
+            case ru.A.Scenery:
+              n = this.getPart(iu.A.SceneryTree ?? iu.A.SceneryTreeBig ?? iu.A.StadiumGrassMound);
           }
           switch (t) {
             case wl.A.Summer:

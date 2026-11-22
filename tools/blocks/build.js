@@ -11,6 +11,7 @@ const { buildPipes } = require('./pipes');
 const { buildExtras } = require('./extras');
 const { buildStockBlocks } = require('./stockblocks');
 const { buildMagnet, MAGNET_MATS } = require('./magnet');
+const { buildScenery } = require('./scenery');
 const { loadStockParts } = require('./stock/parts');
 const { rasterTiles } = require('./geom');
 
@@ -204,10 +205,48 @@ const MATERIALS = litAll({
   MagnetDeck: '#6a4fd0',
   MagnetDeckB: '#5c43bd',
   MagnetLine: '#9fe8ff',
-}, [...STOCK_MATS, 'FinishBox']);
+  // Scenery (scenery.js): faceted rocks, foliage, bark and the built things Auto deco places. The plain names are the
+  // faces that look up, the B names the rest, so the winter slot can snow on the tops. Added last. Mound is the grass
+  // under a tree, Timber a dead tree's and a log's bark, Fence the fence's planks and Pole the lamp post's paint: each
+  // its own material, so a custom colour paints them and leaves the same colour on other blocks alone.
+  SceneRock: '#8f8b84',
+  SceneRockB: '#7d7972',
+  SceneRockTop: '#6f8f4a',
+  SceneLeaf: '#5aa03c',
+  SceneLeafB: '#3f7f2c',
+  SceneNeedle: '#3f7a40',
+  SceneNeedleB: '#2c5e33',
+  SceneBark: '#5e3f26',
+  SceneGrass: '#5f9a3e',
+  SceneCactus: '#6fae55',
+  SceneCactusB: '#5c9a45',
+  SceneWood: '#8a5d36',
+  SceneWoodB: '#5f3f24',
+  SceneWall: '#e3d6bb',
+  SceneRoof: '#a8382c',
+  SceneRoofB: '#8e2e25',
+  SceneStone: '#a39e94',
+  SceneStoneB: '#8d887f',
+  SceneWindow: '#ffd98a',
+  SceneDark: '#2a2622',
+  SceneCloth: '#d2392e',
+  SceneClothB: '#b8302a',
+  SceneMetal: '#5c6068',
+  SceneSail: '#efe9dc',
+  SceneIce: '#cfeaf7',
+  SceneIceB: '#9fd2ea',
+  SceneSeat: '#2f5fc9',
+  SceneSeatB: '#2852ad',
+  SceneMound: '#5f9a3e',
+  SceneTimber: '#6b5640',
+  SceneFence: '#8a5d36',
+  SceneFenceB: '#5f3f24',
+  ScenePole: '#3d4148',
+}, [...STOCK_MATS, 'FinishBox', 'SceneWindow']);
 
-// Drawn but never collided with: the car sinks through water instead of driving on it.
-const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB', 'FxUltraB', 'FxBumperB', 'FxBumper2B', 'VehGlyph', 'VehIconDark', 'VehSnowB', 'VehRallyB', 'VehDesertB', 'VehStadiumB', 'FinishBox'];
+// Drawn but never collided with: the car sinks through water instead of driving on it, and drives through scenery's
+// tall grass (SceneGrass is only its blades) instead of stopping dead against it.
+const NO_PHYSICS = ['Water', 'WaterSide', 'FxTurboB', 'FxSuperB', 'FxResetB', 'FxNoEngineB', 'FxNoBrakeB', 'FxNoSteerB', 'FxCruiseB', 'FxFragileB', 'FxReactorB', 'FxReactor2B', 'FxSlowB', 'FxUltraB', 'FxBumperB', 'FxBumper2B', 'VehGlyph', 'VehIconDark', 'VehSnowB', 'VehRallyB', 'VehDesertB', 'VehStadiumB', 'FinishBox', 'SceneGrass'];
 // Materials that drive as their own surface wherever they sit inside a part of another one (part.r regions):
 // penalty grass (2) and dirt verges (5).
 const REGION_U = { Grass: 2, GrassB: 2, DirtVerge: 5, DirtVergeB: 5 };
@@ -227,7 +266,53 @@ const lighten = (hex, k) => {
 };
 const plasticSet = (a) => ({ PlasticDeck: a, PlasticDeckB: shade(a, 0.93), PlasticSeam: lighten(a, 0.45) });
 const grassSet = (a) => ({ GrassDeck: a, GrassDeckB: shade(a, 0.87), GrassSeam: shade(a, 0.76), GrassLine: lighten(a, 0.2) });
-const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors, STOCK_MATS) }));
+const litSlots = (slots) => slots.map((q) => ({ id: q.id, colors: litAll(q.colors, [...STOCK_MATS, 'SceneWindow']) }));
+// Scenery (scenery.js) recolours like the game's own blocks. Winter: snow on the faces that look up (both sides of a
+// roof, post tops, cactus tops), everything else frosted. Desert: dry olive leaves, straw grass, dusty cacti, sandstone
+// rock and stone, sun-bleached wood, clay roofs and sun-faded paint and cloth.
+const mixHex = (a, b, k) => {
+  const p = parseInt(a.slice(1), 16),
+    q = parseInt(b.slice(1), 16);
+  return '#' + [16, 8, 0].map((sh) => Math.round(((p >> sh) & 255) * (1 - k) + ((q >> sh) & 255) * k).toString(16).padStart(2, '0')).join('');
+};
+const frost = (hex, k = 0.3) => mixHex(hex, '#e8f0f6', k);
+const fade = (hex, k = 0.3) => mixHex(hex, '#ead9b4', k);
+const SCENE_WINTER = {
+  SceneRockTop: '#f2f6fa', SceneLeaf: '#eef3f6', SceneLeafB: '#5d7d62', SceneNeedle: '#f0f4f7', SceneNeedleB: '#2f5a3c', SceneGrass: '#eef2f5', SceneMound: '#eef2f5',
+  SceneCactus: '#eef3f6', SceneRoof: '#f2f5f8', SceneRoofB: '#dde4ea', SceneFence: '#eef3f6', SceneSail: '#f4f7fa', SceneIce: '#e8f6fd',
+  SceneRock: frost('#8f8b84', 0.15), SceneRockB: frost('#7d7972', 0.15), SceneCactusB: frost('#5c9a45'), SceneBark: frost('#5e3f26'), SceneTimber: frost('#6b5640'),
+  SceneWood: frost('#8a5d36'), SceneWoodB: frost('#5f3f24'), SceneFenceB: frost('#5f3f24'), SceneStone: frost('#a39e94', 0.35), SceneStoneB: frost('#8d887f', 0.35),
+  SceneWall: frost('#e3d6bb'), SceneMetal: frost('#5c6068'), ScenePole: frost('#3d4148'),
+  SceneCloth: frost('#d2392e', 0.2), SceneClothB: frost('#b8302a', 0.2), SceneSeat: frost('#2f5fc9', 0.2), SceneSeatB: frost('#2852ad', 0.2),
+};
+const SCENE_DESERT = {
+  SceneRock: '#c4a273', SceneRockB: '#ad8c60', SceneRockTop: '#dcc092', SceneStone: '#cdb58c', SceneStoneB: '#b89f77',
+  SceneLeaf: '#9c9c4c', SceneLeafB: '#7d7d3a', SceneNeedle: '#76803a', SceneNeedleB: '#5c652d', SceneGrass: '#cdb86c', SceneMound: '#c9b06a',
+  SceneCactus: '#a4b56e', SceneCactusB: '#86a05a', SceneBark: fade('#5e3f26', 0.2),
+  SceneWood: '#a8784a', SceneTimber: '#a08a6c', SceneFence: '#b38a5a', SceneFenceB: '#94703f', SceneWall: '#ead6ad', SceneRoof: '#c06a3c', SceneRoofB: '#a65a32',
+  SceneMetal: fade('#5c6068', 0.25), ScenePole: fade('#3d4148', 0.25), SceneSail: '#f0e2c4',
+  SceneCloth: fade('#d2392e'), SceneClothB: fade('#b8302a'), SceneSeat: fade('#2f5fc9'), SceneSeatB: fade('#2852ad'),
+};
+// Custom slots, in CUSTOM_IDS order (black, red, orange, yellow, green, teal, blue, purple, brown), the game's own order:
+// each block's main part takes the slot's colour in a shade that suits it. Leaves, needles, grass and cacti the leaf
+// shade; rock and stone the rock shade; dead wood, logs and fences the wood kit's colours; roofs, cloth, seats, the lamp
+// post's paint, windmill sails (pale) and ice crystals (as gems) the plastic colours.
+const SCENE_LEAF = ['#2e3a2c', '#b8302a', '#e07a26', '#e9c43a', '#2f8a3a', '#1f9d8f', '#3a6fd0', '#8a46c0', '#7a5230'];
+const SCENE_ROCK = ['#3e3f44', '#8e4434', '#b8693c', '#cfb072', '#6f8a6a', '#4f8c88', '#5a6a8e', '#6e5a82', '#7d6248'];
+const sceneSlot = (i) => {
+  const l = SCENE_LEAF[i],
+    k = SCENE_ROCK[i],
+    c = PLASTIC_CUSTOM[i],
+    w = WOOD_CUSTOM[i];
+  return {
+    SceneLeaf: l, SceneLeafB: shade(l, 0.78), SceneNeedle: shade(l, 0.92), SceneNeedleB: shade(l, 0.72),
+    SceneGrass: lighten(l, 0.08), SceneCactus: lighten(l, 0.08), SceneCactusB: shade(l, 0.95),
+    SceneRock: k, SceneRockB: shade(k, 0.88), SceneRockTop: lighten(k, 0.12), SceneStone: lighten(k, 0.1), SceneStoneB: shade(k, 0.93),
+    SceneTimber: w, SceneFence: lighten(w, 0.12), SceneFenceB: shade(w, 0.85),
+    SceneRoof: c, SceneRoofB: shade(c, 0.85), SceneCloth: c, SceneClothB: shade(c, 0.86), SceneSeat: c, SceneSeatB: shade(c, 0.88),
+    ScenePole: c, SceneSail: lighten(c, 0.6), SceneIce: lighten(c, 0.35), SceneIceB: c,
+  };
+};
 // Stock barriers recolour with the season the way stock roads do (main.bundle.js environment colours).
 const BARRIER = { 2: { RoadBarrier: '#898989' }, 3: { RoadBarrier: '#211001' } };
 // So does the bump road, which joins the stock road: its Road, RoadEdgeRed and RoadEdgeWhite per season.
@@ -283,10 +368,18 @@ const PALETTES = {
     { id: 3, colors: { ...ROAD_KIT(3), Grass: '#c9a86a', GrassB: '#bf9c5e', Concrete: '#c9b38f' } },
     ...CUSTOM_IDS.map((id, i) => ({ id, colors: { Concrete: PLASTIC_CUSTOM[i] } })),
   ]),
+  // Scenery: its own category, after Grass in the editor.
+  Scenery: litSlots([
+    { id: 1, colors: {} },
+    { id: 2, colors: SCENE_WINTER },
+    { id: 3, colors: SCENE_DESERT },
+    ...CUSTOM_IDS.map((id, i) => ({ id, colors: sceneSlot(i) })),
+  ]),
 };
 // part.f: the editor category, in TM_DATA.families order.
-// RoadKit has no category of its own: its blocks go in the stock Road browser (patch.js, tm_menu.js).
-const FAMILIES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water', 'Dirt', 'Grass', 'RoadKit'];
+// RoadKit has no category of its own: its blocks go in the stock Road browser (patch.js, tm_menu.js). New families go
+// last, so no block's f changes; the editor puts Scenery's button right after Grass's.
+const FAMILIES = ['Plastic', 'Wood', 'Stadium', 'Ice', 'Water', 'Dirt', 'Grass', 'RoadKit', 'Scenery'];
 const FAMILY_TITLE = { RoadKit: 'Road (new blocks in the stock Road browser)' };
 const SURFACE_INDEX = Object.fromEntries(FAMILIES.map((n, i) => [n, i]));
 // part.u when a part does not set its own: the kit's physics surface (tm_runtime.js SURFACES).
@@ -429,13 +522,13 @@ function main(stock) {
   const reg = fs.existsSync(idsFile) ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : {};
   let nextId = Math.max(FIRST_ID - 1, ...Object.values(reg)) + 1;
   // New kits and sets go at the end: ids are handed out in this order the first time a block is built.
-  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras(), ...buildSurface('RoadKit'), ...buildStockBlocks(stock), ...buildMagnet()];
+  const parts = [...buildSurface('Plastic'), ...buildSurface('Wood'), ...buildShared(), ...buildIce(), ...buildSurface('Dirt'), ...buildSurface('Grass'), ...buildPipes(), ...buildExtras(), ...buildSurface('RoadKit'), ...buildStockBlocks(stock), ...buildMagnet(), ...buildScenery()];
   // Collision meshes: the same blocks built again without the surface patterns. The pattern strips are coplanar,
   // so they only cost the physics time; the plain mesh has the same shape with far fewer triangles.
   process.env.BE_PLAIN = '1';
   for (const k of Object.keys(require.cache)) if (k.includes(path.sep + 'blocks' + path.sep)) delete require.cache[k];
   const C = require('./catalog');
-  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass'), ...require('./pipes').buildPipes(), ...require('./extras').buildExtras(), ...C.buildSurface('RoadKit'), ...require('./stockblocks').buildStockBlocks(stock), ...require('./magnet').buildMagnet()].map((q) => [q.name, q.mesh]));
+  const plain = new Map([...C.buildSurface('Plastic'), ...C.buildSurface('Wood'), ...require('./shared').buildShared(), ...require('./ice').buildIce(), ...C.buildSurface('Dirt'), ...C.buildSurface('Grass'), ...require('./pipes').buildPipes(), ...require('./extras').buildExtras(), ...C.buildSurface('RoadKit'), ...require('./stockblocks').buildStockBlocks(stock), ...require('./magnet').buildMagnet(), ...require('./scenery').buildScenery()].map((q) => [q.name, q.mesh]));
   delete process.env.BE_PLAIN;
   const seen = new Set();
   const matNames = Object.keys(MATERIALS),

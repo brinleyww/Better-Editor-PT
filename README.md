@@ -1,6 +1,6 @@
 # Better Editor PT
 
-An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 3,733 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
+An unofficial mod of [PolyTrack](https://www.kodub.com/) 0.6.2 by Kodub that runs as a static web site. It adds 3,772 editor blocks inspired by Trackmania 2020's plastic, wood, ice, water, dirt and grass kits, plus a Stadium category and a Scenery category. Each surface drives differently, vehicle gates turn the car into Trackmania's Snow, Rally or Desert car, tyres get wet, icy and muddy, and turbos, bumpers, reactor boosts and the other effect plates work. Tracks share as normal track codes.
 
 All block models are generated from code in `tools/blocks/`. No Trackmania assets are used. PolyTrack itself belongs to Kodub; its original files are kept untouched in `_original/`.
 
@@ -34,6 +34,7 @@ Seven new categories sit near the top of the editor's block column, under the er
 | Water (14) | Pools, Shallow water, Water road |
 | Dirt (710) | Dirt road, Railed road, Wide road, Open road, Narrow road, Platform, Blocks, Wall track, Penalty grass, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
 | Grass (469) | Railed road, Wide road, Open road, Platform, Blocks, Wall track, Walls and loops, Half-pipe, Gates, Effects, Vehicle gates, Connectors, Deco |
+| Scenery (39) | Rocks, Trees, Plants, Buildings, Roadside: modelled rocks, trees, plants, buildings and roadside things, solid like any block (see Auto deco) |
 
 The full list is in [docs/BLOCKS.md](docs/BLOCKS.md). The road kits cover straights, junctions, five curve radii, chicanes, three slope grades, crests and dips, banked roads and curves, diagonals, loops, wall rides, half-pipes, connectors, gates and effect plates. Every kit has vehicle gates. The bump road is Trackmania's sausage road: a rounded crown with the stock road's kerbs.
 
@@ -133,6 +134,24 @@ The grid button (bottom left) now has three steps: large (a whole block), small 
 - **Driving line:** every Test run is recorded. Back in the editor, the line you drove is drawn on the track, coloured from blue (slow) to red (your top speed), with a pin where the run ended: green on a finish, red where the car stopped, fell or was reset. Hover the line to see the speed and race time at that point.
 - **Runs** (the tab next to the track name): it shows your last time, and opens a list of the runs since the editor opened, with the finish time and gap to the best, or how many checkpoints a run reached. Click a run to show its line; **Go to end** moves the camera to where it ended. **Line: On/Off** hides or shows the line.
 - **Recovery:** unsaved changes are copied to the browser every few seconds. If the tab closes or crashes before you save, the editor offers them back the next time it opens. Embedded in NSWS, NSWS saves the track instead.
+
+### Auto deco
+
+The **Auto deco** tab beside Assets decorates the open track around its route, the way a person would in the editor rather than by scattering blocks. Pick a theme (Meadow, Autumn, Winter, Desert) and how much (Light, Normal, Lots), then **Decorate**. With no finished Test run of the route as it is now, it asks first: **Test run** starts one and brings the panel back afterwards, **Decorate anyway** goes on with a guessed route. A run stops counting when the road or the gates change. Every press makes a new random layout, so pressing it again gives a different decoration in place of the last one. It is one undo step, and **Remove** takes the last decoration away. It never moves, recolours or removes the track's own parts.
+
+- **The route.** It uses the line of your best Test run since the editor opened (or your last one), so scenery keeps clear of where you actually drove and flew. With no run yet it follows the road from the start through the checkpoints to the finish, driving over road it already crossed where the route shares it, and bridging only real gaps as jumps.
+- **Clear of the driving.** Scenery stays off the road, the space over it, the layer under it and the driving line (with more room round jumps). After a Test run nothing at all, ground included, goes where the car's body went. Without one the route is a guess: it cannot know shortcuts, wide lines or where a jump really flies, and ground or scenery can end up in their way, so drive a Test run first.
+- **The underbody, always.** Under every road piece it places the stock block whose top follows the road's deck exactly (flat, 1:2 and 1:4 slopes, quarter-pipe feet, gates; measured from the meshes by [tools/autodeco/twins.js](tools/autodeco/twins.js) for every stock and new road piece), fills it down to the floor, widens it a cell beside the road and slopes the ground back down to the floor all round, two layers a cell, like an embankment. Anything still open under a deck (pieces side by side on the fine grid, a turn's corner cells) gets a block under it too. A last pass closes what is left whatever the part is (road on its side, the track's own blocks, pillars, the ground itself), with blocks on their sides for gaps a tile wide, and turns bare floor walled in by ground into ground. It leaves open only what a car may drive in: space over any track part, beside a lower road, in front of a driving face or under an upside-down one, and floor beside road a layer or less off it. A gap too small for any block also stays. Banked pieces with no matching block get a level plinth under their low edge. Road more than 16 layers up gets a floating island instead: every cell within two of the road, level with its underside, three layers thick, rounded at the corners, with a ragged rock underside.
+- **Landforms.** Hills behind the outside of the bigger turns and a couple far out to close the view, built from the stock sloped blocks.
+- **One colour scheme per decoration.** Each press picks one of the theme's looks: a main leaf colour and at most one accent, and one colour each for rock, roofs, flags and stands, lamp posts and fences, so everything belongs together (autumn, for example, is orange groves with a red or yellow one among them, green pines and straw-coloured grass).
+- **Composed, not scattered.** Groves are one kind of tree in one colour, laid out like a real clump: the biggest in the middle, medium ones round it, small ones at the edge and bushes on the side towards the road, now and then with a fallen trunk. Rocks come as outcrops (a boulder with smaller rocks round it). Round each turn: a grove on the outside (two along a long one), tall grass along its outside edge, chevrons before the sharp ones, and a house with trees behind it, an outcrop or a small grove on the inside where there is room. A landmark stands outside the biggest turn (a windmill, a ruined tower, a lighthouse, a mesa or a rock arch, by theme), a grandstand and flags at the start and finish, and a flag either side of every checkpoint. Straights get lamps on one side and a fence with a line of the same tree behind it on the other; hills get a grove or an outcrop on top; bare stretches a grove; and a few bigger woods further out close the view.
+
+The scenery comes from the **Scenery** category, right below Grass ([tools/blocks/scenery.js](tools/blocks/scenery.js)), in five tabs: Rocks (faceted rocks, boulders, a spire, cliffs, a mesa, a rock arch and ice crystals), Trees (five sizes, a bent and a tall one, pines, a palm and a dead tree), Plants (bushes, tall grass, cacti and a log), Buildings (a cabin, a house, a windmill, a ruined tower, a lighthouse and a grandstand) and Roadside (a fence, a stone wall, a lamp post and a flag). They can be placed by hand too.
+
+- **Solid,** except tall grass. A car hits trunks, rocks, walls, poles, bushes and cacti, and can land and drive on rocks and roofs, gripping like stock road; the collision is the drawn shape. Tall grass is drawn only, so cars drive straight through it.
+- **Recolourable like the game's own blocks**, with the same colour buttons beside the block list. Default follows the environment. Summer is as modelled, Winter puts snow on everything that faces up, and Desert dries the leaves and grass and turns rock and stone to sandstone. Each of the nine custom colours (black, red, orange, yellow, green, teal, blue, purple, brown) paints the block's main part in a shade that suits it: leaves and needles, grass, cacti, rock and stone, a dead tree's or a log's bark, fence planks, roofs, flags, lighthouse stripes, seats and canopies, the lamp post, windmill sails and ice crystals. Trunks, plaster walls, windows and the grass under a tree keep their colour.
+
+Only scenery blocks and stock parts are added, and both are solid (apart from tall grass), so a car that leaves the road hits them or lands on them. A decorated track is not bit-for-bit the same to drive, even on the road: a stock block touching the underside of a deck moves the car by millionths of a unit, and our blocks share one collision mesh with the background mountain. That cannot be felt, but an input-only replay recorded on the bare track (a personal best, a ghost) can drift until it misses the finish. Decorate before setting times.
 
 ## Track codes
 
@@ -268,7 +287,7 @@ Each mesh entry is `[material, positionsOffset, floatCount, indicesOffset, index
 
 ## Making your own blocks
 
-Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt, grass and the road kit), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), [tools/blocks/pipes.js](tools/blocks/pipes.js) (pipes) and [tools/blocks/extras.js](tools/blocks/extras.js) (platform hills, obstacles and diagonals, snow platforms, the water road, stands) and [tools/blocks/stockblocks.js](tools/blocks/stockblocks.js) (the stock game's shapes in each kit's look: [tools/blocks/stock/parts.js](tools/blocks/stock/parts.js) reads the stock part list out of the game and its models, and the kit's pattern is cut into the driving faces), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
+Blocks are defined in code in [tools/blocks/catalog.js](tools/blocks/catalog.js) (plastic, wood, dirt, grass and the road kit), [tools/blocks/ice.js](tools/blocks/ice.js) (ice) and [tools/blocks/shared.js](tools/blocks/shared.js) (Stadium and water), [tools/blocks/pipes.js](tools/blocks/pipes.js) (pipes) and [tools/blocks/extras.js](tools/blocks/extras.js) (platform hills, obstacles and diagonals, snow platforms, the water road, stands) and [tools/blocks/scenery.js](tools/blocks/scenery.js) (the Scenery category: faceted rocks, trees, plants and buildings) and [tools/blocks/stockblocks.js](tools/blocks/stockblocks.js) (the stock game's shapes in each kit's look: [tools/blocks/stock/parts.js](tools/blocks/stock/parts.js) reads the stock part list out of the game and its models, and the kit's pattern is cut into the driving faces), using the helpers in [tools/blocks/geom.js](tools/blocks/geom.js): profile sweeps along paths, surface patches, prisms and boxes. Colours are in [tools/blocks/build.js](tools/blocks/build.js).
 
 ```bash
 cd tools && npm install
@@ -276,6 +295,8 @@ node blocks/build.js
 ```
 
 This writes `tm_parts.js`, `models/tm_blocks.bin` and `docs/BLOCKS.md`. New names get the next free id. Never renumber or remove entries in `ids.json`, or existing codes will point at the wrong blocks.
+
+Auto deco reads `tm_autodeco_data.js`, made by `node tools/autodeco/twins.js` (which stock blocks fit under each driving part, from the meshes; about 5 minutes) and then `node tools/autodeco/data.js`. Run both again after adding road blocks. To check it, `node tools/test/autodeco.mjs <code file> [theme ...]` does it in the editor (with `GPU=1` for screenshots as the game looks).
 
 Rules the build enforces: no geometry below the part's own layer, known materials only, and no more than 66 distinct trigger boxes (the spare one-byte ids).
 
@@ -296,6 +317,7 @@ This formats `_original/app` into `_original/formatted`, copies the assets to th
 | `_original/app` | Untouched PolyTrack 0.6.2 files |
 | `_original/formatted` | The same bundles, formatted; the input to `patch.js` |
 | `tools/blocks` | Block generator |
+| `tools/autodeco` | Auto deco's tables (road ground fits, part ids, orientations) and an offline renderer |
 | `tools/patch.js`, `tools/deobfuscate.js`, `tools/build-all.js` | Build steps |
 | `tools/physics-bump.js`, `physics.json` | Physics version for leaderboards that keep runs (see How the physics fits in) |
 | `tools/test` | Headless Chrome tests that drive real cars (they expect Chrome at the standard Windows install path) |
