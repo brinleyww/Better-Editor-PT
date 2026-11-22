@@ -44,18 +44,41 @@ self.TM.tools = (() => {
   let nextId = 1;
 
   // ---- recording ----------------------------------------------------------------------------------------------
-  function car(obj, s) {
-    if (!testing || !s || !s.position) return;
-    const f = s.frames;
-    if (!current || obj !== carRef || f < current.last) {
+  // own: false for ghosts, which are updated like the player's car. A run is listed once the car sets off and ends
+  // on the physics frame it finishes, not on the next drawn one: nothing counts from there until the reset.
+  function car(obj, s, own) {
+    if (!testing || own === false || !s || !s.position || s.finishFrames != null) return;
+    if (!current || obj !== carRef || s.frames < current.last) {
+      const r = { id: null, pts: [], last: -Infinity, cp: 0, total: checkpoints, finish: null, max: 0 };
       carRef = obj;
-      current = { id: nextId++, pts: [], last: -Infinity, cp: 0, total: checkpoints, finish: null, max: 0 };
-      runs.push(current);
-      if (runs.length > MAX_RUNS) runs.shift();
+      current = r;
+      obj.addFinishCallback(() => {
+        if (!testing || r !== current) return;
+        const end = obj.getCarState();
+        list(r);
+        point(r, end);
+        r.finish = end.finishFrames;
+      });
     }
-    const r = current;
-    if (r.finish != null || f - r.last < STEP) return;
-    const p = s.position,
+    if (s.hasStarted) list(current);
+    if (s.frames - current.last >= STEP) point(current, s);
+  }
+
+  // Over the limit the oldest run without a finish goes first, then the oldest finish that isn't the best.
+  function list(r) {
+    if (r.id != null) return;
+    r.id = nextId++;
+    runs.push(r);
+    if (runs.length <= MAX_RUNS) return;
+    const past = runs.slice(0, -1),
+      best = Math.min(...past.map((o) => o.finish ?? Infinity)),
+      drop = past.find((o) => o.finish == null) ?? past.find((o) => o.finish > best) ?? past[0];
+    runs.splice(runs.indexOf(drop), 1);
+  }
+
+  function point(r, s) {
+    const f = s.frames,
+      p = s.position,
       q = s.quaternion,
       prev = r.pts[r.pts.length - 1];
     r.pts.push({
@@ -76,7 +99,6 @@ self.TM.tools = (() => {
     r.last = f;
     r.cp = s.nextCheckpointIndex ?? r.cp;
     r.max = Math.max(r.max, Math.abs(s.speedKmh ?? 0));
-    if (s.finishFrames != null) r.finish = s.finishFrames;
   }
 
   // ---- the line -----------------------------------------------------------------------------------------------

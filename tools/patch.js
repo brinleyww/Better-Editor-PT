@@ -46,7 +46,7 @@ apply('main.bundle.js', [
   ['editor starter', '            J = (t, i, a, c, h) => {', '            beStart = (self.__beStartEditor = Q),\n            J = (t, i, a, c, h) => {'],
   // tm_water.js: splashes and spray where a car meets water.
   ['water splashes know the track', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"));', '((0, l.GG)(this, ee, e.id, "f"), (0, l.GG)(this, te, e.carState, "f"), self.TM.water.track(this, h));'],
-  ['water splashes each frame', '(0, l.gn)(this, Ne, "f")?.update(e),', '(0, l.gn)(this, Ne, "f")?.update(e),\n              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),\n              self.TM.tools.car(this, (0, l.gn)(this, te, "f")),'],
+  ['water splashes each frame', '(0, l.gn)(this, Ne, "f")?.update(e),', '(0, l.gn)(this, Ne, "f")?.update(e),\n              self.TM.water.update(this, (0, l.gn)(this, ge, "f"), e, (0, l.gn)(this, te, "f"), c),\n              self.TM.tools.car(this, (0, l.gn)(this, te, "f"), null != (0, l.gn)(this, ee, "f")),'],
   ['water splashes end with the car', '(0, l.gn)(this, Ne, "f")?.dispose());', '(0, l.gn)(this, Ne, "f")?.dispose(),\n              self.TM.water.dispose(this));'],
   // tm_hud.js: the effect banner and wheel info follow every physics frame's state, for the car the speedometer shows.
   ['HUD sees every car state', '(0, l.GG)(this, te, e, "f");\n            const i = 0.001;', '(0, l.GG)(this, te, e, "f");\n            self.TM.hud.state(this, e);\n            const i = 0.001;'],

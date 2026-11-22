@@ -1,5 +1,12 @@
 [
     {
+        "id": 10,
+        "changes": [
+            "Finished test runs show up in Runs and Auto deco again, even after you reset or leave right away",
+            "Test run lines stop at the finish, so driving after it until you reset does not count"
+        ]
+    },
+    {
         "id": 9,
         "changes": [
             "New Auto deco tab in the editor: pick a theme and it decorates your track with ground, hills and scenery",
