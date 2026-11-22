@@ -573,9 +573,8 @@
       const amount = opts.amount ?? 1;
       const r = rng(opts.seed ?? 1);
       const T = readTrack(parts);
-      const notes = [];
       const out = [];
-      if (!T.roadTiles.length) return { add: [], notes: ['No road to decorate around.'], stats: {} };
+      if (!T.roadTiles.length) return { add: [], message: 'No road to decorate around.', stats: {} };
       const drove = !!opts.run && opts.run.length > 10;
       // A run that did not finish still keeps the space it went through clear, but the route is the road's.
       const runLine = drove && !opts.partial ? lineFromRun(T, opts.run) : null;
@@ -816,8 +815,6 @@
       const blockColour = new Map(); // tiles of the track's own stock blocks -> their colour
       for (const p of parts) if (BLOCK_CAT.has(p.id)) for (const [x, y, z] of worldTiles(p)) blockColour.set(K(x, y, z), p.color || 0);
       const islandRoad = []; // cells of road high in the air, with the layer its ground's top is at
-      let twins = 0,
-        plinths = 0;
       for (const p of parts) {
         // Stock ground only goes on whole steps: the passes below put it under road on half steps.
         if (!isRoad(p.id) || (p.axis || 0) != 0 || !onSteps(p)) continue;
@@ -836,7 +833,6 @@
             const b = o('Block', Math.floor(c / 8192) - 4096, lowest - 1, (c % 8192) - 4096, 0, 0, theme.ground);
             if (!fits([b], blockedUnder, null, anyGround)) continue;
             add([b]);
-            plinths++;
             noteGround(b, floor);
             fillUnder(b, theme.ground, floor);
           }
@@ -857,7 +853,6 @@
             break;
           }
           add([piece]);
-          twins++;
           fillUnder(piece, theme.ground, floor);
           if (island) {
             const snap = (v, ph) => Math.round((v - ph) / 4) * 4 + ph;
@@ -880,7 +875,6 @@
       // Anything still open under a road deck (a twin that did not fit, pieces side by side on the fine grid, a turn's
       // corner cells): a block under each open column, its top at the deck's lowest layer there, tried on the piece's own
       // grid first and then shifted until it fits, filled to the floor and sloped round like the rest.
-      let plugs = 0;
       for (const p of parts) {
         if (!isRoad(p.id) || (p.axis || 0) != 0) continue;
         const low = new Map();
@@ -903,7 +897,6 @@
               continue;
             }
             add([b]);
-            plugs++;
             noteGround(b, 0);
             fillUnder(b, theme.ground, 0);
             break;
@@ -925,7 +918,6 @@
               if (!e || d < e.d || (d == e.d && c.top < e.top)) nearC.set(k, { d, top: c.top, cx: c.cx + 4 * i, cz: c.cz + 4 * j });
             }
         const isIn = (cx, cz) => nearC.has(K2(cx, cz));
-        let isl = 0;
         for (const { cx, cz, top } of nearC.values()) {
           if (top < 4 || taken.has(K(cx, top - 1, cz))) continue;
           const outN = !isIn(cx, cz - 4),
@@ -936,14 +928,11 @@
           const head = corner >= 0 ? o('BlockOuterCorner', cx, top - 1, cz, corner, 0, theme.ground) : o('Block', cx, top - 1, cz, 0, 0, theme.ground);
           if (!fits([head], blockedGround)) continue;
           add([head]);
-          isl++;
           fillUnder(head, theme.ground, top - 3);
           if (corner < 0) for (let x = cx - 2; x < cx + 2; x++) for (let z = cz - 2; z < cz + 2; z++) if (!T.roadCols.has(K2(x, z))) groundTop.set(K2(x, z), top);
           latOf(cx, cz).fixedCells.add(K2(cx, cz));
         }
-        if (isl) notes.push(`A floating island of ${isl} cells under the road that runs high.`);
       }
-      if (twins || plinths || plugs) notes.push(`Underbody: ${twins} pieces that follow the road's shape${plinths ? `, ${plinths} under banked pieces` : ''}${plugs ? `, ${plugs} closing the gaps` : ''}, filled down and sloped back to the floor.`);
 
       // ---- landforms: hills behind the outside of the bigger turns, a few far out ----
       const hills = [];
@@ -985,7 +974,6 @@
               const k = vkey(cx - 2 + 4 * i, cz - 2 + 4 * j);
               if (!main.fixedV.has(k)) main.V.set(k, Math.max(main.V.get(k) ?? 0, v));
             }
-          notes.push(h.why[0].toUpperCase() + h.why.slice(1) + '.');
         }
       }
 
@@ -1085,7 +1073,6 @@
           if (top && top.id != S.Block) for (let x = cx - 2; x < cx + 2; x++) for (let z = cz - 2; z < cz + 2; z++) if (!T.roadCols.has(K2(x, z))) slopeTop.set(K2(x, z), base);
         }
       }
-      if (pieces.length) notes.push(`Slopes and landforms: ${pieces.length} ground pieces.`);
       // ---- no holes: whatever the piece passes above left open ----
       // Works on tiles, whatever the part is (road on its side, the track's own blocks, pillars, our own ground):
       // a. air under any of it is filled to the floor (four layers of it under road higher than an island starts), except
@@ -1155,7 +1142,6 @@
         // less than their faces, and cars hit them.
         const shape = (name, rot, axis) => ({ id: A.stock[name], rot, axis, ts: tiles(A.stock[name], rot, axis) });
         const boxes = [shape('Block', 0, 0), ...[2, 3, 4, 5].map((a) => shape('Block', 0, a))];
-        let closed = 0;
         const cover = (want, why) => {
           const todo = new Set(want.map(([x, y, z]) => K(x, y, z))),
             wanted = new Set(todo);
@@ -1197,7 +1183,6 @@
               if (!best) continue;
               const p = { id: best.s.id, x: best.px, y: best.py, z: best.pz, rot: best.s.rot, axis: best.s.axis, color: theme.ground };
               add([p]);
-              closed++;
               for (const [tx, ty, tz] of worldTiles(p)) {
                 const k = K(tx, ty, tz);
                 todo.delete(k);
@@ -1312,7 +1297,6 @@
           }
           cover(pocket, 'pocket');
         }
-        if (closed) notes.push(`Holes closed: ${closed} blocks under and between what stood open.`);
       }
       // Leave out ground blocks buried on every side: nobody can see them.
       {
@@ -1435,7 +1419,6 @@
       // A grove round (cx, cz): one kind of tree in one colour (the main one, now and then the accent), the biggest in
       // the middle, medium ones in a ring round it, small ones in an outer ring, bushes of the same colour on the side
       // towards the road (tx, tz) and, now and then, a fallen trunk or a dead tree at its edge.
-      let groves = 0;
       function grove(cx, cz, size, why, tx = 0, tz = 0, kind = pickKind()) {
         const Kd = KINDS[kind],
           col = kindColour(kind, look.leaf[1] != look.leaf[0] && r() < 0.3);
@@ -1464,11 +1447,9 @@
           const a = r() * TAU;
           if (putModel(r.pick(['Log', 'TreeDead']), look.timber, true, cx + Math.cos(a) * 11, cz + Math.sin(a) * 11, r.int(0, 3), why, 3, 60, 2)) n++;
         }
-        if (n) groves++;
         return n;
       }
       // An outcrop: a boulder (big: a big boulder, a cliff or a spire) with three smaller rocks round it, one colour.
-      let outcrops = 0;
       function outcrop(cx, cz, why, big = false) {
         if (!putModel(r.pick(big ? ['BoulderBig', 'Cliff', 'RockSpire'] : ['Boulder', 'Rocks']), look.rock, true, cx, cz, r.int(0, 3), why, 3, 60, 3)) return 0;
         const { x, z } = last();
@@ -1479,11 +1460,9 @@
             d = (big ? 10 : 6.5) + r() * 2;
           if (putModel(r.pick(['Rock', 'RockSmall', 'RockFlat']), look.rock, true, x + Math.cos(a) * d, z + Math.sin(a) * d, r.int(0, 3), why, 2, 60, 2)) n++;
         }
-        outcrops++;
         return n;
       }
       // A home: a house facing the road with two trees behind it.
-      let homes = 0;
       function home(x, z, k, why) {
         if (!putModel(r.pick(['Cabin', 'House']), look.roof, false, x, z, k, why, 3, 20, 3)) return 0;
         const h = last(),
@@ -1491,7 +1470,6 @@
           tree = r.pick(theme.homeTrees),
           col = KINDS[theme.groves[0][0]].colour == 'pine' || tree.startsWith('Pine') ? look.pine : look.leaf[0];
         for (const s of [-1, 1]) putModel(tree, col, true, h.x - fx * 9 + fz * s * 6, h.z - fz * 9 - fx * s * 6, r.int(0, 3), why, 3, 40, 2);
-        homes++;
         return 1;
       }
       const feature = (what, x, z, k, why, tx, tz) =>
@@ -1511,8 +1489,7 @@
         const k = facing(S[i].x - x, S[i].z - z);
         const m = r.pick(theme.landmark),
           rocky = m == 'Mesa' || m == 'RockArch';
-        if (putModel(m, rocky ? look.rock : m == 'Lighthouse' ? look.cloth : look.roof, rocky, x, z, k, t ? `landmark outside the ${t.left ? 'left' : 'right'} turn, seen all the way round it` : 'landmark beside the longest straight', 6, 30, 8))
-          notes.push(last().why[0].toUpperCase() + last().why.slice(1) + '.');
+        putModel(m, rocky ? look.rock : m == 'Lighthouse' ? look.cloth : look.roof, rocky, x, z, k, t ? `landmark outside the ${t.left ? 'left' : 'right'} turn, seen all the way round it` : 'landmark beside the longest straight', 6, 30, 8);
       }
       // 2. Stands at the start and the finish, facing the road, with a flag either side in the same colour.
       const stands = (idx, what) => {
@@ -1523,7 +1500,7 @@
         const sides = spaceOn(p, true) >= spaceOn(p, false) ? [true, false] : [false, true];
         for (const left of sides.slice(0, what == 'finish' ? 2 : 1)) {
           const [x, z, nx, nz] = outFrom(p, left, 5);
-          if (putModel('Stand', look.cloth, false, x, z, facing(-nx, -nz), `stand beside the ${what}`, 2, 12, 4)) notes.push(`A stand beside the ${what}.`);
+          putModel('Stand', look.cloth, false, x, z, facing(-nx, -nz), `stand beside the ${what}`, 2, 12, 4);
         }
         for (const off of [-6, 6]) {
           const q = S[Math.max(0, Math.min(S.length - 1, i + off))];
@@ -1544,8 +1521,6 @@
       }
       // 4. The turns: a grove round the outside (two along a long one), a verge of tall grass along the outside edge,
       // chevrons before the sharp ones, and one feature on the inside where there is room.
-      let chevrons = 0,
-        verge = 0;
       for (const t of turnsBySize) {
         const outside = !t.left;
         const len = t.i1 - t.i0;
@@ -1558,14 +1533,14 @@
         if (theme.verge)
           for (let i = t.i0; i <= t.i1; i += 3) {
             const [x, z] = outFrom(S[i], outside, 0.5);
-            if (putModel(theme.verge, look.grass, true, x, z, r.int(0, 3), 'tall grass along the outside of a turn', 1, 2.5, 1)) verge++;
+            putModel(theme.verge, look.grass, true, x, z, r.int(0, 3), 'tall grass along the outside of a turn', 1, 2.5, 1);
           }
         if (Math.abs(t.angle) >= (70 * Math.PI) / 180 && t.radius < 16) {
           for (const f of [0.15, 0.45]) {
             const p = S[Math.round(t.i0 + f * len)];
             const [x, z] = outFrom(p, outside, 1);
             const sign = t.left ? 'SignArrowLeft' : 'SignArrowRight';
-            if (putAt([turnPart(o(sign, 0, 0, 2, 0, 0, 0), facing(p.hx, p.hz))], false, sign, x, z, 'chevron on the outside of a sharp turn', 1, 4, 2)) chevrons++;
+            putAt([turnPart(o(sign, 0, 0, 2, 0, 0, 0), facing(p.hx, p.hz))], false, sign, x, z, 'chevron on the outside of a sharp turn', 1, 4, 2);
           }
         }
         const p = S[t.apex];
@@ -1574,12 +1549,8 @@
           if (!crowded(x, z, 8, 3)) feature(r.pick(theme.inside), x, z, facing(-nx, -nz), `on the inside of the ${t.left ? 'left' : 'right'} turn`, -nx, -nz);
         }
       }
-      if (chevrons) notes.push(`Chevrons before the sharp turns: ${chevrons}.`);
       // 5. Straights: lamps at an even spacing along one side, facing the road; a fence along the other, and on long
       // ones a line of the same tree behind it.
-      let lamps = 0,
-        fences = 0,
-        rows = 0;
       for (const st of L.straights) {
         const len = st.i1 - st.i0;
         if (len < 20) continue;
@@ -1589,24 +1560,23 @@
         for (let i = st.i0 + 4; i <= st.i1 - 4; i += step) {
           const p = S[i];
           const [x, z, nx, nz] = outFrom(p, left, 1);
-          if (putModel(theme.lamp, look.pole, false, x, z, facing(-nx, -nz), 'lamps along a straight', 1, 4, 1)) lamps++;
+          putModel(theme.lamp, look.pole, false, x, z, facing(-nx, -nz), 'lamps along a straight', 1, 4, 1);
         }
         if (amount >= 1 && len >= 28) {
           const along = Math.abs(mid.hx) > Math.abs(mid.hz) ? 0 : 1;
           for (let i = st.i0 + 6; i <= st.i1 - 6; i += 4) {
             const [x, z] = outFrom(S[i], !left, 2);
-            if (putModel(theme.fence, look.fence, false, x, z, along, 'a fence along a straight', 2, 6, 1)) fences++;
+            putModel(theme.fence, look.fence, false, x, z, along, 'a fence along a straight', 2, 6, 1);
           }
           const kind = pickKind(),
             model = r.pick(KINDS[kind].mid),
             col = kindColour(kind, false);
           for (let i = st.i0 + 8; i <= st.i1 - 8; i += 7) {
             const [x, z] = outFrom(S[i], !left, 7);
-            if (putModel(model, col, true, x, z, r.int(0, 3), 'a line of trees behind the fence', 4, 12, 1)) rows++;
+            putModel(model, col, true, x, z, r.int(0, 3), 'a line of trees behind the fence', 4, 12, 1);
           }
         }
       }
-      if (lamps || fences || rows) notes.push(`Straights: ${lamps} lamps at an even spacing${fences ? `, ${fences} lengths of fence along the other side` : ''}${rows ? `, ${rows} trees in a line behind it` : ''}.`);
       // 6. Hills: a grove or an outcrop on top.
       for (const h of hills) (r() < 0.5 ? outcrop(h.x, h.z, 'an outcrop on top of a hill', true) : grove(h.x, h.z, 4, 'a grove on top of a hill'));
       // 7. Bare stretches get a grove on the roomier side; further out, a few bigger woods close the view.
@@ -1624,7 +1594,6 @@
           const [x, z, nx, nz] = outFrom(p, s % 2 == 0, 18 + r.int(0, 6));
           if (!crowded(x, z, 14, 4)) grove(x, z, Math.round(7 * amount), 'a wood further out', -nx, -nz);
         }
-      if (groves || outcrops || homes) notes.push(`${groves} groves, each one kind of tree in one colour${outcrops ? `, ${outcrops} rock outcrops` : ''}${homes ? `, ${homes} houses with trees behind them` : ''}${verge ? `, tall grass along the outside of the turns` : ''}.`);
 
       // Exact duplicates add nothing; drop them, and whatever the track has itself: what is returned here is what
       // Remove deletes later, so it must never name one of the track's own parts.
@@ -1636,7 +1605,7 @@
         seenP.add(k);
         add2.push(p);
       }
-      return { add: add2, notes, placed, stats: { parts: add2.length, line: runLine ? 'run' : 'road', turns: L.turns.length, straights: L.straights.length, ours: T.ours } };
+      return { add: add2, placed, stats: { parts: add2.length, line: runLine ? 'run' : 'road', turns: L.turns.length, straights: L.straights.length, ours: T.ours } };
     }
 
     return { C, THEMES, objectsFor, rng, tiles, worldTiles, partsTiles, turnPart, turnAll, move, K, K2, isRoad, isStart, isCheck, isFinish, hasCollision, o, okColour, sR, readTrack, analyseLine, lineFromTrack, decorate };
@@ -1812,7 +1781,7 @@
       ed.commit(removed, added);
       keepDecos([added.map((p) => [p.id, p.x, p.y, p.z, p.rotation, p.rotationAxis, p.color]), ...lastDecos().slice(0, 1)]);
       const line = !run ? 'Guessed the route, so check the jumps and corners.' : run.finished ? 'Fitted to your best test run.' : "Kept clear of the run that didn't finish and guessed the rest.";
-      status(`Added ${added.length} parts${removed.length ? `, replacing the last decoration` : ''}. ${line} Undo takes it all back.`, res.notes);
+      status(res.message ?? `Added ${added.length} parts${removed.length ? `, replacing the last decoration` : ''}. ${line} Undo takes it all back.`);
       refresh();
     }, 30);
   }
@@ -1861,7 +1830,6 @@
 .be-ad-panel .be-ad-foot > .button.primary { box-shadow: inset 0 -3px 0 #7272c2; }
 .be-ad-panel > .be-ad-ask > p { margin: 12px 0 0 0; font-size: 19px; line-height: 1.35; white-space: normal; }
 .be-ad-panel > .be-ad-route, .be-ad-panel > .be-ad-status { margin: 8px 0 0 0; font-size: 17px; line-height: 1.35; opacity: 0.85; white-space: normal; }
-.be-ad-panel > .be-ad-notes { margin: 6px 0 0 0; padding: 0 0 0 18px; font-size: 16px; line-height: 1.35; opacity: 0.75; }
 `;
     document.head.appendChild(css);
   }
@@ -1936,8 +1904,6 @@
     route.className = 'be-ad-route';
     const statusEl = document.createElement('p');
     statusEl.className = 'be-ad-status';
-    const notes = document.createElement('ul');
-    notes.className = 'be-ad-notes';
     const foot = document.createElement('div');
     foot.className = 'be-ad-foot';
     const removeBtn = btn('Remove', '', remove, 'Take the last decoration away (one undo step)');
@@ -1956,22 +1922,15 @@
       btn('Test run', 'primary', testRun, 'Start a Test run: drive to the finish, then press Decorate'),
     );
     askBox.append(askText, askFoot);
-    panel.append(title, h1, row('Theme', themes), row('Amount', amounts), h2, route, foot, askBox, statusEl, notes);
+    panel.append(title, h1, row('Theme', themes), row('Amount', amounts), h2, route, foot, askBox, statusEl);
     box.append(tabWrap, panel);
     anchor.after(box);
     for (const ev of ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'wheel', 'keydown', 'keyup', 'contextmenu']) box.addEventListener(ev, (e) => e.stopPropagation());
-    return { box, tab, panel, themes, amounts, route, statusEl, notes, removeBtn, foot, askBox, askText, asking: null };
+    return { box, tab, panel, themes, amounts, route, statusEl, removeBtn, foot, askBox, askText, asking: null };
   }
 
-  function status(text, list) {
-    if (!ui) return;
-    ui.statusEl.textContent = text;
-    ui.notes.textContent = '';
-    for (const n of list ?? []) {
-      const li = document.createElement('li');
-      li.textContent = n;
-      ui.notes.appendChild(li);
-    }
+  function status(text) {
+    if (ui) ui.statusEl.textContent = text;
   }
 
   function refresh() {

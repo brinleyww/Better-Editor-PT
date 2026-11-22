@@ -1,5 +1,11 @@
 [
     {
+        "id": 12,
+        "changes": [
+            "Auto deco no longer lists everything it placed"
+        ]
+    },
+    {
         "id": 11,
         "changes": [
             "Desert car has its open tube back again, with bare rear wheels"

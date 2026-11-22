@@ -37,7 +37,7 @@ for (const theme of themes) {
   await c.sleep(300);
   await c.evaluate(`(()=>{const b=[...document.querySelectorAll('.be-ad-ask .button')].find(b=>b.offsetParent&&b.textContent=='Decorate anyway');if(b)b.click();return !!b})()`);
   await c.waitFor(`/^(Added|Auto deco failed)/.test(document.querySelector('.be-ad-status')?.textContent||'')`, 60000);
-  const status = await c.evaluate(`document.querySelector('.be-ad-status').textContent+' | '+[...document.querySelectorAll('.be-ad-notes li')].map(l=>l.textContent).join(' | ')`);
+  const status = await c.evaluate(`document.querySelector('.be-ad-status').textContent`);
   const after = await count();
   console.log(theme, 'in', Date.now() - t0, 'ms:', after - before, 'parts added.', status);
   await c.sleep(2500);
