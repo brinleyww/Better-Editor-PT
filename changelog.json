@@ -1,5 +1,13 @@
 [
     {
+        "id": 15,
+        "version": "35.1",
+        "changes": [
+            "Lock cursor key works in the editor in Not So Weekly Shorts",
+            "While locked, the mouse turns the camera and blocks go down in the middle of the screen"
+        ]
+    },
+    {
         "id": 14,
         "version": "35.0",
         "changes": [

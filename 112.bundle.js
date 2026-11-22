@@ -2213,9 +2213,10 @@
           else {
             let e;
             if (
-              (null != (0, i.gn)(this, sn, "f")
+              // With the cursor locked the pointer is the middle of the screen.
+              (self.__beCursorLock?.locked() || null != (0, i.gn)(this, sn, "f")
                 ? ((0, i.gn)(this, Ve, "f").setFromCamera(
-                    (0, i.gn)(this, sn, "f"),
+                    self.__beCursorLock?.locked() ? new w.I9Y(0, 0) : (0, i.gn)(this, sn, "f"),
                     (0, i.gn)(this, Zt, "f").camera,
                   ),
                   (e = (0, i.gn)(this, Ve, "f").intersectObjects([(0, i.gn)(this, Ze, "f")])))
@@ -3901,6 +3902,8 @@
         }
         disable() {
           ((0, i.GG)(this, ae, !1, "f"),
+            // update() stops during a test, and a locked cursor would keep turning this camera.
+            ((0, i.gn)(this, De, "f").enabled = !1),
             ((0, i.gn)(this, Xe, "f").visible = !1),
             (0, i.GG)(this, An, !1, "f"),
             (0, i.GG)(this, Mn, !1, "f"),

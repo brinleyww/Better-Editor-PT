@@ -27977,6 +27977,7 @@
               (this._pointerPositions = {}),
               (this._controlActive = !1),
               (this._onPointerMove = S.bind(this)),
+              (this._onLockedMove = lockedMove.bind(this)),
               (this._onPointerDown = x.bind(this)),
               (this._onPointerUp = k.bind(this)),
               (this._onContextMenu = P.bind(this)),
@@ -27994,6 +27995,7 @@
           connect(e) {
             (super.connect(e),
               this.domElement.addEventListener("pointerdown", this._onPointerDown),
+              this.domElement.addEventListener("pointermove", this._onLockedMove),
               this.domElement.addEventListener("pointercancel", this._onPointerUp),
               this.domElement.addEventListener("contextmenu", this._onContextMenu),
               this.domElement.addEventListener("wheel", this._onMouseWheel, { passive: !1 }));
@@ -28004,6 +28006,7 @@
           }
           disconnect() {
             (this.domElement.removeEventListener("pointerdown", this._onPointerDown),
+              this.domElement.removeEventListener("pointermove", this._onLockedMove),
               this.domElement.removeEventListener("pointermove", this._onPointerMove),
               this.domElement.removeEventListener("pointerup", this._onPointerUp),
               this.domElement.removeEventListener("pointercancel", this._onPointerUp),
@@ -28442,7 +28445,8 @@
         function x(e) {
           !1 !== this.enabled &&
             (0 === this._pointers.length &&
-              (this.domElement.setPointerCapture(e.pointerId),
+              // setPointerCapture throws while the pointer is locked.
+              (document.pointerLockElement || this.domElement.setPointerCapture(e.pointerId),
               this.domElement.addEventListener("pointermove", this._onPointerMove),
               this.domElement.addEventListener("pointerup", this._onPointerUp)),
             this._isTrackingPointer(e) ||
@@ -28450,7 +28454,21 @@
               "touch" === e.pointerType ? this._onTouchStart(e) : this._onMouseDown(e)));
         }
         function S(e) {
-          !1 !== this.enabled && ("touch" === e.pointerType ? this._onTouchMove(e) : this._onMouseMove(e));
+          !1 !== this.enabled &&
+            ("touch" === e.pointerType ? this._onTouchMove(e) : self.__beCursorLock?.locked() || this._onMouseMove(e));
+        }
+        // clientX stands still under pointer lock: moving turns the camera, or pans it while a pan button is held.
+        function lockedMove(e) {
+          if (!1 === this.enabled || "mouse" !== e.pointerType || !self.__beCursorLock?.locked()) return;
+          if (this.state === g) {
+            if (!this.enablePan) return;
+            this._pan(e.movementX * this.panSpeed, e.movementY * this.panSpeed);
+          } else {
+            if (!this.enableRotate) return;
+            const turn = (d * this.rotateSpeed) / this.domElement.clientHeight;
+            (this._rotateLeft(turn * e.movementX), this._rotateUp(turn * e.movementY));
+          }
+          this.update();
         }
         function k(e) {
           switch ((this._removePointer(e), this._pointers.length)) {
@@ -43037,6 +43055,15 @@
             i = { x: 0, y: 0 },
             r = 0,
             a = 0;
+          // The game's Math is imprecise, so angles read back from the camera lose the heading looking straight up
+          // or down: they are only read when something else turned it.
+          const turnedTo = new M.PTz(0, 0, 0, 0),
+            readAngles = () => {
+              const q = (0, R.gn)(this, it, "f").quaternion;
+              if (q.equals(turnedTo)) return;
+              const look = new M.O9p().setFromQuaternion(q, "YXZ");
+              ((r = look.y), (a = look.x));
+            };
           (e.canvas.addEventListener(
             "mousedown",
             (0, R.GG)(
@@ -43044,8 +43071,7 @@
               lt,
               (e) => {
                 n = !0;
-                const t = new M.O9p().setFromQuaternion((0, R.gn)(this, it, "f").quaternion, "YXZ");
-                ((r = t.y), (a = t.x), (i = { x: e.clientX, y: e.clientY }));
+                (readAngles(), (i = { x: e.clientX, y: e.clientY }));
               },
               "f",
             ),
@@ -43067,10 +43093,12 @@
                 this,
                 ht,
                 (e) => {
-                  if (n) {
+                  const locked = self.__beCursorLock?.locked();
+                  if (locked ? (0, R.gn)(this, rt, "f") : n) {
+                    locked && readAngles();
                     const t = Math.max(window.innerWidth, window.innerHeight),
-                      n = (e.clientX - i.x) / t,
-                      s = (e.clientY - i.y) / t;
+                      n = (locked ? e.movementX : e.clientX - i.x) / t,
+                      s = (locked ? e.movementY : e.clientY - i.y) / t;
                     i = { x: e.clientX, y: e.clientY };
                     const o = 10;
                     ((r -= n * o),
@@ -43081,7 +43109,7 @@
                       (a = Math.round(1e4 * a) / 1e4));
                     const l = new M.PTz().setFromAxisAngle(new M.Pq0(1, 0, 0), a),
                       c = new M.PTz().setFromAxisAngle(new M.Pq0(0, 1, 0), r);
-                    (0, R.gn)(this, it, "f").quaternion.copy(c).multiply(l);
+                    turnedTo.copy((0, R.gn)(this, it, "f").quaternion.copy(c).multiply(l));
                   }
                 },
                 "f",

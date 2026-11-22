@@ -188,14 +188,18 @@ self.TM.tools = (() => {
       cam = ed.camera();
     if (!cam || e.target !== cv) return hideTip(); // over the 3D view, not a panel on top of it
     ray ??= new ed.three.tBo();
-    ray.setFromCamera({ x: ((e.clientX - b.left) / b.width) * 2 - 1, y: -((e.clientY - b.top) / b.height) * 2 + 1 }, cam);
+    // A locked cursor's clientX stands still: it points at the middle of the screen.
+    const mid = self.__beCursorLock?.locked(),
+      x = mid ? b.left + b.width / 2 : e.clientX,
+      y = mid ? b.top + b.height / 2 : e.clientY;
+    ray.setFromCamera({ x: ((x - b.left) / b.width) * 2 - 1, y: -((y - b.top) / b.height) * 2 + 1 }, cam);
     const hit = ray.intersectObject(mesh, false)[0];
     if (!hit) return hideTip();
     const r = mesh.userData.run,
       p = r.pts[mesh.userData.at[hit.faceIndex]];
     ui.tip.textContent = Math.round(p.v) + ' km/h  ·  ' + clock(p.f);
-    ui.tip.style.left = e.clientX + 14 + 'px';
-    ui.tip.style.top = e.clientY + 14 + 'px';
+    ui.tip.style.left = x + 14 + 'px';
+    ui.tip.style.top = y + 14 + 'px';
     ui.tip.hidden = false;
   }
   const hideTip = () => ui && (ui.tip.hidden = true);
