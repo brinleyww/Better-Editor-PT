@@ -487,29 +487,33 @@ self.TM.vehicles = (() => {
         tube(P.frame, [-0.58, Y(0.5), 2.36], [0.58, Y(0.5), 2.36], 0.04, 8);
         hexa(P.alu, [[-0.34, Y(0.36), 1.5], [0.34, Y(0.36), 1.5], [-0.34, Y(0.42), 1.5], [0.34, Y(0.42), 1.5], [-0.3, Y(0.44), 2.3], [0.3, Y(0.44), 2.3], [-0.3, Y(0.5), 2.28], [0.3, Y(0.5), 2.28]]);
         // Body as wide as the cab: the nose raked back over the grille, the bonnet rising to the windscreen, the fenders
-        // and bedsides round the wheel wells, and round flares out over the tyres.
-        const bon = (z) => Y(1.01 + ((1.94 - z) / 1.3) * 0.05); // the bonnet's flat top
-        box(P.black, 0, Y(0.68), 1.345, 0.36, 0.22, 0.6);
+        // and bedsides round the wheel wells, and round flares out over the tyres. The wells sit high over the wheels
+        // (centre wy over the axle, radius wr): bobsleigh ice presses the body down nearly 0.25 onto its wheels, and a
+        // tyre that far up stays inside its flare.
+        const wy = cy + 0.08,
+          wr = 0.5,
+          bon = (z) => Y(1.025 + ((1.94 - z) / 1.3) * 0.035); // the bonnet's flat top
+        box(P.black, 0, Y(0.7), 1.345, 0.36, 0.24, 0.6);
         loft(P.paint, [
-          ring(2.3, [[0.5, Y(0.54)], [0.56, Y(0.6)], [0.58, Y(0.84)], [0.5, Y(0.9)], [0.2, Y(0.91)]]),
-          ring(1.94, [[0.56, Y(0.48)], [0.645, Y(0.56)], [0.645, Y(0.96)], [0.56, Y(1.005)], [0.2, bon(1.94)]]),
+          ring(2.3, [[0.5, Y(0.54)], [0.56, Y(0.6)], [0.58, Y(0.86)], [0.5, Y(0.92)], [0.2, Y(0.93)]]),
+          ring(1.94, [[0.56, Y(0.48)], [0.645, Y(0.56)], [0.645, Y(0.99)], [0.56, Y(1.02)], [0.2, bon(1.94)]]),
         ]);
         loft(P.paint, [
-          ring(1.94, [[0.645, Y(0.9)], [0.645, Y(0.96)], [0.56, Y(1.005)], [0.2, bon(1.94)]]),
+          ring(1.94, [[0.645, Y(0.9)], [0.645, Y(0.99)], [0.56, Y(1.02)], [0.2, bon(1.94)]]),
           ring(0.64, [[0.66, Y(0.9)], [0.66, Y(1.0)], [0.58, Y(1.055)], [0.2, bon(0.64)]]),
         ]);
         for (const s of [1, -1]) {
-          arch(P.paint, P.trim, s * 0.36, s * 0.645, fz, cy, 0.47, 0.6, 0.63);
-          arch(P.paint, P.trim, s * 0.45, s * 0.66, rz, cy, 0.47, 0.55, 0.69);
-          flare(P.paint, P.trim, s * 0.62, s * 0.92, fz, cy, 0.47, 0.6);
-          flare(P.paint, P.trim, s * 0.64, s * 1.0, rz, cy, 0.47, 0.6);
+          arch(P.paint, P.trim, s * 0.36, s * 0.645, fz, wy, wr, 0.6, Y(0.99) - wy);
+          arch(P.paint, P.trim, s * 0.45, s * 0.66, rz, wy, wr, 0.55, Y(1.02) - wy);
+          flare(P.paint, P.trim, s * 0.62, s * 0.92, fz, wy, wr, wr + 0.12);
+          flare(P.paint, P.trim, s * 0.64, s * 1.0, rz, wy, wr, wr + 0.12);
         }
         // Grille, headlights and the lower intake in the nose.
-        box(P.black, 0, Y(0.72), 2.304, 0.27, 0.09, 0.006);
-        for (let k = 0; k < 4; k++) box(P.trim, 0, Y(0.66) + k * 0.04, 2.31, 0.25, 0.006, 0.004);
+        box(P.black, 0, Y(0.73), 2.304, 0.27, 0.09, 0.006);
+        for (let k = 0; k < 4; k++) box(P.trim, 0, Y(0.67) + k * 0.04, 2.31, 0.25, 0.006, 0.004);
         for (const s of [1, -1]) {
-          box(P.trim, s * 0.44, Y(0.74), 2.304, 0.11, 0.06, 0.006);
-          box(P.lamp, s * 0.44, Y(0.74), 2.31, 0.085, 0.04, 0.006);
+          box(P.trim, s * 0.44, Y(0.75), 2.304, 0.11, 0.06, 0.006);
+          box(P.lamp, s * 0.44, Y(0.75), 2.31, 0.085, 0.04, 0.006);
         }
         box(P.black, 0, Y(0.585), 2.304, 0.42, 0.03, 0.006);
         // Cab, its glass, mirrors, the light bar on the roof and a whip aerial.
@@ -553,7 +557,7 @@ self.TM.vehicles = (() => {
           side(P.second, s * 0.66, [[0.74, Y(0.7)], [-0.94, Y(0.66)], [-0.94, Y(0.72)], [0.74, Y(0.8)]], s * 0.008);
           side(P.accent, s * 0.66, [[0.74, Y(0.62)], [-0.94, Y(0.6)], [-0.94, Y(0.63)], [0.74, Y(0.66)]], s * 0.008);
         }
-        strip(P.second, [[2.3, Y(0.91)], [1.94, bon(1.94)], [0.64, bon(0.64)]], -0.1, 0.1, 0.008);
+        strip(P.second, [[2.3, Y(0.93)], [1.94, bon(1.94)], [0.64, bon(0.64)]], -0.1, 0.1, 0.008);
         for (const s of [1, -1])
           for (let k = 0; k < 5; k++) {
             const z = 1.18 - k * 0.075;

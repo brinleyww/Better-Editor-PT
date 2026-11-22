@@ -1254,7 +1254,13 @@ self.TM = (() => {
   //   up past its ride height; at x0.6 no car ever bounced), the compression one (x0.1) and a stiffer, longer spring than
   //   before (x0.6, +0.1) keep it off the bump stops: it bounces once on a 30 unit drop and keeps its speed (226 km/h
   //   1 s after, Stadium 227; softer compression dampers bottomed out and lost up to 30%), and soaks up dirt ripples
-  //   (106 km/h out where the Stadium car leaves at 85).
+  //   (106 km/h out where the Stadium car leaves at 85). stop, bump, bumpDamp: a bump stop under the soft spring (see
+  //   suspension()). Bobsleigh ice's stick presses about 1.4 g on top of the downforce, and the Desert car's spring sank
+  //   its body onto the ice: wheels pushed up to -0.25 in a curve (Stadium -0.11), where it scraped, shook and stopped
+  //   (a high-walled curve at 230 km/h: down to 32 in 0.15 s, then tumbling back). Past -0.07 the stop now holds it
+  //   about where the Stadium car rides: out of that curve at 235, bobsleigh curves and chicanes at the Stadium car's
+  //   speed and shake. Nothing on the road reaches it but the deepest landings (a 6-tile drop sinks 0.21, was 0.26,
+  //   still one bounce, 227 km/h 1 s on); 0-100, 0-200, braking and the R60 circle are unchanged on every surface.
   // air: in the air, steering yaws the car this much harder than nothing (1: no help). Every car is at 1 now: the Snow
   //   (1.2) and Desert (1.8) cars turned at 21 and 48 deg/s on the steering in the air, which felt like Rocket League's
   //   air control and tipped them over in a jump (the Desert car 45 degrees over 1 s into a jump with the steering held,
@@ -1271,7 +1277,7 @@ self.TM = (() => {
     // the rear most (rearGrip: the rear tyres' own multipliers where given).
     Snow: { grip: [0.85, 0.85, 0.95, 1, 4.5, 3.5, 1.1, 1.1, 2.4], rearGrip: [0.85, 0.85, 0.95, 1, 5.5, 4.2, 1.1, 1.1, 2.4], iceAssist: 0.3, accel: [[1e9, 0.9]], topSpeed: 230 / 3.6, topDrag: 0.012, susp: { stiff: 0.7, damp: 1, roll: 1, rest: 0.08 }, air: 1, flight: true, ices: [], look: { tint: '#e9eef4' } },
     Rally: { grip: [0.9, 0.9, 1, 1, 1.3, 1.2, 1.45, 1.45, 1.2], iceAssist: 1, accel: [[150 / 3.6, 0.95], [1e9, 0.85]], loose: 1.05, topSpeed: 260 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.8, dampIn: 0.3, roll: 1.5, rest: 0.03 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#c94a2a' } },
-    Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.02, dampIn: 0.1, roll: 1.2, rest: 0.1 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#d6a24a' } },
+    Desert: { grip: [0.72, 0.75, 0.85, 1, 1, 1, 1.25, 1.25, 1], iceAssist: 1, accel: [[1e9, 1.05]], topSpeed: 330 / 3.6, topDrag: 0.012, susp: { stiff: 0.6, damp: 0.02, dampIn: 0.1, roll: 1.2, rest: 0.1, stop: -0.07, bump: 2.5, bumpDamp: 1 }, air: 1, flight: true, ices: [3, 4, 7], look: { tint: '#d6a24a' } },
   };
   // Test rigs only: {veh: {name: {setting: value}}} tries other settings for a vehicle.
   if (TEST && TEST.veh) for (const k in TEST.veh) Object.assign(VEHICLES[k], TEST.veh[k]);
@@ -1822,11 +1828,17 @@ self.TM = (() => {
         F[g + 61] = s0[3];
         continue;
       }
+      // Under the soft spring a bump stop (stop, where given): pushed up past that length the wheel meets bump x the
+      // stock spring more per unit, and both dampers are at least bumpDamp x the stock ones there, so the stop catches
+      // the body without throwing it back up.
       const S = V.susp,
-        rest = s0[0] + S.rest;
-      F[g + 51] = heap[a + 84] && F[g + 8] < rest ? rest - (1 - S.stiff) * (rest - F[g + 8]) : rest;
-      F[g + 55] = s0[1] * (S.dampIn ?? S.damp);
-      F[g + 56] = s0[2] * S.damp;
+        rest = s0[0] + S.rest,
+        L = F[g + 8],
+        past = S.stop != null && heap[a + 84] ? Math.max(0, S.stop - L) : 0,
+        bd = past > 0 ? S.bumpDamp ?? 0 : 0;
+      F[g + 51] = heap[a + 84] && L < rest ? rest - (1 - S.stiff) * (rest - L) + (past > 0 ? S.bump * past : 0) : rest;
+      F[g + 55] = s0[1] * Math.max(S.dampIn ?? S.damp, bd);
+      F[g + 56] = s0[2] * Math.max(S.damp, bd);
       F[g + 61] = s0[3] * S.roll;
     }
     c.suspSet = !!V.susp;
