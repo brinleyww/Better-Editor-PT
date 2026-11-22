@@ -459,9 +459,9 @@ self.TM.vehicles = (() => {
         lathe(P.rim, [[0.12, 0], [0.12, 0.065], [0.165, 0.05], [0.17, 0]], 8);
       },
     },
-    // Desert car: a trophy truck. A raked nose and long bonnet, a short cab with a roof light bar, bedsides round an open
-    // bed (fuel cell, the spare lying in it, the cage over it), round flares over all four wheels, coil-over shocks you
-    // can see working, wide sand tyres on beadlock wheels.
+    // Desert car: a trophy truck. A raked nose and long bonnet, a short cab with a roof light bar, round flares over the
+    // front wheels, behind the cab a bare tube back (fuel cell, the spare, the cage over them, the rear wheels in the
+    // open), coil-over shocks you can see working, wide sand tyres on beadlock wheels.
     Desert: {
       ground: -0.8,
       accent: [0.42, 0.13, 0.015],
@@ -476,20 +476,20 @@ self.TM.vehicles = (() => {
         const g = this.ground,
           Y = (h) => g + h,
           cy = g + 0.331;
-        const [[, fz], , [, rz]] = WHEELS;
+        const [[, fz]] = WHEELS;
         // Frame rails, sliders under the doors, skid plate and the front bumper.
         for (const s of [1, -1]) {
           tube(P.frame, [s * 0.3, Y(0.42), 2.2], [s * 0.3, Y(0.42), -2.14], 0.035);
-          tube(P.frame, [s * 0.68, Y(0.45), 0.72], [s * 0.68, Y(0.45), -0.92], 0.035);
+          tube(P.frame, [s * 0.68, Y(0.45), 0.72], [s * 0.68, Y(0.45), -0.95], 0.035);
           tube(P.frame, [s * 0.58, Y(0.5), 2.36], [s * 0.66, Y(0.56), 2.12], 0.04, 8);
           tube(P.frame, [s * 0.3, Y(0.5), 2.36], [s * 0.3, Y(0.42), 2.16], 0.03);
         }
         tube(P.frame, [-0.58, Y(0.5), 2.36], [0.58, Y(0.5), 2.36], 0.04, 8);
         hexa(P.alu, [[-0.34, Y(0.36), 1.5], [0.34, Y(0.36), 1.5], [-0.34, Y(0.42), 1.5], [0.34, Y(0.42), 1.5], [-0.3, Y(0.44), 2.3], [0.3, Y(0.44), 2.3], [-0.3, Y(0.5), 2.28], [0.3, Y(0.5), 2.28]]);
         // Body as wide as the cab: the nose raked back over the grille, the bonnet rising to the windscreen, the fenders
-        // and bedsides round the wheel wells, and round flares out over the tyres. The wells sit high over the wheels
-        // (centre wy over the axle, radius wr): bobsleigh ice presses the body down nearly 0.25 onto its wheels, and a
-        // tyre that far up stays inside its flare.
+        // round the front wheel wells, with round flares out over the tyres (nothing over the rear ones). The wells sit
+        // high over the wheels (centre wy over the axle, radius wr): bobsleigh ice presses the body down nearly 0.25 onto
+        // its wheels, and a tyre that far up stays inside its flare.
         const wy = cy + 0.08,
           wr = 0.5,
           bon = (z) => Y(1.025 + ((1.94 - z) / 1.3) * 0.035); // the bonnet's flat top
@@ -504,9 +504,7 @@ self.TM.vehicles = (() => {
         ]);
         for (const s of [1, -1]) {
           arch(P.paint, P.trim, s * 0.36, s * 0.645, fz, wy, wr, 0.6, Y(0.99) - wy);
-          arch(P.paint, P.trim, s * 0.45, s * 0.66, rz, wy, wr, 0.55, Y(1.02) - wy);
           flare(P.paint, P.trim, s * 0.62, s * 0.92, fz, wy, wr, wr + 0.12);
-          flare(P.paint, P.trim, s * 0.64, s * 1.0, rz, wy, wr, wr + 0.12);
         }
         // Grille, headlights and the lower intake in the nose.
         box(P.black, 0, Y(0.73), 2.304, 0.27, 0.09, 0.006);
@@ -537,25 +535,25 @@ self.TM.vehicles = (() => {
         for (let k = 0; k < 6; k++) box(P.lamp, -0.4 + k * 0.16, Y(1.535), 0.092, 0.065, 0.03, 0.006);
         tube(P.trim, [-0.5, Y(1.49), -0.86], [-0.5, Y(2.17), -0.94], 0.008, 4);
         // Bed: floor, fuel cell, the spare lying in it and the cage over it.
-        box(P.trim, 0, Y(0.53), -1.53, 0.46, 0.03, 0.56);
+        box(P.trim, 0, Y(0.53), -1.56, 0.42, 0.03, 0.58);
         box(P.accent, 0, Y(0.72), -1.11, 0.34, 0.16, 0.1);
         spare(P, [0, Y(0.8), -1.68]);
         const cage = [
-          [[0.5, Y(1.45), -0.95], [0.42, Y(1.12), -2.12]],
-          [[0.42, Y(1.12), -2.12], [0.42, Y(0.5), -2.12]],
-          [[0.5, Y(1.45), -0.95], [0.4, Y(0.56), -1.3]],
-          [[0.46, Y(1.29), -1.53], [0.4, Y(0.56), -1.95]],
+          [[0.5, Y(1.45), -0.95], [0.44, Y(1.06), -2.12]],
+          [[0.44, Y(1.06), -2.12], [0.44, Y(0.5), -2.12]],
+          [[0.5, Y(1.45), -0.95], [0.42, Y(0.56), -1.3]],
+          [[0.47, Y(1.257), -1.53], [0.42, Y(0.56), -1.95]],
         ];
         for (const s of [1, -1]) for (const [a, b] of cage) tube(P.frame, [s * a[0], a[1], a[2]], [s * b[0], b[1], b[2]], 0.03);
-        tube(P.frame, [-0.42, Y(1.12), -2.12], [0.42, Y(1.12), -2.12], 0.03);
-        tube(P.frame, [-0.42, Y(1.12), -2.12], [0.42, Y(0.5), -2.12], 0.026);
+        tube(P.frame, [-0.44, Y(1.06), -2.12], [0.44, Y(1.06), -2.12], 0.03);
+        tube(P.frame, [-0.44, Y(1.06), -2.12], [0.44, Y(0.5), -2.12], 0.026);
         tube(P.frame, [-0.6, Y(0.5), -2.2], [0.6, Y(0.5), -2.2], 0.04, 8);
-        // Tail lights in the ends of the bedsides.
-        for (const s of [1, -1]) box(P.red, s * 0.555, Y(0.86), -2.085, 0.075, 0.1, 0.008), box(P.brake, s * 0.555, Y(0.86), -2.095, 0.05, 0.07, 0.006);
-        // Livery: a band along the cab between the wheels, a stripe up the nose and bonnet, louvres either side of it.
+        // Tail lights on the cage's rear posts.
+        for (const s of [1, -1]) box(P.red, s * 0.44, Y(0.9), -2.155, 0.06, 0.07, 0.012), box(P.brake, s * 0.44, Y(0.9), -2.17, 0.04, 0.05, 0.006);
+        // Livery: a band along the cab to its back, a stripe up the nose and bonnet, louvres either side of it.
         for (const s of [1, -1]) {
-          side(P.second, s * 0.66, [[0.74, Y(0.7)], [-0.94, Y(0.66)], [-0.94, Y(0.72)], [0.74, Y(0.8)]], s * 0.008);
-          side(P.accent, s * 0.66, [[0.74, Y(0.62)], [-0.94, Y(0.6)], [-0.94, Y(0.63)], [0.74, Y(0.66)]], s * 0.008);
+          side(P.second, s * 0.66, [[0.74, Y(0.7)], [-0.96, Y(0.66)], [-0.96, Y(0.72)], [0.74, Y(0.8)]], s * 0.008);
+          side(P.accent, s * 0.66, [[0.74, Y(0.62)], [-0.96, Y(0.6)], [-0.96, Y(0.63)], [0.74, Y(0.66)]], s * 0.008);
         }
         strip(P.second, [[2.3, Y(0.93)], [1.94, bon(1.94)], [0.64, bon(0.64)]], -0.1, 0.1, 0.008);
         for (const s of [1, -1])
