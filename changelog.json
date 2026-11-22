@@ -1,18 +1,21 @@
 [
     {
         "id": 12,
+        "version": "34.5",
         "changes": [
             "Auto deco no longer lists everything it placed"
         ]
     },
     {
         "id": 11,
+        "version": "34.4",
         "changes": [
             "Desert car has its open tube back again, with bare rear wheels"
         ]
     },
     {
         "id": 10,
+        "version": "34.3",
         "changes": [
             "Finished test runs show up in Runs and Auto deco again, even after you reset or leave right away",
             "Test run lines stop at the finish, so driving after it until you reset does not count"
@@ -20,6 +23,7 @@
     },
     {
         "id": 9,
+        "version": "34.2",
         "changes": [
             "New Auto deco tab in the editor: pick a theme and it decorates your track with ground, hills and scenery",
             "Auto deco is a nerfed version of a private autodecorator, with the same idea but a different execution",
@@ -32,6 +36,7 @@
     },
     {
         "id": 8,
+        "version": "34.1",
         "commit": "d3f4dae",
         "changes": [
             "Fine grid: the blue cells on the block you are placing are half size too, so they match where it snaps"
@@ -39,6 +44,7 @@
     },
     {
         "id": 7,
+        "version": "34.0",
         "commit": "fc91c1d",
         "changes": [
             "Rally car doesn't scrape and shake in bobsleigh curves anymore"
@@ -46,6 +52,7 @@
     },
     {
         "id": 6,
+        "version": "33.0",
         "commit": "bc9b1c5",
         "changes": [
             "Desert car doesn't scrape and shake in bobsleigh curves anymore"
@@ -53,6 +60,7 @@
     },
     {
         "id": 5,
+        "version": "32.3",
         "commit": "cee83a4",
         "changes": [
             "Fine grid: the grid button now has a third step, and Better Editor blocks move half a small step on it"
@@ -60,6 +68,7 @@
     },
     {
         "id": 4,
+        "version": "32.2",
         "commit": "ff6cf02",
         "changes": [
             "Desert car has a new trophy truck body"
@@ -67,6 +76,7 @@
     },
     {
         "id": 3,
+        "version": "32.1",
         "commit": "6d410ee",
         "changes": [
             "Wheel info shows Road on a stock road under a Better Editor block, instead of Penalty grass"
@@ -74,6 +84,7 @@
     },
     {
         "id": 2,
+        "version": "32.0",
         "commit": "d42a12c",
         "changes": [
             "Bobsleigh: cars go straight over the top of a wall instead of rolling along the edge"
@@ -81,6 +92,7 @@
     },
     {
         "id": 1,
+        "version": "31.0",
         "commit": "cb00c92",
         "changes": [
             "Gentle slopes, a 3 x 4 block and penalty grass blocks in every kit",

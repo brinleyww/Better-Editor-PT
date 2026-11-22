@@ -1,5 +1,6 @@
 // Run before committing a change to how cars drive: tm_runtime.js physics, collision meshes, or a part's physics data.
 // It raises physics.json's version and records HEAD (which still has the old physics) as that version's copy.
+// The version is the whole number of changelog.json's versions: this update is N.0, later ones without a physics change N.1, N.2...
 // Not So Weekly Shorts then moves the old version's leaderboard times to an Old physics board and replays them on that commit.
 const fs = require('fs');
 const path = require('path');
@@ -13,3 +14,4 @@ data.old = { ...data.old, [data.version]: head };
 data.version += 1;
 fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
 console.log('physics.json: version ' + data.version + ', version ' + (data.version - 1) + ' kept at ' + head);
+console.log('changelog.json: give this update "version": "' + data.version + '.0"');
