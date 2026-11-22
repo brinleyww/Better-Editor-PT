@@ -445,6 +445,22 @@ self.TM = (() => {
     }
   }
 
+  // A mesh's triangles placed in the physics' vertex array from out[o] on; returns where they end. On its own, with
+  // plain numbers: this runs for every corner of every collision triangle (4.5 million on week 13's map 5).
+  function placeTris(out, o, M, P, I, wx, wy, wz, ox, oy, oz) {
+    const m0 = M[0], m1 = M[1], m2 = M[2], m3 = M[3], m4 = M[4], m5 = M[5], m6 = M[6], m7 = M[7], m8 = M[8];
+    for (let i = 0; i < I.length; i++, o += 3) {
+      const v = I[i] * 3,
+        a = P[v],
+        b = P[v + 1],
+        c = P[v + 2];
+      out[o] = m0 * a + m1 * b + m2 * c + wx - ox;
+      out[o + 1] = m3 * a + m4 * b + m5 * c + wy - oy;
+      out[o + 2] = m6 * a + m7 * b + m8 * c + wz - oz;
+    }
+    return o;
+  }
+
   function prepareCar(carId, mountain, off, track, rotatedTiles) {
     let extra = 0,
       records = 0;
@@ -475,6 +491,7 @@ self.TM = (() => {
     const out = new Float32Array(mountain.length + extra);
     out.set(mountain, 0);
     let o = mountain.length;
+    const { x: ox, y: oy, z: oz } = off;
     // Cells a stock part takes up (its tiles), for markOverlaps.
     const stock = new Set();
     track.forEachPart((x, y, z, id, rot, axis) => {
@@ -489,19 +506,7 @@ self.TM = (() => {
         wz = z * 5,
         o0 = o;
       const bouncy = p.u != null && SURFACES[p.u].bounce;
-      for (const m of physicsMeshes(p)) {
-        const P = positions(m),
-          I = indices(m);
-        for (let i = 0; i < I.length; i++, o += 3) {
-          const v = I[i] * 3,
-            a = P[v],
-            b = P[v + 1],
-            c = P[v + 2];
-          out[o] = M[0] * a + M[1] * b + M[2] * c + wx - off.x;
-          out[o + 1] = M[3] * a + M[4] * b + M[5] * c + wy - off.y;
-          out[o + 2] = M[6] * a + M[7] * b + M[8] * c + wz - off.z;
-        }
-      }
+      for (const m of physicsMeshes(p)) o = placeTris(out, o, M, positions(m), indices(m), wx, wy, wz, ox, oy, oz);
       // The bounce's walls: the part's own bounce list (no deco, poles or gate banners) when it has one; the magnet's
       // faces from the part's magnet list.
       for (const [grid, list] of [[walls, bouncy ? (p.bw ? [p.bw] : physicsMeshes(p)) : []], [mags, p.mg ? [p.mg] : []]])
@@ -620,44 +625,47 @@ self.TM = (() => {
   // Overlapping parts: where a cell holds more than one part (ours, or ours and a stock part) and one of ours has a
   // surface of its own, a wheel takes the surface of the part whose collision face it rests on, which is the face drawn
   // on top, not the first part listed (cellAt). l.over maps each entry of such a cell to its part's triangles that come
-  // within OVER.reach of the cell (world coordinates, 9 numbers each); l.stock: a stock part is there too.
+  // within OVER.reach of the cell (world coordinates, 9 numbers each), filled in by overTris when a wheel first rests
+  // there (all of them up front were 185 MB on week 13's map 5); l.stock: a stock part is there too.
   // touch: how near a face the contact must be to count as resting on it; faces within tie of the nearest are a tie
   // (the same face twice, as two parts placed in the same spot), which the order of the parts settles as before.
   const OVER = { reach: 0.5, touch: 0.02, tie: 0.002 };
   function markOverlaps(cells, stock, out, off) {
-    const entries = new Set();
+    let source = null;
     for (const [k, l] of cells) {
       if (l.length + (stock.has(k) ? 1 : 0) < 2 || !l.some((e) => e.u != null || e.r)) continue;
-      l.over = new Map(l.map((e) => [e, []]));
+      l.over = new Map();
       l.stock = stock.has(k);
-      for (const e of l) if (e.span) entries.add(e);
+      l.source = source ??= { out, x: off.x, y: off.y, z: off.z };
     }
-    const R = OVER.reach;
-    // Plain numbers instead of small arrays per triangle: the same sums in the same order, so the same lists.
-    for (const e of entries)
+  }
+  // The triangles of entry e within OVER.reach of cell (cx, cy, cz), whose list is l, in the part's own order.
+  function overTris(l, e, cx, cy, cz) {
+    let T = l.over.get(e);
+    if (T) return T;
+    const L = [];
+    if (e.span) {
+      const { out, x, y, z } = l.source,
+        R = OVER.reach;
       for (let i = e.span[0]; i < e.span[1]; i += 9) {
-        const ax = out[i] + off.x,
-          ay = out[i + 1] + off.y,
-          az = out[i + 2] + off.z,
-          bx = out[i + 3] + off.x,
-          by = out[i + 4] + off.y,
-          bz = out[i + 5] + off.z,
-          gx = out[i + 6] + off.x,
-          gy = out[i + 7] + off.y,
-          gz = out[i + 8] + off.z,
-          x1 = Math.floor((Math.max(ax, bx, gx) + R) / 5),
-          y1 = Math.floor((Math.max(ay, by, gy) + R) / 5),
-          z1 = Math.floor((Math.max(az, bz, gz) + R) / 5),
-          y0 = Math.floor((Math.min(ay, by, gy) - R) / 5),
-          z0 = Math.floor((Math.min(az, bz, gz) - R) / 5);
-        for (let cx = Math.floor((Math.min(ax, bx, gx) - R) / 5); cx <= x1; cx++)
-          for (let cy = y0; cy <= y1; cy++)
-            for (let cz = z0; cz <= z1; cz++) {
-              const L = cells.get(cellKey(cx, cy, cz))?.over?.get(e);
-              if (L) L.push(ax, ay, az, bx, by, bz, gx, gy, gz);
-            }
+        const ax = out[i] + x,
+          bx = out[i + 3] + x,
+          gx = out[i + 6] + x;
+        if (Math.floor((Math.min(ax, bx, gx) - R) / 5) > cx || Math.floor((Math.max(ax, bx, gx) + R) / 5) < cx) continue;
+        const az = out[i + 2] + z,
+          bz = out[i + 5] + z,
+          gz = out[i + 8] + z;
+        if (Math.floor((Math.min(az, bz, gz) - R) / 5) > cz || Math.floor((Math.max(az, bz, gz) + R) / 5) < cz) continue;
+        const ay = out[i + 1] + y,
+          by = out[i + 4] + y,
+          gy = out[i + 7] + y;
+        if (Math.floor((Math.min(ay, by, gy) - R) / 5) > cy || Math.floor((Math.max(ay, by, gy) + R) / 5) < cy) continue;
+        L.push(ax, ay, az, bx, by, bz, gx, gy, gz);
       }
-    for (const l of cells.values()) if (l.over) for (const [e, L] of l.over) l.over.set(e, new Float64Array(L));
+    }
+    T = new Float64Array(L);
+    l.over.set(e, T);
+    return T;
   }
   // How far (x, y, z) is from the nearest of the triangles T (9 numbers each), or Infinity past OVER.touch.
   const overPt = [0, 0, 0];
@@ -1526,11 +1534,14 @@ self.TM = (() => {
   // part's own surface. (px, py, pz): the wheel's contact point, where parts overlap (markOverlaps): only the parts whose
   // faces it rests on count, and resting on none of ours where a stock part is too, it is on the stock part.
   const cellAt = (cells, x, y, z, px, py, pz) => {
-    const k = cellKey(Math.floor(x / 5), Math.floor(y / 5), Math.floor(z / 5));
+    const cx = Math.floor(x / 5),
+      cy = Math.floor(y / 5),
+      cz = Math.floor(z / 5),
+      k = cellKey(cx, cy, cz);
     let l = cells.get(k);
     if (!l) return null;
     if (l.over && px != null) {
-      const gaps = l.map((e) => (l.over === PAGE_OVER ? pageGap(e.span, px, py, pz) : faceGap(l.over.get(e), px, py, pz))),
+      const gaps = l.map((e) => (l.over === PAGE_OVER ? pageGap(e.span, px, py, pz) : faceGap(overTris(l, e, cx, cy, cz), px, py, pz))),
         near = Math.min(...gaps);
       if (near < Infinity) l = l.filter((e, i) => gaps[i] <= near + OVER.tie);
       else if (l.stock) return null;

@@ -33,6 +33,9 @@ self.TM.water = (() => {
   // A fragment only looks at the boxes of the ground square (cell) it is in, so a river of 1,400 blocks costs a pixel
   // what a puddle does. A box is listed in every cell within SEAM_REACH of it (the tests below look 0.3 out at most),
   // in the order the blocks are drawn, which the overlap rule needs. SEAM_MAX is only a bound on memory.
+  // Most faces have one answer all over, and those are settled when the boxes are built (sideStates): the vertex shader
+  // throws a hidden side away before it costs a pixel, and a clear one draws with no look-ups. A river seen along its
+  // length was dozens of see-through layers a pixel, each reading every box near it, only to be discarded.
   const SEAM_MAX = 16384,
     SEAM_REACH = 0.35,
     SEAM_CELL = 10, // the cells' width, doubled until a track has at most SEAM_CELLS and the texture fits
@@ -73,6 +76,19 @@ self.TM.water = (() => {
     }
     if (!geo.boundingBox) geo.computeBoundingBox();
     out = [...levels.values()].map((r) => [r[0], r[1], r[2], r[3], geo.boundingBox.min.y, r[4]]);
+    // simple: one box with all the block's water in it, so each corner of a triangle finds the same side (sideStates).
+    out.simple = out.length == 1;
+    if (out.simple) {
+      const [x0, z0, x1, z1, bot, top] = out[0],
+        e = 0.005;
+      for (const g of geo.groups) {
+        if (mats[g.materialIndex] !== material) continue;
+        for (let k = g.start; k < g.start + g.count; k++) {
+          const v = (I ? I[k] : k) * 3;
+          if (P[v] < x0 - e || P[v] > x1 + e || P[v + 1] < bot - e || P[v + 1] > top + e || P[v + 2] < z0 - e || P[v + 2] > z1 + e) out.simple = false;
+        }
+      }
+    }
     localBoxes.set(geo, out);
     return out;
   }
@@ -86,7 +102,8 @@ self.TM.water = (() => {
   const seamKey = (o) => o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + o.matrixWorld.elements.join(',');
 
   // World boxes of everything drawn, three texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0) and the
-  // block's origin, so a fragment can tell which block it is from. seamTexture adds the cells and their lists.
+  // block's origin, so a fragment can tell which block it is from. The two spare numbers after the surface are the
+  // box's sideStates and whether it is simple (boxesOf). seamTexture adds the cells and their lists.
   function buildSeams(s) {
     const data = [],
       W = new Float32Array(16);
@@ -108,7 +125,7 @@ self.TM.water = (() => {
             az = W[2] * x0 + W[10] * z0 + W[14],
             bx = W[0] * x1 + W[8] * z1 + W[12],
             bz = W[2] * x1 + W[10] * z1 + W[14];
-          data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, 0, W[12], W[13], W[14], 0);
+          data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, local.simple ? 1 : 0, W[12], W[13], W[14], 0);
         }
       }
     }
@@ -172,9 +189,116 @@ self.TM.water = (() => {
       t += count[c];
     }
     each((b, c) => (out[next[c]++ * 4] = b * 3));
+    sideStates(s.n, out, at, cols, head);
     s.tex = floatTexture(out, SEAM_WIDTH, height);
     s.grid = { x: x0, y: z0, z: cell, w: 0 };
     s.size = { x: cols, y: rows, z: head, w: 0 };
+  }
+
+  // What the fragment tests below would say for the whole of each side of each box, two bits a side (-x, +x, bottom,
+  // surface, -z, +z) written into the box's spare number: 1 every point is discarded, 2 none is, 0 it varies (or the
+  // block is not simple), so each pixel still tests. The margins are the tests' own, taken EPS to the safe side.
+  function sideStates(n, out, at, cols, head) {
+    const EPS = 0.001,
+      ACROSS = 0.02, // the overlap test's t, and its margin along a face
+      ALONG = 0.002,
+      LO = [0, 4, 1], // where a box keeps its x, y and z
+      HI = [2, 5, 3],
+      seen = new Int32Array(n),
+      near = [];
+    const sameBlock = (i, j) => Math.hypot(out[i + 8] - out[j + 8], out[i + 9] - out[j + 9], out[i + 10] - out[j + 10]) < 0.01;
+    for (let b = 0; b < n; b++) {
+      const B = b * 12;
+      if (!out[B + 7]) continue;
+      near.length = 0;
+      for (let z = at[b * 4 + 2]; z <= at[b * 4 + 3]; z++)
+        for (let x = at[b * 4]; x <= at[b * 4 + 1]; x++) {
+          const cell = (head + z * cols + x) * 4;
+          for (let k = out[cell], end = out[cell] + out[cell + 1]; k < end; k++) {
+            const q = out[k * 4] / 3;
+            if (seen[q] == b + 1) continue;
+            seen[q] = b + 1;
+            near.push(q * 12);
+          }
+        }
+      // The shader takes a block's first box as its own, so two of one block (the same block placed twice) must be the
+      // same box, and share the first one's answers.
+      let first = B,
+        alike = true;
+      for (const Q of near) {
+        if (!sameBlock(B, Q)) continue;
+        for (let k = 0; k < 6; k++) if (Math.abs(out[Q + k] - out[B + k]) > EPS) alike = false;
+        first = Math.min(first, Q);
+      }
+      if (!alike) continue;
+      let states = 0;
+      for (let side = 0; side < 6; side++) {
+        const a = side >> 1,
+          u = (a + 1) % 3,
+          v = (a + 2) % 3,
+          c = out[B + (side & 1 ? HI : LO)[a]],
+          u0 = out[B + LO[u]],
+          u1 = out[B + HI[u]],
+          v0 = out[B + LO[v]],
+          v1 = out[B + HI[v]];
+        let hidden = false,
+          clear = true;
+        // overlap: an earlier block's face in the same plane
+        for (const Q of near) {
+          if (Q >= first || sameBlock(B, Q)) continue;
+          const d = Math.min(Math.abs(c - out[Q + LO[a]]), Math.abs(c - out[Q + HI[a]]));
+          if (d >= ACROSS + EPS) continue;
+          const q0 = out[Q + LO[u]],
+            q1 = out[Q + HI[u]],
+            r0 = out[Q + LO[v]],
+            r1 = out[Q + HI[v]];
+          if (q0 + ALONG < u1 + EPS && q1 - ALONG > u0 - EPS && r0 + ALONG < v1 + EPS && r1 - ALONG > v0 - EPS) clear = false;
+          // all of it but the hair inside the edge that the test leaves
+          if (d < ACROSS - EPS && q0 < u0 + EPS && q1 > u1 - EPS && r0 < v0 + EPS && r1 > v1 - EPS) hidden = true;
+        }
+        // seam: water of one level on both sides of an upright side
+        if (a != 1 && !hidden) {
+          const w = 2 - a,
+            w0 = out[B + LO[w]],
+            w1 = out[B + HI[w]],
+            y0 = out[B + 4],
+            y1 = out[B + 5],
+            M = 0.01 + EPS,
+            m = 0.01 - EPS;
+          let lowA = Infinity,
+            highA = -Infinity,
+            lowB = Infinity,
+            highB = -Infinity,
+            allA = false,
+            allB = false;
+          for (const Q of near) {
+            const qa = out[Q + LO[a]],
+              qb = out[Q + HI[a]],
+              qw0 = out[Q + LO[w]],
+              qw1 = out[Q + HI[w]],
+              top = out[Q + 5];
+            if (qw0 > w1 + M || qw1 < w0 - M || out[Q + 4] > y1 + M || top < y0 - M) continue;
+            const all = qw0 < w0 + m && qw1 > w1 - m && out[Q + 4] < y0 + m && top > y1 - m;
+            if (c + 0.3 > qa - M && c + 0.3 < qb + M) {
+              lowA = Math.min(lowA, top);
+              highA = Math.max(highA, top);
+              if (all && c + 0.3 > qa - m && c + 0.3 < qb + m) allA = true;
+            }
+            if (c - 0.3 > qa - M && c - 0.3 < qb + M) {
+              lowB = Math.min(lowB, top);
+              highB = Math.max(highB, top);
+              if (all && c - 0.3 > qa - m && c - 0.3 < qb + m) allB = true;
+            }
+          }
+          if (lowA <= highA && lowB <= highB && lowA <= highB + M && lowB <= highA + M) {
+            clear = false;
+            if (allA && allB && Math.max(highA, highB) - Math.min(lowA, lowB) < m) hidden = true;
+          }
+        }
+        states |= (hidden ? 1 : clear ? 2 : 0) << (side * 2);
+      }
+      out[B + 6] = states;
+    }
   }
 
   // A small RGBA float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
@@ -225,8 +349,8 @@ self.TM.water = (() => {
   `;
   const SEAM = `
     vec3 beFace = normalize(cross(dFdx(vBeWorld), dFdy(vBeWorld)));
-    int beFirst = 0, beNear = 0; // this cell's list
-    if (beSeamCount > 0) {
+    int beFirst = 0, beNear = 0; // this cell's list; none on a side settled as clear
+    if (beSeamCount > 0 && vBeSide < 1.5) {
       ivec2 c = ivec2(floor((vBeWorld.xz - beGrid.xy) / beGrid.z)), n = ivec2(beSize.xy);
       if (c.x >= 0 && c.y >= 0 && c.x < n.x && c.y < n.y) {
         vec4 l = beTexel(int(beSize.z) + c.y * n.x + c.x);
@@ -283,19 +407,53 @@ self.TM.water = (() => {
     }
   `;
 
+  // A vertex's side of its own block's box, and that side's state.
+  const SIDE = `
+    vBeSide = 0.0;
+    if (beSeamCount > 0) {
+      vec4 beSn = vec4(normal, 0.0);
+      #ifdef USE_INSTANCING
+        beSn = instanceMatrix * beSn;
+      #endif
+      vec3 beSa = abs(normalize((modelMatrix * beSn).xyz));
+      int beAxis = beSa.x > 0.999 ? 0 : beSa.y > 0.999 ? 1 : beSa.z > 0.999 ? 2 : -1;
+      ivec2 beC = ivec2(floor((vBeWorld.xz - beGrid.xy) / beGrid.z)), beCs = ivec2(beSize.xy);
+      if (beAxis >= 0 && beC.x >= 0 && beC.y >= 0 && beC.x < beCs.x && beC.y < beCs.y) {
+        vec4 beList = beTexel(int(beSize.z) + beC.y * beCs.x + beC.x);
+        int beFrom = int(beList.x), beMany = int(beList.y);
+        const float beT = 0.02;
+        for (int i = 0; i < beMany; i++) {
+          int b = int(beTexel(beFrom + i).x);
+          if (distance(beTexel(b + 2).xyz, vBeOrigin) >= 0.01) continue;
+          vec4 r = beTexel(b), h = beTexel(b + 1);
+          if (vBeWorld.y <= h.x - beT || vBeWorld.y >= h.y + beT || any(lessThanEqual(vBeWorld.xz, r.xy - beT)) || any(greaterThanEqual(vBeWorld.xz, r.zw + beT))) continue;
+          float at = beAxis == 0 ? vBeWorld.x : beAxis == 1 ? vBeWorld.y : vBeWorld.z;
+          float lo = beAxis == 0 ? r.x : beAxis == 1 ? h.x : r.y;
+          float hi = beAxis == 0 ? r.z : beAxis == 1 ? h.y : r.w;
+          int side = abs(at - lo) < 0.005 ? 2 * beAxis : abs(at - hi) < 0.005 ? 2 * beAxis + 1 : -1;
+          if (side >= 0) vBeSide = float((int(h.z) >> (2 * side)) & 3);
+          break;
+        }
+      }
+      if (vBeSide == 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    }
+  `;
+
   function makeMaterial(three) {
     // Pushed back a little, like the finish boxes: a water side flush with a solid block beside it (or a pool's own
     // walls) loses to the block instead of fighting it.
     const m = new three._4j({ vertexColors: true, transparent: true, opacity: 0.58, roughness: 0.06, metalness: 0.1, side: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
     three3 = three;
     m.onBeforeRender = seams;
+    // vBeOrigin and vBeSide are the same at a triangle's three corners, so they aren't flat varyings: on Apple GPUs
+    // (ANGLE's Metal) a flat varying has the index buffer rewritten and the render pass split at each such draw.
     m.onBeforeCompile = (sh) => {
       sh.uniforms.beTime = time;
       sh.uniforms.beSeams = seamTex;
       sh.uniforms.beSeamCount = seamCount;
       sh.uniforms.beGrid = seamGrid;
       sh.uniforms.beSize = seamSize;
-      sh.vertexShader = 'varying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + sh.vertexShader.replace(
+      sh.vertexShader = 'uniform highp sampler2D beSeams;\nuniform highp int beSeamCount;\nuniform highp vec4 beGrid, beSize;\nvarying vec3 vBeWorld;\nvarying vec3 vBeOrigin;\nvarying float vBeSide;\n' + SEAM_FETCH + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
         vec4 beW = vec4(transformed, 1.0), beO = vec4(0.0, 0.0, 0.0, 1.0);
@@ -304,9 +462,10 @@ self.TM.water = (() => {
           beO = instanceMatrix * beO;
         #endif
         vBeWorld = (modelMatrix * beW).xyz;
-        vBeOrigin = (modelMatrix * beO).xyz;`,
+        vBeOrigin = (modelMatrix * beO).xyz;
+        ${SIDE}`,
       );
-      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nuniform highp vec4 beGrid, beSize;\nvarying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + SEAM_FETCH + WAVES + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform highp int beSeamCount;\nuniform highp vec4 beGrid, beSize;\nvarying vec3 vBeWorld;\nvarying vec3 vBeOrigin;\nvarying float vBeSide;\n' + SEAM_FETCH + WAVES + sh.fragmentShader.replace(
         '#include <normal_fragment_begin>',
         `${SEAM}
         #include <normal_fragment_begin>
