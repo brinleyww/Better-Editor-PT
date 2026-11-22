@@ -1,0 +1,53 @@
+[
+    {
+        "id": 7,
+        "commit": "fc91c1d",
+        "changes": [
+            "Rally car doesn't scrape and shake in bobsleigh curves anymore"
+        ]
+    },
+    {
+        "id": 6,
+        "commit": "bc9b1c5",
+        "changes": [
+            "Desert car doesn't scrape and shake in bobsleigh curves anymore"
+        ]
+    },
+    {
+        "id": 5,
+        "commit": "cee83a4",
+        "changes": [
+            "Fine grid: the grid button now has a third step, and Better Editor blocks move half a small step on it"
+        ]
+    },
+    {
+        "id": 4,
+        "commit": "ff6cf02",
+        "changes": [
+            "Desert car has a new trophy truck body"
+        ]
+    },
+    {
+        "id": 3,
+        "commit": "6d410ee",
+        "changes": [
+            "Wheel info shows Road on a stock road under a Better Editor block, instead of Penalty grass"
+        ]
+    },
+    {
+        "id": 2,
+        "commit": "d42a12c",
+        "changes": [
+            "Bobsleigh: cars go straight over the top of a wall instead of rolling along the edge"
+        ]
+    },
+    {
+        "id": 1,
+        "commit": "cb00c92",
+        "changes": [
+            "Gentle slopes, a 3 x 4 block and penalty grass blocks in every kit",
+            "Overlapping water and finish blocks don't look darker anymore",
+            "Stacked pillars have no gaps"
+        ]
+    }
+]
