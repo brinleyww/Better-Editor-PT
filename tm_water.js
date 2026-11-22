@@ -30,11 +30,18 @@ self.TM.water = (() => {
   // is comes from the meshes a scene draws with this material (the editor, Test and NSWS build them the same way), so
   // no page hook is needed: each block's water is read off its geometry once and placed by its instance matrices, and a
   // changed set of water meshes is picked up on the next frame.
-  // Water boxes per scene, two texels each: 2048 wide is the smallest texture every WebGL2 device takes. Blocks past
-  // that keep their sides.
-  const SEAM_MAX = 1024;
+  // A fragment only looks at the boxes of the ground square (cell) it is in, so a river of 1,400 blocks costs a pixel
+  // what a puddle does. A box is listed in every cell within SEAM_REACH of it (the tests below look 0.3 out at most),
+  // in the order the blocks are drawn, which the overlap rule needs. SEAM_MAX is only a bound on memory.
+  const SEAM_MAX = 16384,
+    SEAM_REACH = 0.35,
+    SEAM_CELL = 10, // the cells' width, doubled until a track has at most SEAM_CELLS and the texture fits
+    SEAM_CELLS = 65536,
+    SEAM_WIDTH = 2048; // the widest (and tallest) texture every WebGL2 device takes
   const seamTex = { value: null },
-    seamCount = { value: 0 };
+    seamCount = { value: 0 },
+    seamGrid = { value: { x: 0, y: 0, z: 1, w: 0 } }, // first cell's corner, cell width
+    seamSize = { value: { x: 0, y: 0, z: 0, w: 0 } }; // cells across and along, the first cell's texel
   const seamScenes = new WeakMap(); // scene -> what it drew last frame and the boxes built from that
   const localBoxes = new WeakMap(); // geometry -> its water as [minX, minZ, maxX, maxZ, bottom, surface] in the part frame
   let three3 = null;
@@ -78,18 +85,17 @@ self.TM.water = (() => {
   const intact = (o) => o.geometry?.attributes?.position != null && (!o.isInstancedMesh || o.instanceMatrix != null);
   const seamKey = (o) => o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + o.matrixWorld.elements.join(',');
 
-  // World boxes of everything drawn, two texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0); a second row
-  // holds each box's block origin (x, y, z, 0) at the box's first texel, so a fragment can tell which block it is from.
+  // World boxes of everything drawn, three texels each: (minX, minZ, maxX, maxZ), (bottom, surface, 0, 0) and the
+  // block's origin, so a fragment can tell which block it is from. seamTexture adds the cells and their lists.
   function buildSeams(s) {
     const data = [],
-      org = [],
       W = new Float32Array(16);
     for (const o of s.drawn) {
       const local = boxesOf(o.geometry, o.material);
       if (!local.length) continue;
       const w = o.matrixWorld.elements,
         n = o.isInstancedMesh ? o.count : 1;
-      for (let i = 0; i < n && data.length < SEAM_MAX * 8; i++) {
+      for (let i = 0; i < n && data.length < SEAM_MAX * 12; i++) {
         // W = matrixWorld x instance matrix (column-major, as three stores them).
         const m = o.isInstancedMesh ? o.instanceMatrix.array.subarray(i * 16, i * 16 + 16) : null;
         for (let c = 0; c < 4; c++)
@@ -102,16 +108,73 @@ self.TM.water = (() => {
             az = W[2] * x0 + W[10] * z0 + W[14],
             bx = W[0] * x1 + W[8] * z1 + W[12],
             bz = W[2] * x1 + W[10] * z1 + W[14];
-          data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, 0);
-          org.push(W[12], W[13], W[14], 0, 0, 0, 0, 0);
+          data.push(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), bot + W[13], top + W[13], 0, 0, W[12], W[13], W[14], 0);
         }
       }
     }
     if (s.tex) s.tex.dispose();
-    s.n = Math.min(data.length / 8, SEAM_MAX);
+    s.n = Math.min(data.length / 12, SEAM_MAX);
     s.tex = null;
-    if (!s.n) return;
-    s.tex = floatTexture(data.slice(0, s.n * 8).concat(org.slice(0, s.n * 8)), s.n * 2, 2);
+    if (s.n) seamTexture(s, data);
+  }
+
+  // One texture, read row by row: the boxes, then each cell as (first list texel, how many), then the lists, a box's
+  // first texel in each.
+  function seamTexture(s, data) {
+    let x0 = Infinity,
+      z0 = Infinity,
+      x1 = -Infinity,
+      z1 = -Infinity;
+    for (let i = 0; i < s.n * 12; i += 12) {
+      x0 = Math.min(x0, data[i]);
+      z0 = Math.min(z0, data[i + 1]);
+      x1 = Math.max(x1, data[i + 2]);
+      z1 = Math.max(z1, data[i + 3]);
+    }
+    x0 = Math.floor(x0 - SEAM_REACH);
+    z0 = Math.floor(z0 - SEAM_REACH);
+    const at = new Int32Array(s.n * 4), // each box's first and last cell, x then z
+      head = s.n * 3;
+    let cell = SEAM_CELL,
+      cols,
+      rows,
+      listed;
+    for (; ; cell *= 2) {
+      cols = Math.floor((x1 + SEAM_REACH - x0) / cell) + 1;
+      rows = Math.floor((z1 + SEAM_REACH - z0) / cell) + 1;
+      if (cols * rows > SEAM_CELLS) continue;
+      listed = 0;
+      for (let b = 0; b < s.n; b++) {
+        const i = b * 12,
+          j = b * 4;
+        at[j] = Math.floor((data[i] - SEAM_REACH - x0) / cell);
+        at[j + 1] = Math.floor((data[i + 2] + SEAM_REACH - x0) / cell);
+        at[j + 2] = Math.floor((data[i + 1] - SEAM_REACH - z0) / cell);
+        at[j + 3] = Math.floor((data[i + 3] + SEAM_REACH - z0) / cell);
+        listed += (at[j + 1] - at[j] + 1) * (at[j + 3] - at[j + 2] + 1);
+      }
+      if (head + cols * rows + listed <= SEAM_WIDTH * SEAM_WIDTH) break;
+    }
+    const height = Math.ceil((head + cols * rows + listed) / SEAM_WIDTH),
+      out = new Float32Array(SEAM_WIDTH * height * 4),
+      count = new Uint32Array(cols * rows),
+      next = new Uint32Array(cols * rows),
+      each = (f) => {
+        for (let b = 0; b < s.n; b++)
+          for (let z = at[b * 4 + 2]; z <= at[b * 4 + 3]; z++)
+            for (let x = at[b * 4]; x <= at[b * 4 + 1]; x++) f(b, z * cols + x);
+      };
+    for (let i = 0; i < head * 4; i++) out[i] = data[i];
+    each((b, c) => count[c]++);
+    for (let c = 0, t = head + cols * rows; c < count.length; c++) {
+      out[(head + c) * 4] = next[c] = t;
+      out[(head + c) * 4 + 1] = count[c];
+      t += count[c];
+    }
+    each((b, c) => (out[next[c]++ * 4] = b * 3));
+    s.tex = floatTexture(out, SEAM_WIDTH, height);
+    s.grid = { x: x0, y: z0, z: cell, w: 0 };
+    s.size = { x: cols, y: rows, z: head, w: 0 };
   }
 
   // A small RGBA float data texture made from the plain Texture class (NSWS hands this file only a few three.js classes).
@@ -148,18 +211,37 @@ self.TM.water = (() => {
     if (!s.drawn.includes(object)) s.drawn.push(object);
     seamTex.value = s.tex;
     seamCount.value = s.n;
+    if (s.n) {
+      seamGrid.value = s.grid;
+      seamSize.value = s.size;
+    }
   }
 
   // A side (a face that stands upright) is a seam when points 0.3 either side of it are both in water of the same level.
+  const SEAM_FETCH = `
+    vec4 beTexel(int i) {
+      return texelFetch(beSeams, ivec2(i % ${SEAM_WIDTH}, i / ${SEAM_WIDTH}), 0);
+    }
+  `;
   const SEAM = `
     vec3 beFace = normalize(cross(dFdx(vBeWorld), dFdy(vBeWorld)));
+    int beFirst = 0, beNear = 0; // this cell's list
+    if (beSeamCount > 0) {
+      ivec2 c = ivec2(floor((vBeWorld.xz - beGrid.xy) / beGrid.z)), n = ivec2(beSize.xy);
+      if (c.x >= 0 && c.y >= 0 && c.x < n.x && c.y < n.y) {
+        vec4 l = beTexel(int(beSize.z) + c.y * n.x + c.x);
+        beFirst = int(l.x);
+        beNear = int(l.y);
+      }
+    }
     {
       if (beSeamCount > 0 && abs(beFace.y) < 0.3) {
         vec2 beOut = normalize(beFace.xz) * 0.3;
         vec2 beA = vBeWorld.xz + beOut, beB = vBeWorld.xz - beOut;
         float beLa = -1e9, beLb = 1e9; // water level found on each side
-        for (int i = 0; i < beSeamCount; i++) {
-          vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
+        for (int i = 0; i < beNear; i++) {
+          int b = int(beTexel(beFirst + i).x);
+          vec4 r = beTexel(b), h = beTexel(b + 1);
           if (vBeWorld.y < h.x - 0.01 || vBeWorld.y > h.y + 0.01) continue;
           if (all(greaterThan(beA, r.xy - 0.01)) && all(lessThan(beA, r.zw + 0.01))) beLa = h.y;
           if (all(greaterThan(beB, r.xy - 0.01)) && all(lessThan(beB, r.zw + 0.01))) beLb = h.y;
@@ -173,17 +255,21 @@ self.TM.water = (() => {
     {
       const float t = 0.02;
       int beOwn = -1;
-      for (int i = 0; i < beSeamCount; i++) {
-        vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
-        vec3 o = texelFetch(beSeams, ivec2(2 * i, 1), 0).xyz;
-        if (beOwn < 0 && distance(o, vBeOrigin) < 0.01 && vBeWorld.y > h.x - t && vBeWorld.y < h.y + t &&
-            all(greaterThan(vBeWorld.xz, r.xy - t)) && all(lessThan(vBeWorld.xz, r.zw + t))) beOwn = i;
+      for (int i = 0; i < beNear; i++) {
+        int b = int(beTexel(beFirst + i).x);
+        vec4 r = beTexel(b), h = beTexel(b + 1);
+        vec3 o = beTexel(b + 2).xyz;
+        if (distance(o, vBeOrigin) < 0.01 && vBeWorld.y > h.x - t && vBeWorld.y < h.y + t &&
+            all(greaterThan(vBeWorld.xz, r.xy - t)) && all(lessThan(vBeWorld.xz, r.zw + t))) {
+          beOwn = i;
+          break;
+        }
       }
       vec3 beAx = abs(beFace);
-      for (int i = 0; i < beSeamCount; i++) {
-        if (i >= beOwn) break;
-        vec4 r = texelFetch(beSeams, ivec2(2 * i, 0), 0), h = texelFetch(beSeams, ivec2(2 * i + 1, 0), 0);
-        vec3 o = texelFetch(beSeams, ivec2(2 * i, 1), 0).xyz;
+      for (int i = 0; i < beOwn; i++) {
+        int b = int(beTexel(beFirst + i).x);
+        vec4 r = beTexel(b), h = beTexel(b + 1);
+        vec3 o = beTexel(b + 2).xyz;
         if (distance(o, vBeOrigin) < 0.01) continue;
         // The margin is only across the face: along it the other block must cover the point (a hair inside its edge), or a
         // sliver the other block never draws would be dropped there.
@@ -207,6 +293,8 @@ self.TM.water = (() => {
       sh.uniforms.beTime = time;
       sh.uniforms.beSeams = seamTex;
       sh.uniforms.beSeamCount = seamCount;
+      sh.uniforms.beGrid = seamGrid;
+      sh.uniforms.beSize = seamSize;
       sh.vertexShader = 'varying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -218,7 +306,7 @@ self.TM.water = (() => {
         vBeWorld = (modelMatrix * beW).xyz;
         vBeOrigin = (modelMatrix * beO).xyz;`,
       );
-      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nvarying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + WAVES + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float beTime;\nuniform highp sampler2D beSeams;\nuniform int beSeamCount;\nuniform highp vec4 beGrid, beSize;\nvarying vec3 vBeWorld;\nflat varying vec3 vBeOrigin;\n' + SEAM_FETCH + WAVES + sh.fragmentShader.replace(
         '#include <normal_fragment_begin>',
         `${SEAM}
         #include <normal_fragment_begin>
@@ -245,6 +333,7 @@ self.TM.water = (() => {
   // box, so a wall of boxes reads as one red sheet. Round the outside of the joined shape runs a chequered frame, like
   // Trackmania's finish gates (see FRAME). A block's box stays axis-aligned however it is turned (rotations are exact),
   // so each is kept as its world min and max.
+  const FIN_MAX = 1024; // finish boxes in a scene: two texels each in a texture up to 2048 wide
   let finishMat = null,
     frameMat = null;
   const finTex = { value: null },
@@ -286,7 +375,7 @@ self.TM.water = (() => {
         n = o.isInstancedMesh ? o.count : 1,
         c = [0, 1, 2].map((a) => (local[0][a] + local[1][a]) / 2),
         e = [0, 1, 2].map((a) => (local[1][a] - local[0][a]) / 2);
-      for (let i = 0; i < n && data.length < SEAM_MAX * 8; i++) {
+      for (let i = 0; i < n && data.length < FIN_MAX * 8; i++) {
         const m = o.isInstancedMesh ? o.instanceMatrix.array.subarray(i * 16, i * 16 + 16) : null;
         for (let q = 0; q < 4; q++)
           for (let r = 0; r < 4; r++)
@@ -514,7 +603,7 @@ self.TM.water = (() => {
             if (!going || t >= cap) break;
             vec3 x = q + d * (t + 0.01);
             float tn = -1.0;
-            for (int i = 0; i < ${SEAM_MAX}; i++) {
+            for (int i = 0; i < ${FIN_MAX}; i++) {
               if (i >= beFinCount) break;
               vec3 lo = texelFetch(beFin, ivec2(2 * i, 0), 0).xyz, hi = texelFetch(beFin, ivec2(2 * i + 1, 0), 0).xyz;
               if (any(lessThan(x, lo - 0.001)) || any(greaterThan(x, hi + 0.001))) continue;

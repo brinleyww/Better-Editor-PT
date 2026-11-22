@@ -808,13 +808,31 @@ self.TM = (() => {
   // rule: before version OVERLAP_PHYSICS the first part with a surface in the tile won, whatever the wheel rested on.
   const OVERLAP_PHYSICS = 26;
   let stockNames = null;
+  // The index is kept with its track: every new car (each restart) and the HUD ask for it, and on a 46,000-part track
+  // building it stops the page for over 100 ms. A walk over the parts (under 1 ms there) tells if it still fits, since
+  // the editor changes a track in place.
+  const builtIndex = new WeakMap();
   function surfaceIndex(track) {
     let physics = null;
     try {
       physics = self.__nswsWeekBE?.(track.getId())?.physics ?? null;
     } catch (e) {}
+    const old = physics != null && physics < OVERLAP_PHYSICS;
+    let n = 0,
+      a = 0,
+      b = 0;
+    track.forEachPart((x, y, z, id, rot, axis) => {
+      // positions are in half steps at the finest
+      const at = Math.imul(x * 2, 73856093) ^ Math.imul(y * 2, 19349663) ^ Math.imul(z * 2, 83492791),
+        what = (id << 5) | (rot << 3) | axis;
+      a = Math.imul(a ^ at, 16777619) + what;
+      b = Math.imul(b + what, 31) ^ Math.imul(at, 2654435761);
+      n++;
+    });
+    const key = n + ':' + a + ':' + b + ':' + old,
+      had = builtIndex.get(track);
+    if (had?.key === key) return had.cells;
     const cells = new Map(),
-      old = physics != null && physics < OVERLAP_PHYSICS,
       stock = new Set();
     if (!old && !stockNames && stockIds.size) stockNames = new Map([...stockIds].map(([n, i]) => [i, n]));
     track.forEachPart((x, y, z, id, rot, axis) => {
@@ -834,6 +852,7 @@ self.TM = (() => {
           l.over = PAGE_OVER;
           l.stock = stock.has(k);
         }
+    builtIndex.set(track, { key, cells });
     return cells;
   }
   // A part's collision triangles in its own frame (9 numbers each) and, by OWN_BIN-unit bin of that frame, the
@@ -3296,6 +3315,7 @@ self.TM = (() => {
     // Grass tufts drawn apart from the parts' meshes (renderArrays' noTufts).
     tufts: tuftDraw,
     surfaceIndex,
+    zoneList, // the effect boxes near a point, for the HUD's step
     surfaceAt,
     fxControls,
     fxStep,

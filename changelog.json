@@ -1,5 +1,14 @@
 [
     {
+        "id": 13,
+        "version": "34.6",
+        "changes": [
+            "Tracks with lots of water lag way less",
+            "Restarting and setting off on big tracks doesn't freeze for a moment anymore",
+            "Very big rivers don't show see-through walls between their water blocks anymore"
+        ]
+    },
+    {
         "id": 12,
         "version": "34.5",
         "changes": [

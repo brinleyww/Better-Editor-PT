@@ -49,6 +49,8 @@ self.TM.hud = (() => {
   const NOGRIP = TM.NOGRIP ?? { frames: 5000, fade: 400, grip: 0.12 };
   // The runtime's first-touch test for effect boxes (fxTouch); an older runtime counts the car's origin.
   const touch = typeof TM.fxTouch == 'function' ? (q, p, Q) => TM.fxTouch(q, p.x, p.y, p.z, Q.x, Q.y, Q.z, Q.w) : (q, p) => p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2];
+  // An older runtime has no list of the zones near a point: every zone, then.
+  const zoneList = typeof TM.zoneList == 'function' ? TM.zoneList : (zones) => zones.keys();
   const LABEL = {
     Turbo: 'TURBO',
     Super: 'SUPER TURBO',
@@ -77,7 +79,7 @@ self.TM.hud = (() => {
       track: trackData,
       zones,
       water: zones.filter((z) => z.type == 'Water' || z.type == 'Shallow'),
-      inside: new Uint8Array(zones.length),
+      inside: new Set(), // the zones it is in
       cells: null, // TM.surfaceIndex, built when the car is first watched
       watch: false, // only the car the HUD shows is followed; the rest cost nothing
       f: -1,
@@ -124,7 +126,7 @@ self.TM.hud = (() => {
   function restart(c, s) {
     clear(c);
     c.vehicle = c.cpVehicle = 'Stadium';
-    c.inside.fill(0);
+    c.inside.clear();
     c.lastCp = s.nextCheckpointIndex;
     c.has = false;
     c.done = false;
@@ -180,25 +182,27 @@ self.TM.hud = (() => {
 
     let water = null;
     c.plate = null;
-    for (let i = 0; i < c.zones.length; i++) {
+    // Only the zones near the car and those it is in, in track order, as the runtime's fxStep takes them: this runs
+    // 1,000 times a second and a river is over 1,000 zones.
+    for (const i of zoneList(c.zones, c.inside, p.x, p.y, p.z)) {
       const q = c.zones[i],
         wet = q.type == 'Water' || q.type == 'Shallow',
         hit = wet ? p.x >= q.min[0] && p.x <= q.max[0] && p.y >= q.min[1] && p.y <= q.max[1] && p.z >= q.min[2] && p.z <= q.max[2] : touch(q, p, s.quaternion);
       if ((q.type == 'Water' || q.type == 'Shallow') && p.x >= q.min[0] && p.x <= q.max[0] && p.z >= q.min[2] && p.z <= q.max[2] && p.y >= q.min[1] - 1 && p.y <= q.surface + 3) water = q;
       if (!hit) {
-        c.inside[i] = 0;
+        c.inside.delete(i);
         if (q.hold) delete c.holds[i];
         continue;
       }
       if (q.hold) {
         // a turbo plate: on only while the car touches it (the runtime's TURBO push)
-        if (!c.inside[i]) c.holds[i] = q.type == 'Roulette' ? ROULETTE[s.frames % 3] : q.type;
-        c.inside[i] = 1;
+        if (!c.inside.has(i)) c.holds[i] = q.type == 'Roulette' ? ROULETTE[s.frames % 3] : q.type;
+        c.inside.add(i);
         if (ROULETTE.indexOf(c.holds[i]) > ROULETTE.indexOf(c.plate)) c.plate = c.holds[i];
         continue;
       }
-      if (c.inside[i]) continue;
-      c.inside[i] = 1;
+      if (c.inside.has(i)) continue;
+      c.inside.add(i);
       switch (q.type) {
         case 'Turbo':
         case 'Super':
