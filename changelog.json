@@ -1,5 +1,12 @@
 [
     {
+        "id": 17,
+        "version": "35.3",
+        "changes": [
+            "Desert, Rally and Snow cars keep your paint colour with every car body, not only the Classic one"
+        ]
+    },
+    {
         "id": 16,
         "version": "35.2",
         "changes": [

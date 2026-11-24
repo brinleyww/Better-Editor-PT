@@ -709,7 +709,9 @@ self.TM.vehicles = (() => {
     if (!look) return;
     const S = shapes(three, c.vehicle),
       opacity = rig.tyres[0]?.opacity ?? 1,
-      main = named(rig.body, 'Main'),
+      // The stock body's paint is "Main"; every other body Not So Weekly Shorts has (Rally, Formula, crate bodies...)
+      // calls it "MainPlain". Without one the look's paint stays the grey it starts as.
+      main = named(rig.body, 'Main') ?? named(rig.body, 'MainPlain'),
       own = {};
     for (const [k, v] of Object.entries({ ...OWN, paint: [0.3, 0.3, 0.3, main?.roughness ?? 0.5], second: [0.4, 0.4, 0.4, main?.roughness ?? 0.5], accent: [...look.accent, 0.55] })) {
       const m = new three._4j({ roughness: v[3], metalness: k == 'paint' || k == 'second' ? main?.metalness ?? 0 : 0.05 });
@@ -1725,6 +1727,14 @@ self.TM.vehicles = (() => {
     if (!c.rig) {
       if (c.tries++ > 600) return;
       c.rig = findRig(car, sw);
+      if (!c.rig) return;
+    }
+    // The game puts in a new body mesh when the car's body changes or its model finishes loading after the race
+    // started: the look comes off the old one and goes back on over the new one.
+    if (c.rig.body.parent !== c.rig.root) {
+      takeOff(c, sw);
+      c.rig = findRig(car, sw);
+      c.worn = null;
       if (!c.rig) return;
     }
     if (c.spray && !c.pool) c.pool = sprayPool(sw, three);
