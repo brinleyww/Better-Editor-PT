@@ -486,6 +486,292 @@ self.TM.water = (() => {
     return m;
   }
 
+  // ---- low quality (TM.waterLow, Not So Weekly Shorts' Water quality) -------------------------------------------------
+  // No ripples and no per-pixel seam tests. Blocks whose water is one box (TM.renderArrays.waterBox) give their water
+  // material to `gone`, which draws nothing and tells the scene which meshes are there; each scene then draws all of
+  // that water as one mesh: the surfaces of a level and colour joined into rectangles, and only the sides that face
+  // out, with their neighbours' joined along one line. Other water (curves) keeps its own surface, drawn with `plain`.
+  let lowPlain = null,
+    lowGone = null;
+  const lowScenes = new WeakMap(),
+    lowLocal = new WeakMap(); // geometry -> its box, colours, sides and triangles in the part frame
+  const LOW_SIDES = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // -x, +x, -z, +z
+
+  function makeLowPlain(three) {
+    return new three._4j({ vertexColors: true, transparent: true, opacity: 0.58, roughness: 0.06, metalness: 0.1, side: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  }
+
+  function makeLowGone(three) {
+    const m = new three.V9B({ colorWrite: false, depthWrite: false, depthTest: false });
+    m.onBeforeRender = (renderer, scene, camera, geometry, object) => {
+      const s = lowScene(scene);
+      if (!s.meshes.has(object)) s.meshes.add(object);
+    };
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\ngl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
+    };
+    m.customProgramCacheKey = () => 'be-water-gone';
+    return m;
+  }
+
+  // Meshes seen once stay in the joined water while they are in the scene and shown, so turning the camera (culling)
+  // never rebuilds it.
+  function lowScene(scene) {
+    let s = lowScenes.get(scene);
+    if (s) return s;
+    lowScenes.set(scene, (s = { meshes: new Set(), key: '', mesh: null, frame: -1 }));
+    const before = scene.onBeforeRender;
+    scene.onBeforeRender = function (renderer) {
+      const f = renderer.info.render.frame;
+      if (s.frame != f) {
+        s.frame = f;
+        lowCheck(scene, s);
+      }
+      return before.apply(this, arguments);
+    };
+    return s;
+  }
+
+  const shownIn = (o, scene) => {
+    for (let p = o; p; p = p.parent) {
+      if (p === scene) return true;
+      if (!p.visible) return false;
+    }
+    return false;
+  };
+
+  function lowCheck(scene, s) {
+    let key = '';
+    for (const o of s.meshes) {
+      if (!intact(o) || !o.parent) {
+        s.meshes.delete(o);
+        continue;
+      }
+      if (!shownIn(o, scene)) continue;
+      const w = o.matrixWorld.elements;
+      key += o.id + ':' + o.geometry.id + ':' + (o.isInstancedMesh ? o.count + ':' + o.instanceMatrix.version : 1) + ':' + w[0] + ',' + w[2] + ',' + w[12] + ',' + w[13] + ',' + w[14] + '|';
+    }
+    if (key == s.key) return;
+    s.key = key;
+    if (s.mesh) {
+      s.mesh.parent?.remove(s.mesh);
+      s.mesh.geometry.dispose();
+      s.mesh = null;
+    }
+    if (key) lowBuild(scene, s);
+  }
+
+  function lowBoxOf(geo, mats) {
+    if (lowLocal.has(geo)) return lowLocal.get(geo);
+    const P = geo.attributes.position.array,
+      C = geo.attributes.color?.array,
+      N = geo.attributes.normal?.array,
+      I = geo.index ? geo.index.array : null,
+      vs = [];
+    for (const g of geo.groups) if (mats[g.materialIndex] === lowGone) for (let k = g.start; k < g.start + g.count; k++) vs.push(I ? I[k] : k);
+    const out = { box: null, top: null, side: null, sides: [null, null, null, null], tris: vs, P, C, N };
+    let x0 = Infinity,
+      z0 = Infinity,
+      x1 = -Infinity,
+      z1 = -Infinity,
+      y = null;
+    const rgb = (v) => (C ? [C[v * 3], C[v * 3 + 1], C[v * 3 + 2]] : [1, 1, 1]);
+    for (let k = 0; k + 2 < vs.length; k += 3) {
+      const t = [vs[k] * 3, vs[k + 1] * 3, vs[k + 2] * 3];
+      if (Math.abs(P[t[0] + 1] - P[t[1] + 1]) > 1e-3 || Math.abs(P[t[0] + 1] - P[t[2] + 1]) > 1e-3) continue;
+      y = P[t[0] + 1];
+      out.top ??= rgb(vs[k]);
+      for (const v of t) (x0 = Math.min(x0, P[v])), (z0 = Math.min(z0, P[v + 2])), (x1 = Math.max(x1, P[v])), (z1 = Math.max(z1, P[v + 2]));
+    }
+    lowLocal.set(geo, out);
+    if (y == null) return out;
+    out.box = [x0, z0, x1, z1, y];
+    // A side is kept where the block had one, from the lowest of its triangles.
+    const at = [x0, x1, z0, z1],
+      e = 0.005;
+    for (let k = 0; k + 2 < vs.length; k += 3) {
+      const t = [vs[k] * 3, vs[k + 1] * 3, vs[k + 2] * 3];
+      if (t.every((v) => Math.abs(P[v + 1] - y) < 1e-3)) continue;
+      for (let side = 0; side < 4; side++) {
+        const o = side < 2 ? 0 : 2;
+        if (!t.every((v) => Math.abs(P[v + o] - at[side]) < e)) continue;
+        out.sides[side] = Math.min(out.sides[side] ?? Infinity, ...t.map((v) => P[v + 1]));
+        out.side ??= rgb(vs[k]);
+      }
+    }
+    out.side ??= out.top;
+    return out;
+  }
+
+  function lowBuild(scene, s) {
+    const boxes = [],
+      pos = [],
+      nor = [],
+      col = [],
+      W = new Float32Array(16);
+    const quad = (a, b, c, d, n, rgb) => {
+      for (const p of [a, b, c, a, c, d]) pos.push(p[0], p[1], p[2]), nor.push(n[0], n[1], n[2]), col.push(rgb[0], rgb[1], rgb[2]);
+    };
+    for (const o of s.meshes) {
+      if (!shownIn(o, scene)) continue;
+      const L = lowBoxOf(o.geometry, o.material);
+      if (!L.tris.length) continue;
+      const w = o.matrixWorld.elements,
+        n = o.isInstancedMesh ? o.count : 1;
+      for (let i = 0; i < n; i++) {
+        const m = o.isInstancedMesh ? o.instanceMatrix.array.subarray(i * 16, i * 16 + 16) : null;
+        for (let c = 0; c < 4; c++)
+          for (let r = 0; r < 4; r++)
+            W[c * 4 + r] = m ? w[r] * m[c * 4] + w[4 + r] * m[c * 4 + 1] + w[8 + r] * m[c * 4 + 2] + w[12 + r] * m[c * 4 + 3] : w[c * 4 + r];
+        if (L.box && Math.abs(W[5] - 1) < 1e-3 && Math.abs(W[1]) < 1e-3 && Math.abs(W[9]) < 1e-3) {
+          const [x0, z0, x1, z1, y] = L.box,
+            ax = W[0] * x0 + W[8] * z0 + W[12],
+            az = W[2] * x0 + W[10] * z0 + W[14],
+            bx = W[0] * x1 + W[8] * z1 + W[12],
+            bz = W[2] * x1 + W[10] * z1 + W[14],
+            b = { x0: Math.min(ax, bx), z0: Math.min(az, bz), x1: Math.max(ax, bx), z1: Math.max(az, bz), y: y + W[13], top: L.top, side: L.side, sides: [null, null, null, null] };
+          for (let k = 0; k < 4; k++) {
+            if (L.sides[k] == null) continue;
+            const [nx, nz] = LOW_SIDES[k],
+              wx = Math.round(W[0] * nx + W[8] * nz),
+              wz = Math.round(W[2] * nx + W[10] * nz);
+            b.sides[LOW_SIDES.findIndex(([x, z]) => x == wx && z == wz)] = L.sides[k] + W[13];
+          }
+          boxes.push(b);
+          continue;
+        }
+        // On its side or upside down: the block's own triangles, placed.
+        const { P, C, N } = L;
+        for (const v of L.tris) {
+          const j = v * 3,
+            x = P[j],
+            y = P[j + 1],
+            z = P[j + 2];
+          pos.push(W[0] * x + W[4] * y + W[8] * z + W[12], W[1] * x + W[5] * y + W[9] * z + W[13], W[2] * x + W[6] * y + W[10] * z + W[14]);
+          const a = N ? N[j] : 0,
+            b = N ? N[j + 1] : 1,
+            c = N ? N[j + 2] : 0;
+          nor.push(W[0] * a + W[4] * b + W[8] * c, W[1] * a + W[5] * b + W[9] * c, W[2] * a + W[6] * b + W[10] * c);
+          col.push(C ? C[j] : 1, C ? C[j + 1] : 1, C ? C[j + 2] : 1);
+        }
+      }
+    }
+    lowSurfaces(boxes, quad);
+    lowSideFaces(boxes, quad);
+    if (!pos.length) return;
+    const T = three3,
+      g = new T.LoY();
+    g.setAttribute('position', new T.THS(new Float32Array(pos), 3));
+    g.setAttribute('normal', new T.THS(new Float32Array(nor), 3));
+    g.setAttribute('color', new T.THS(new Float32Array(col), 3));
+    g.computeBoundingSphere();
+    const mesh = new T.eaF(g, (lowPlain ??= makeLowPlain(T)));
+    mesh.raycast = () => {};
+    mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;
+    scene.add(mesh);
+    s.mesh = mesh;
+  }
+
+  const q3 = (v) => Math.round(v * 1000);
+
+  // Each level and colour's surfaces as few rectangles as cover them: the boxes' edges cut the ground into cells, and
+  // runs of covered cells grow into rectangles, first along x, then along z.
+  function lowSurfaces(boxes, quad) {
+    const groups = new Map();
+    for (const b of boxes) {
+      const k = q3(b.y) + ':' + b.top.map(q3).join(',');
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(b);
+    }
+    for (const list of groups.values()) {
+      const { y, top } = list[0],
+        up = (x0, z0, x1, z1) => quad([x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0], [0, 1, 0], top),
+        xs = [...new Set(list.flatMap((b) => [q3(b.x0), q3(b.x1)]))].sort((a, b) => a - b),
+        zs = [...new Set(list.flatMap((b) => [q3(b.z0), q3(b.z1)]))].sort((a, b) => a - b),
+        nx = xs.length - 1,
+        nz = zs.length - 1;
+      if (nx * nz > 4e6) {
+        for (const b of list) up(b.x0, b.z0, b.x1, b.z1);
+        continue;
+      }
+      const xi = new Map(xs.map((v, i) => [v, i])),
+        zi = new Map(zs.map((v, i) => [v, i])),
+        cov = new Uint8Array(nx * nz);
+      for (const b of list)
+        for (let j = zi.get(q3(b.z0)); j < zi.get(q3(b.z1)); j++) cov.fill(1, j * nx + xi.get(q3(b.x0)), j * nx + xi.get(q3(b.x1)));
+      for (let j = 0; j < nz; j++)
+        for (let i = 0; i < nx; i++) {
+          if (cov[j * nx + i] != 1) continue;
+          let w = 1,
+            h = 1;
+          while (i + w < nx && cov[j * nx + i + w] == 1) w++;
+          for (; j + h < nz; h++) {
+            let row = true;
+            for (let k = i; k < i + w && row; k++) row = cov[(j + h) * nx + k] == 1;
+            if (!row) break;
+          }
+          for (let r = j; r < j + h; r++) cov.fill(2, r * nx + i, r * nx + i + w);
+          up(xs[i] / 1000, zs[j] / 1000, xs[i + w] / 1000, zs[j + h] / 1000);
+        }
+    }
+  }
+
+  // A side shows where, 0.3 out from it, there is no water of the same level (the seam rule above). What is left of
+  // each side is put on its line, and touching pieces of one line, height and colour become one face.
+  function lowSideFaces(boxes, quad) {
+    const CELL = 20,
+      cells = new Map(),
+      cellOf = (x, z) => Math.floor(x / CELL) + ',' + Math.floor(z / CELL);
+    boxes.forEach((b, n) => {
+      for (let x = Math.floor((b.x0 - 0.35) / CELL); x <= Math.floor((b.x1 + 0.35) / CELL); x++)
+        for (let z = Math.floor((b.z0 - 0.35) / CELL); z <= Math.floor((b.z1 + 0.35) / CELL); z++) {
+          const k = x + ',' + z;
+          if (!cells.has(k)) cells.set(k, []);
+          cells.get(k).push(n);
+        }
+    });
+    const lines = new Map();
+    for (const b of boxes)
+      for (let k = 0; k < 4; k++) {
+        const bot = b.sides[k];
+        if (bot == null) continue;
+        const alongX = k >= 2, // a -z or +z side runs along x
+          c = [b.x0, b.x1, b.z0, b.z1][k],
+          out = c + (k % 2 ? 0.3 : -0.3),
+          lo = alongX ? b.x0 : b.z0,
+          hi = alongX ? b.x1 : b.z1;
+        let parts = [[lo, hi]];
+        const near = new Set();
+        for (let t = lo; t < hi + CELL; t += CELL) for (const n of cells.get(alongX ? cellOf(Math.min(t, hi), out) : cellOf(out, Math.min(t, hi))) ?? []) near.add(n);
+        for (const n of near) {
+          const q = boxes[n];
+          if (q === b || Math.abs(q.y - b.y) > 0.01) continue;
+          if (!(alongX ? out > q.z0 - 0.01 && out < q.z1 + 0.01 : out > q.x0 - 0.01 && out < q.x1 + 0.01)) continue;
+          const q0 = alongX ? q.x0 : q.z0,
+            q1 = alongX ? q.x1 : q.z1;
+          parts = parts.flatMap(([a, z]) => (q1 <= a || q0 >= z ? [[a, z]] : [q0 > a ? [a, q0] : null, q1 < z ? [q1, z] : null].filter(Boolean)));
+        }
+        const key = k + ':' + q3(c) + ':' + q3(bot) + ':' + q3(b.y) + ':' + b.side.map(q3).join(',');
+        if (!lines.has(key)) lines.set(key, { k, c, bot, y: b.y, rgb: b.side, parts: [] });
+        for (const p of parts) if (p[1] - p[0] > 1e-3) lines.get(key).parts.push(p);
+      }
+    for (const { k, c, bot, y, rgb, parts } of lines.values()) {
+      parts.sort((a, b) => a[0] - b[0]);
+      const joined = [];
+      for (const p of parts) {
+        const last = joined[joined.length - 1];
+        if (last && p[0] <= last[1] + 1e-3) last[1] = Math.max(last[1], p[1]);
+        else joined.push([...p]);
+      }
+      const [nx, nz] = LOW_SIDES[k];
+      for (const [a, z] of joined) {
+        if (k >= 2) quad([a, bot, c], [z, bot, c], [z, y, c], [a, y, c], [0, 0, nz], rgb);
+        else quad([c, bot, a], [c, bot, z], [c, y, z], [c, y, a], [nx, 0, 0], rgb);
+      }
+    }
+  }
+
   // ---- finish boxes ------------------------------------------------------------------------------------------------
   // A finish box (catalog.js finishBox) is a see-through red block of finish trigger. Boxes that touch are drawn as one:
   // the water seams' idea with whole boxes in 3D. A face is dropped where a point just outside it is inside another
@@ -1007,6 +1293,10 @@ self.TM.water = (() => {
     // The see-through material for group 1 of the part TM.renderArrays just built: water, or a finish box's.
     material(three) {
       if (self.TM.renderArrays?.seeThrough == 'finish') return (finishMat ??= makeFinish(three));
+      if (self.TM.waterLow?.()) {
+        three3 = three;
+        return self.TM.renderArrays.waterBox ? (lowGone ??= makeLowGone(three)) : (lowPlain ??= makeLowPlain(three));
+      }
       if (!material) material = makeMaterial(three);
       if (!ticking && typeof requestAnimationFrame == 'function') {
         ticking = true;

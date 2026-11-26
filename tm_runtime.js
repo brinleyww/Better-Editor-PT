@@ -148,6 +148,54 @@ self.TM = (() => {
   };
   // Whether a part has penalty grass (so its mesh changes with the setting); NSWS rebuilds only those.
   const hasTufts = (id) => !!byId.get(id)?.m?.some((m) => TUFT_ON.has(D.materialNames[m[0]]));
+  // Not So Weekly Shorts' Water quality setting (Low: tm_water.js draws water flat and joined). Like the tufts, the
+  // embedded editor reads it once from nsws_prefs.js's key.
+  let waterFrame = null;
+  const waterLow = () => {
+    try {
+      if (typeof self.__nswsWaterQuality == 'function') return self.__nswsWaterQuality() == 'low';
+      if (self.parent !== self) return (waterFrame ??= localStorage.getItem('be_water_low')) == '1';
+    } catch {}
+    return false;
+  };
+  const WATER_MATS = new Set(['Water', 'WaterSide']);
+  const hasWater = (id) => !!byId.get(id)?.m?.some((m) => WATER_MATS.has(D.materialNames[m[0]]));
+  // Whether a part's water is one box: a flat surface at one level with every water vertex inside its extent and under
+  // it (tm_water.js boxesOf's "simple"). Low quality joins those; any other water keeps its own surface.
+  const waterBoxes = new Map();
+  function waterIsBox(p) {
+    let r = waterBoxes.get(p.i);
+    if (r != null) return r;
+    const water = p.m.filter((m) => WATER_MATS.has(D.materialNames[m[0]])).map((m) => [positions(m), indices(m)]);
+    let L = null;
+    r = true;
+    for (const [P, I] of water)
+      for (let k = 0; k < I.length; k += 3) {
+        const a = I[k] * 3,
+          b = I[k + 1] * 3,
+          c = I[k + 2] * 3;
+        if (Math.abs(P[a + 1] - P[b + 1]) > 1e-3 || Math.abs(P[a + 1] - P[c + 1]) > 1e-3) continue;
+        if (!L) L = { y: P[a + 1], x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity, area: 0 };
+        else if (Math.abs(L.y - P[a + 1]) > 1e-3) r = false;
+        L.area += Math.abs((P[b] - P[a]) * (P[c + 2] - P[a + 2]) - (P[c] - P[a]) * (P[b + 2] - P[a + 2])) / 2;
+        for (const v of [a, b, c]) {
+          L.x0 = Math.min(L.x0, P[v]);
+          L.z0 = Math.min(L.z0, P[v + 2]);
+          L.x1 = Math.max(L.x1, P[v]);
+          L.z1 = Math.max(L.z1, P[v + 2]);
+        }
+      }
+    // A curve's surface fits its extent too, without filling it.
+    if (!L || Math.abs(L.area - (L.x1 - L.x0) * (L.z1 - L.z0)) > 0.01) r = false;
+    const e = 5e-3;
+    for (const [P, I] of water)
+      for (let k = 0; r && k < I.length; k++) {
+        const v = I[k] * 3;
+        if (P[v] < L.x0 - e || P[v] > L.x1 + e || P[v + 2] < L.z0 - e || P[v + 2] > L.z1 + e || P[v + 1] > L.y + e) r = false;
+      }
+    waterBoxes.set(p.i, r);
+    return r;
+  }
   function tuftsOf(p) {
     if (tuftCache.has(p.i)) return tuftCache.get(p.i);
     // Grass triangles facing up: [material, ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, area].
@@ -371,12 +419,16 @@ self.TM = (() => {
     if (!hasBlocks([id])) console.warn('Better Editor part ' + id + ' is drawn before its blocks loaded');
     const p = byId.get(id),
       tufts = !noTufts && tuftsWanted() ? tuftsOf(p) : null;
+    // Low water quality: water that isn't one box keeps only its surface (tm_water.js joins the boxes).
+    const box = waterLow() && hasWater(id) ? waterIsBox(p) : null,
+      kept = box === false ? p.m.filter((m) => D.materialNames[m[0]] != 'WaterSide') : p.m;
+    renderArrays.waterBox = box === true;
     let tris = tufts ? tufts.pos.length / 3 : 0;
-    for (const m of p.m) tris += m[4];
+    for (const m of kept) tris += m[4];
     const pos = new Float32Array(tris * 3),
       col = new Float32Array(tris * 3),
       order = (m) => WATER_ORDER[D.materialNames[m[0]]] ?? 0,
-      meshes = [...p.m].sort((a, b) => order(a) - order(b)),
+      meshes = [...kept].sort((a, b) => order(a) - order(b)),
       groups = [];
     let o = 0;
     if (tufts) {
@@ -3362,6 +3414,8 @@ self.TM = (() => {
     shareBlocks,
     renderArrays,
     hasTufts,
+    hasWater,
+    waterLow,
     prepareCar,
     physicsId,
     proxyConfigs,
