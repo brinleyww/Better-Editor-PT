@@ -1,5 +1,13 @@
 [
     {
+        "id": 19,
+        "version": "35.5",
+        "changes": [
+            "Less lag on slow devices when the car is stopped or slow where blocks overlap",
+            "Grass tufts are cheaper to draw"
+        ]
+    },
+    {
         "id": 18,
         "version": "35.4",
         "changes": [

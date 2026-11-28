@@ -298,6 +298,31 @@ self.TM.hud = (() => {
     c.has = true;
   }
 
+  // The surface under a wheel's contact, looked up again only once the contact has moved SAME units from the last
+  // lookup. A state comes every physics frame (1 ms), and where parts overlap each lookup searches their triangles: a car
+  // resting or crawling there paid that 4000 times a second on the page for the same answer. Only the HUD and the
+  // car's look use this; the car drives on the physics worker's own lookups.
+  const SAME = 0.15;
+  function surfaceUnder(c, w, k) {
+    const p = k.position,
+      n = k.normal,
+      o = w * 3;
+    let at = c.seenAt;
+    if (!at || c.seenIn !== c.cells) {
+      at = c.seenAt = new Float64Array(12).fill(NaN);
+      c.seen = [null, null, null, null];
+      c.seenIn = c.cells;
+    }
+    const dx = p.x - at[o],
+      dy = p.y - at[o + 1],
+      dz = p.z - at[o + 2];
+    if (dx * dx + dy * dy + dz * dz < SAME * SAME) return c.seen[w];
+    at[o] = p.x;
+    at[o + 1] = p.y;
+    at[o + 2] = p.z;
+    return (c.seen[w] = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) : null);
+  }
+
   // Which surface each wheel is on, and its tyre's state. With the runtime's TYRES: its own step, per wheel, with what
   // fxStep gives it (the surface, in water or not, the heat from the tyre's skidInfo), per physics frame (1 ms).
   // Without: the older runtime's wet tyres (one wetness for the car: soaks while the car's underside is in water, dries
@@ -318,8 +343,7 @@ self.TM.hud = (() => {
           continue;
         }
         const p = k.position,
-          n = k.normal,
-          u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) : null;
+          u = surfaceUnder(c, w, k);
         c.wheel[w] = u ?? -1;
         c.inWater[w] = water != null && p.y < level ? 1 : 0;
         TYRES.step(c.tyre[w], u, c.inWater[w] == 1, heat, c.vehicle, 0.001);
@@ -342,8 +366,7 @@ self.TM.hud = (() => {
       }
       contacts++;
       const p = k.position,
-        n = k.normal,
-        u = c.cells ? TM.surfaceAt(c.cells, p.x - n.x * 0.1, p.y - n.y * 0.1, p.z - n.z * 0.1, p.x, p.y, p.z) : null,
+        u = surfaceUnder(c, w, k),
         icy = u != null && ICING.surfaces.includes(u);
       c.wheel[w] = u ?? -1;
       c.inWater[w] = water != null && p.y < level ? 1 : 0;

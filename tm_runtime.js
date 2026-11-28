@@ -396,8 +396,14 @@ self.TM = (() => {
             set.delete(m);
             continue;
           }
-          const b = m.boundingSphere;
-          m.visible = Math.hypot(b.center.x - e[12], b.center.y - e[13], b.center.z - e[14]) - b.radius < far;
+          // Squared distances: this runs for every tuft mesh in every pass of every frame, and Math.hypot is slow
+          // on a page that swapped Math for its physics (Not So Weekly Shorts).
+          const b = m.boundingSphere,
+            dx = b.center.x - e[12],
+            dy = b.center.y - e[13],
+            dz = b.center.z - e[14],
+            reach = far + b.radius;
+          m.visible = dx * dx + dy * dy + dz * dz < reach * reach;
         }
         return before.apply(this, arguments);
       };
